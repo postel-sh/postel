@@ -9,7 +9,7 @@
 
 ## Status
 
-Pre-alpha. **This PR sets up the scaffolding only** — the OpenSpec workflow, custom schema, agent-facing rules, CI gates, and the polyglot monorepo layout. The full specification migration (capability specs, ADRs, AsyncAPI wire format, SQL DDL, VISION.md) lands in a stacked follow-up PR. The original [SPECIFICATION.md](./SPECIFICATION.md) is unchanged here.
+Pre-alpha. Specification stage. See [`VISION.md`](./VISION.md) for the top-level positioning, scope, and success criteria. Detailed specs live under [`openspec/specs/`](./openspec/specs/) and [`specs/`](./specs/).
 
 ## Repository layout
 
@@ -17,7 +17,7 @@ Polyglot monorepo with per-language top-level directories. See [`decisions/0010-
 
 ```
 postel/
-├── specs/                # shared: wire format, DB schema (follow-up PR)
+├── specs/                # shared: wire format, DB schema
 ├── openspec/             # spec-driven dev spine (active changes + main specs)
 ├── decisions/            # ADRs
 ├── compliance/           # executable test suite every port must pass (planned)
@@ -91,9 +91,18 @@ Postel does not compete with Svix or Hookdeck on customer-facing webhook portals
 
 Postel is a **library, not a service**. It will never have a hosted offering, never run a separate dispatcher process, never require Redis or a message broker, never ship a customer-facing portal as a packaged product. If you need any of that, use Svix or Hookdeck Outpost.
 
-## Specification
+## Specs (sources of truth)
 
-The full design (pre-migration) is in [SPECIFICATION.md](./SPECIFICATION.md). It is being broken up into capability specs, ADRs, and machine-readable artifacts in a stacked follow-up PR. Once that PR merges, this section will point at `VISION.md`, `openspec/specs/`, `specs/wire-format/`, and `specs/db-schema/`.
+| Layer | Source of truth | Format |
+|---|---|---|
+| Top-level positioning, scope, success criteria | [`VISION.md`](./VISION.md) | Markdown |
+| Wire format | [`specs/wire-format/asyncapi.yaml`](./specs/wire-format/asyncapi.yaml) | AsyncAPI 3.0 |
+| DB schema | [`specs/db-schema/0001_init.sql`](./specs/db-schema/0001_init.sql) | SQL DDL |
+| Capability behaviors | [`openspec/specs/`](./openspec/specs/) | Markdown (per capability) |
+| Architectural decisions | [`decisions/`](./decisions/) | Markdown ADRs |
+| Behavioral oracle | `@postel/compliance` (planned) | Executable test suite |
+
+Spec changes flow through [OpenSpec](https://github.com/Fission-AI/OpenSpec) using the project-local `postel` schema. Every change includes a `language-impact.md` artifact declaring which language ports are affected.
 
 ## Inspiration
 
