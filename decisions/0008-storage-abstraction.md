@@ -1,18 +1,32 @@
-# 0008 — Storage abstraction layer
+# 0008 — Storage abstraction layer (L1: internal SQL tool)
 
 - **Status**: **Proposed** (decision pending; must be made before any meaningful TS code lands — this is the single largest blocker for implementation)
 - **Date**: 2026-05-10
-- **Decision drivers**: outbox-pattern correctness, Postgres ↔ SQLite parity, BYO adapter ergonomics, host-transaction interop, no leak of storage code into the edge bundle
+- **Scope**: **L1 only** — the SQL-writing tool used inside `@postel/postgres` and `@postel/sqlite`. Distinct from L2 (the BYO `Storage` interface community adapters implement); see "Two layers" section below.
+- **Decision drivers**: outbox-pattern correctness, Postgres ↔ SQLite parity, host-transaction interop, no leak of storage code into the edge bundle, clean L1↔L2 separation
 
-> **For the next agent picking this up**: this ADR captures everything we know about what storage needs to do in Postel. Read it cold, decide, then move the Status to "Accepted" and fill in the Decision section. The Context and Constraints sections should be enough to pick a candidate without rebuilding the picture from scratch.
+> **For the next agent picking this up**: this ADR captures everything we know about what storage needs to do in Postel and which L1 tool to pick for our first-party adapters. Read it cold, decide, then move the Status to "Accepted" and fill in the Decision section. The Context and Constraints sections should be enough to pick a candidate without rebuilding the picture from scratch. The L2 BYO interface design is a separate concern, tracked as ADR 0009.
+
+## Two layers, do not confuse
+
+The storage story has two distinct abstraction layers. This ADR scopes to L1 only.
+
+| Layer | What it is | Decided by | Notes |
+|---|---|---|---|
+| **L1: internal SQL tool** | How `@postel/postgres` and `@postel/sqlite` write queries against their respective databases. Kysely vs Drizzle vs raw SQL templates. | **This ADR** | First-party only. Concerns: ergonomics, type safety, dialect parity, edge bundle weight. |
+| **L2: BYO `Storage` interface** | The high-level method-based contract a third party (PlanetScale / Cockroach / libSQL / Turso / D1) implements to plug in their own backend. Operation-shaped (`reserveBatch`, `recordAttempt`, `dedup`, …), not a SQL leak. | **ADR 0009 (planned)** + the [storage-layer capability spec](../openspec/specs/storage-layer/spec.md) | The L2 interface is *technology-agnostic*. A BYO author MUST NOT need to know what L1 tool we picked. |
+
+[ADR 0004](0004-postgres-and-sqlite-only.md) establishes that **Postgres and SQLite are the only first-class first-party backends; everything else goes through L2**. That stays true regardless of what L1 tool we pick. Whatever extra dialects an L1 tool happens to support do not promote them to first-class.
+
+**Cross-reference**: [Better Auth uses exactly this dual-layer pattern](https://better-auth.com/docs/adapters/postgresql) — Kysely under the hood for first-party adapters, plus a method-based custom-adapter contract for everything else. Lessons folded into ADR 0009.
 
 ## Context
 
-Postel is a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first. The storage layer is one of the larger architectural pieces, and the abstraction over Postgres + SQLite (plus BYO) shapes every capability that touches persistence — which is most of them.
+Postel is a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first. The storage layer is one of the larger architectural pieces; the L1 tool we pick shapes every query that lands in `@postel/postgres` and `@postel/sqlite`.
 
 Two distinct concerns ride on top of the storage layer:
 
-1. **Transactional outbox (hot path)** — every `send()` inserts a row into `messages` *inside the host's transaction*. Workers reserve pending rows under `FOR UPDATE SKIP LOCKED` (Postgres) or `BEGIN IMMEDIATE` (SQLite), dispatch them, record `attempts`, retry on schedule. This is the load-bearing part: throughput target is ≥ 10,000 deliveries/sec on a single Postgres node ([sender spec](../openspec/specs/sender/spec.md)).
+1. **Transactional outbox (hot path)** — every `send()` inserts a row into `messages` *inside the host's transaction*. Workers reserve pending rows under `FOR UPDATE SKIP LOCKED` (Postgres) or `BEGIN IMMEDIATE` (SQLite), dispatch them, record `attempts`, retry on schedule. Load-bearing: throughput target is ≥ 10,000 deliveries/sec on a single Postgres node ([sender spec](../openspec/specs/sender/spec.md)).
 
 2. **Audit trail / admin reads (cold path)** — replay queries by time range and predicate, reconciliation queries for never-confirmed deliveries, paginated admin reads with tenant filtering, retention pruning.
 
@@ -61,7 +75,7 @@ Canonical schema lives at [`specs/db-schema/0001_init.sql`](../specs/db-schema/0
 3. **Postgres ↔ SQLite parity** in dialect surface: JSONB vs JSON1, `now()` vs `datetime('now')`, `RETURNING` (Postgres ≥ 14, SQLite ≥ 3.40 both have it).
 4. **Edge-runtime constraint**: `@postel/edge` (≤ 50 KB minified+gzipped) needs the **dedup helper only** — nothing else from the storage layer should leak in. Tree-shaking has to be aggressive. The dedup helper itself can use a minimal sub-adapter.
 5. **Host transactions**: every write API (`send`, `endpoints.create`, `endpoints.update`, `tenants.delete`) accepts an optional `db` (transaction handle). Whatever abstraction we pick must let the host pass its own transaction in.
-6. **BYO storage interface** (per [storage-layer spec](../openspec/specs/storage-layer/spec.md)): someone running PlanetScale / CockroachDB / Turso / libSQL must be able to implement the interface without forking the library. The abstraction's interface is what they implement against.
+6. **L1 must not leak into L2.** The L1 tool is an *implementation detail* of the first-party adapters. A BYO author implementing the L2 `Storage` interface (ADR 0009) MUST NOT have to import or know about the L1 tool. If picking the L1 tool forces the L2 contract to look like its query API, we picked wrong.
 7. **Type safety** end-to-end. Capability specs say no `any` in the public surface. Untyped query builders are out.
 8. **Migrations runner** must work programmatically (`postel.migrate(db)` per [storage-layer spec](../openspec/specs/storage-layer/spec.md)), idempotently, and be safe to invoke on every boot.
 
@@ -104,14 +118,15 @@ Canonical schema lives at [`specs/db-schema/0001_init.sql`](../specs/db-schema/0
 | Postgres ↔ SQLite parity | ✅ same builder | ✅ same builder | ⚠️ per-query | ⚠️ different schemas |
 | Edge bundle (dedup helper only) | ✅ small | ✅ small | ✅ smallest | ❌ heavy |
 | Host transaction passthrough | ✅ first-class | ✅ first-class | ✅ via driver | ⚠️ awkward |
-| BYO adapter ease | ✅ wrap `Driver` | ⚠️ schema coupling | ✅ trivial | ❌ coupled |
+| Won't leak into L2 contract | ✅ stays internal | ⚠️ schema-as-code tempts coupling | ✅ trivially internal | ❌ schema model is exposure-prone |
 | Type safety end-to-end | ✅ inferred | ✅ inferred | ⚠️ manual | ✅ codegen |
 | No codegen step | ✅ | ⚠️ optional | ✅ | ❌ required |
 | Library-shape (not app-shape) | ✅ | ⚠️ | ✅ | ❌ |
+| Production exemplar | ✅ Better Auth uses Kysely for the same role | — | — | — |
 
 ## Working recommendation (subject to override)
 
-**Kysely** is the leading candidate. It's the best fit on the hot-path constraints (native `SKIP LOCKED`, type safety without codegen, clean transaction passthrough, BYO via a small `Driver` wrapper) and doesn't carry the weight of an ORM the library doesn't need.
+**Kysely** is the leading candidate. It's the best fit on the hot-path constraints (native `SKIP LOCKED`, type safety without codegen, clean transaction passthrough), it's an *internal* tool that won't leak into the L2 contract, and Better Auth runs it for the same role at production scale ([their PostgreSQL adapter](https://better-auth.com/docs/adapters/postgresql) is "supported under the hood via the Kysely adapter").
 
 **Raw SQL templates** are the strong runner-up if Kysely's surface ends up too constraining once we start writing real queries. The fallback path from Kysely → raw templates is mechanical (Kysely's compiled SQL is essentially what we'd hand-write).
 
@@ -139,6 +154,7 @@ These are flagged here so a single PR doing storage setup can also chip away at 
 
 | # | Decision | Reasonable default | Blast radius |
 |---|---|---|---|
+| 0 | **L2 BYO `Storage` interface design** (planned ADR 0009) | Method-shaped contract (`reserveBatch`, `recordAttempt`, `releaseLease`, `dedup`, `rangeQuery`, `notify?`, `subscribe?`); transaction-as-callable; helper utilities for adapter authors (à la Better Auth's `transformInput/Output`); optional capabilities with polling/no-op fallbacks. NOT a CRUD shape — Postel's hot path needs `SKIP LOCKED`-style semantics that CRUD can't express. | Highest — gates every BYO adapter and keeps L1 freedom |
 | 1 | **Monorepo tooling** | pnpm workspaces + Turbo | High — touches every package |
 | 2 | **Build tool** | tsup (ESM+CJS dual per [distribution-packaging](../openspec/specs/distribution-packaging/spec.md)) | High |
 | 3 | **Test framework** | Vitest | Medium |
@@ -149,7 +165,7 @@ These are flagged here so a single PR doing storage setup can also chip away at 
 | 8 | **Admin handler auth integration** | Host-supplied predicate `(req, action, resource) => boolean`; library invokes per read | Medium |
 | 9 | **JWKS caching strategy on edge** | Per-isolate cache + KV-backed shared cache, configurable | Low |
 | 10 | **Compliance suite implementation tech** | Node CLI making real HTTP calls; vendor-neutral | Medium — gates every port |
-| 11 | **Idempotency dedup adapter contracts per backing store** | Adapters for Postgres, SQLite, Redis, in-memory; same `dedup(id, { ttl })` shape | Medium |
+| 11 | **Idempotency dedup adapter contracts per backing store** | Adapters for Postgres, SQLite, Redis, in-memory; same `dedup(id, { ttl })` shape (will be one method on the L2 `Storage` interface from ADR 0009) | Medium |
 
 ### Pre-1.0 decisions (already flagged in [VISION.md](../VISION.md) / ADRs)
 
