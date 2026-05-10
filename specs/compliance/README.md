@@ -4,7 +4,7 @@ The behavioral source of truth for Postel.
 
 ## What it is
 
-`@postel/compliance` is a vendor-neutral, executable test suite that verifies any HTTP receiver against the Standard Webhooks specification. It is the contract every Postel implementation — the TypeScript reference impl in this repo and any future language port — must satisfy to be considered conformant.
+`@postel/compliance` is a vendor-neutral, executable test suite that verifies any HTTP receiver against the Standard Webhooks specification. It is the contract every Postel port must satisfy to be considered conformant — TypeScript (which ships first in this repo) and every future language port (Go, Python, Rust, …) alike.
 
 ## Status
 

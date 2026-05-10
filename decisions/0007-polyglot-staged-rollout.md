@@ -1,8 +1,8 @@
-# 0007 — Polyglot staged rollout (TS reference impl, then Go, then Python)
+# 0007 — Polyglot staged rollout (TypeScript first, then Go, Python, Rust)
 
 - **Status**: accepted
 - **Date**: 2026-05-09
-- **Decision drivers**: corrected positioning (spec-first, not "TS-first"), reach across stacks, sustainable maintenance
+- **Decision drivers**: corrected positioning (polyglot, not "TS-first"), reach across stacks, sustainable maintenance
 
 ## Context
 
@@ -15,11 +15,11 @@ That positioning is wrong for the project we are actually building. A library wh
 
 ## Decision
 
-Postel is **spec-first**. The TypeScript implementation in this repo is the **reference implementation**. Additional language ports are first-class roadmap items, not unsupported community efforts.
+Postel is a **polyglot** webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow as first-class ports, not unsupported community efforts. Every port conforms to the same wire format, DB schema, and capability behaviors, verified by `@postel/compliance`.
 
 ### The port roadmap
 
-1. **TypeScript reference impl** (this repo) — sender + receiver. Must pass `@postel/compliance` end-to-end. 1.0 ship gate.
+1. **TypeScript** (this repo, ships first) — sender + receiver. Must pass `@postel/compliance` end-to-end. 1.0 ship gate.
 2. **Go receiver** — receiver-only for the first cut. Tracks Go's strong adoption in serverless / API gateway tiers.
 3. **Python receiver** — receiver-only. Common in data-processing / ML stacks.
 4. **Rust** — sender + receiver. Edge runtime relevance and the ecosystem's correctness culture.
@@ -40,13 +40,13 @@ Order is not contractual; it is the current best estimate of where adoption is h
 
 ### What "first-class" does NOT mean
 
-- That every port reaches feature parity at the same time. The TS reference impl will lead.
+- That every port reaches feature parity at the same time. TypeScript ships first and leads on feature completeness; other ports may track behind for a release cycle or two.
 - That every port supports every persona (e.g., the Go receiver may not have an Effect-TS layer).
 - That the maintainer team grows linearly with the port count. Single-vendor governance with clear contribution guidelines remains the model.
 
 ## Consequences
 
-- §1.2 of `VISION.md` reads "spec-first, TS reference implementation, polyglot follows."
+- §1.2 of `VISION.md` reads "polyglot webhooks library backed by solid, executable specs; TypeScript ships first; Go, Python, Rust follow."
 - §3.2's "out of scope" list no longer includes maintained ports.
 - The OpenSpec `postel-polyglot` schema requires a `language-impact.md` artifact on every change so the polyglot dimension is structurally enforced.
 - The compliance test suite (`@postel/compliance`) is the contract every port must satisfy. Without it, "polyglot" is hand-waving; with it, "polyglot" is verifiable.

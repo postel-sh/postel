@@ -3,7 +3,7 @@
 **Status:** v0 draft, pre-implementation.
 **Audience:** maintainers, contributors, reviewers, future selves, port authors.
 
-> **Postel is a spec-first webhooks library. The TypeScript implementation in this repo is the reference implementation. Additional language ports (Go, Python, Rust, …) are first-class roadmap items, gated on passing the [@postel/compliance](specs/compliance/README.md) test suite.**
+> **Postel is a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [@postel/compliance](specs/compliance/README.md) test suite.**
 
 ---
 
@@ -20,7 +20,7 @@ The [Standard Webhooks](https://www.standardwebhooks.com/) specification covers 
 
 An embeddable, **library-only** kernel for outbound and inbound webhooks that runs inside the host application against the host application's database. Standard Webhooks-compliant, sender + receiver, opinionated defaults, programmable in code rather than configured by DSL.
 
-The **specs** in this repo (wire format, DB schema, capability behaviors, compliance suite) are the source of truth. Each language implementation — starting with TypeScript — must pass the same compliance suite to be considered conformant.
+Postel ships in multiple languages over time — TypeScript first, then Go, Python, and Rust. Every implementation conforms to the same shared specification — wire format ([AsyncAPI](specs/wire-format/asyncapi.yaml)), DB schema ([SQL DDL](specs/db-schema/0001_init.sql)), and capability behaviors ([per-capability specs](openspec/specs/)) — and is verified by the [executable compliance test suite](specs/compliance/README.md).
 
 ### Positioning
 
@@ -53,7 +53,7 @@ The **specs** in this repo (wire format, DB schema, capability behaviors, compli
 - Inbound (receiver) verification: middleware adapters, raw-bytes preservation, idempotency dedup, JWKS consumer
 - Endpoint and key management primitives (programmatic only)
 - Admin HTTP handlers (mounted on the host's router) for ops dashboards
-- TypeScript reference implementation across Node, Bun, Deno, and edge runtimes
+- TypeScript implementation across Node, Bun, Deno, and edge runtimes (ships first)
 - OpenTelemetry instrumentation
 - A vendor-neutral compliance test suite for Standard Webhooks
 - **Polyglot port roadmap**: language ports (Go receiver next, then Python, then Rust) are first-class. Each port is added via an OpenSpec change with a `language-impact.md` artifact and is gated on passing `@postel/compliance`.
@@ -104,7 +104,7 @@ A reasonable observer can answer YES to all of:
 3. Does it handle key rotation with overlap windows out of the box?
 4. Can I publish a JWKS endpoint with one line?
 5. Is replay a first-class API verb, not bolted on?
-6. Does the TS reference implementation pass `@postel/compliance` end-to-end?
+6. Does the TypeScript implementation pass `@postel/compliance` end-to-end?
 7. Are the receiver verifier errors actionable (which step failed and why)?
 8. Does the multi-tenant scheduler isolate noisy neighbors by default?
 9. Is the "Why not a service?" answer obvious from the docs?
