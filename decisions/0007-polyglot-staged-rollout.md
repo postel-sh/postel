@@ -48,7 +48,7 @@ Order is not contractual; it is the current best estimate of where adoption is h
 
 - §1.2 of `VISION.md` reads "polyglot webhooks library backed by solid, executable specs; TypeScript ships first; Go, Python, Rust follow."
 - §3.2's "out of scope" list no longer includes maintained ports.
-- The OpenSpec `postel-polyglot` schema requires a `language-impact.md` artifact on every change so the polyglot dimension is structurally enforced.
+- The OpenSpec `postel` schema requires a `language-impact.md` artifact on every change so the polyglot dimension is structurally enforced.
 - The compliance test suite (`@postel/compliance`) is the contract every port must satisfy. Without it, "polyglot" is hand-waving; with it, "polyglot" is verifiable.
 - Resourcing for non-TS ports is a project-management concern, not a spec concern. The spec is ready when this change is merged; staffing is tracked separately.
 

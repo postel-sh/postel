@@ -9,7 +9,7 @@ and this project (from 1.0 onward) adheres to [Semantic Versioning](https://semv
 
 ### Added
 
-- Spec-driven development framework via upstream [OpenSpec](https://github.com/Fission-AI/OpenSpec) with the custom `postel-polyglot` schema.
+- Spec-driven development framework via upstream [OpenSpec](https://github.com/Fission-AI/OpenSpec) with the custom `postel` schema.
 - Capability specs under `openspec/specs/` covering sender, receiver, endpoint management, key management, retry policy, filtering & transformation, replay & reconciliation, multi-tenancy, observability, Standard Webhooks compliance, storage layer, distribution & packaging, and the TypeScript API surface.
 - Canonical machine-readable artifacts: [`specs/wire-format/asyncapi.yaml`](specs/wire-format/asyncapi.yaml) (AsyncAPI 3.0) and [`specs/db-schema/0001_init.sql`](specs/db-schema/0001_init.sql).
 - ADRs `0001`–`0007` capturing architectural decisions.

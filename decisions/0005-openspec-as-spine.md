@@ -21,13 +21,13 @@ We considered three families of approach:
 
 ## Decision
 
-Use upstream OpenSpec as the SDD spine. Fork its built-in `spec-driven` schema as `postel-polyglot` to add three Postel-specific artifacts:
+Use upstream OpenSpec as the SDD spine. Fork its built-in `spec-driven` schema as `postel` to add three Postel-specific artifacts:
 
 - `language-impact.md` (REQUIRED on every change) — the polyglot enforcement point. A change cannot be archived without declaring which language ports are affected.
 - `wire-format-delta.yaml` (OPTIONAL) — AsyncAPI 3.0 fragments for changes that modify the wire format.
 - `db-schema-delta.sql` (OPTIONAL) — forward-only DDL for changes that modify the canonical schema.
 
-`design.md` becomes truly optional at v0; it will be promoted to required at v1 via a schema fork (`postel-polyglot-v1`) without affecting prior v0 changes.
+`design.md` becomes truly optional at v0; it will be promoted to required at v1 via a schema fork (`postel-v1`) without affecting prior v0 changes.
 
 OpenSpec lives alongside three canonical artifact stores that it does not own: `specs/wire-format/asyncapi.yaml`, `specs/db-schema/*.sql`, and `decisions/*.md` (ADRs). OpenSpec is the change spine; those are the codegen and decision-record targets.
 

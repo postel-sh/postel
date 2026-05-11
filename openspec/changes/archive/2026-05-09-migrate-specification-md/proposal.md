@@ -53,5 +53,5 @@ None — this is the bootstrap migration; nothing exists yet to modify.
 
 - **Code**: none yet (pre-implementation repo).
 - **Docs**: existing `SPECIFICATION.md` is removed; `README.md` is updated; new `VISION.md`, ADRs, capability specs, AsyncAPI doc, SQL DDL are created.
-- **Process**: future changes flow through OpenSpec (`openspec new change` → author proposal/specs/language-impact/tasks → apply → archive). Every change MUST include a `language-impact.md` artifact (enforced structurally by the postel-polyglot schema).
+- **Process**: future changes flow through OpenSpec (`openspec new change` → author proposal/specs/language-impact/tasks → apply → archive). Every change MUST include a `language-impact.md` artifact (enforced structurally by the postel schema).
 - **Stakeholders**: maintainer (you), future contributors (community port authors).
