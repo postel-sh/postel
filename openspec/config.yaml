@@ -1,4 +1,4 @@
-schema: postel-polyglot
+schema: postel
 
 context: |
   Postel is a polyglot webhooks library backed by solid, executable specs.

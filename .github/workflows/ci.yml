@@ -26,8 +26,8 @@ jobs:
       - name: Validate OpenSpec specs and changes
         run: npx openspec validate --all
 
-      - name: Validate postel-polyglot schema
-        run: npx openspec schema validate postel-polyglot --verbose
+      - name: Validate postel schema
+        run: npx openspec schema validate postel --verbose
 
       - name: Spec-test traceability
         run: npm run check:spec-drift

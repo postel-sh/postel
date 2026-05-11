@@ -1,9 +1,10 @@
-name: postel-polyglot
+name: postel
 version: 1
 description: >-
-  Postel OSS-library workflow. Polyglot-aware, lightweight at v0.
-  Adds language-impact (required), wire-format-delta (optional), db-schema-delta (optional)
-  to the upstream spec-driven flow. Design.md is genuinely optional in v0.
+  Postel OSS-library workflow, v0 (lightweight). Adds language-impact (required),
+  wire-format-delta (optional), db-schema-delta (optional) to the upstream
+  spec-driven flow. Design.md is genuinely optional in v0. Future strict shape
+  forks to postel-v1.
 artifacts:
   - id: proposal
     generates: proposal.md
