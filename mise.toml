@@ -1,0 +1,30 @@
+# Postel repo-level tooling.
+#
+# Run `mise install` once to install Node and the OpenSpec CLI binary.
+# After that:
+#   - `mise run <task>` to invoke a task (see below)
+#   - `openspec ...` works directly on PATH (no `npx` indirection)
+#
+# Per-language tooling (TypeScript / Go / Python / Rust) lives inside
+# each language's root directory, not here. The top-level config is
+# deliberately language-agnostic. See `decisions/0010-monorepo-layout.md`.
+
+[tools]
+node = "20"
+"npm:@fission-ai/openspec" = "1.3.1"
+
+[tasks."spec:validate"]
+description = "Validate all OpenSpec specs and changes"
+run = "openspec validate --all"
+
+[tasks."spec:schema-validate"]
+description = "Validate the postel custom schema"
+run = "openspec schema validate postel --verbose"
+
+[tasks."check:spec-drift"]
+description = "Check spec-test traceability — every requirement must have a matching test"
+run = "node scripts/check-spec-drift.mjs"
+
+[tasks."check:all"]
+description = "Run the full spec-level CI gate locally"
+depends = ["spec:validate", "spec:schema-validate", "check:spec-drift"]

@@ -2,14 +2,16 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
+      "Bash(mise:*)",
+      "Bash(openspec:*)",
+      "Bash(npx --yes @fission-ai/openspec*)",
+      "Bash(node scripts/*)",
       "Bash(npm install:*)",
       "Bash(npm ci:*)",
       "Bash(npm run *:*)",
       "Bash(npm test:*)",
       "Bash(npm list:*)",
       "Bash(npm view:*)",
-      "Bash(npx openspec *:*)",
-      "Bash(node scripts/*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
