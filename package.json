@@ -1,0 +1,16 @@
+{
+  "name": "postel-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Postel — polyglot webhooks library backed by solid specs. Monorepo root. See VISION.md.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "spec:validate": "openspec validate --all",
+    "spec:check-drift": "node scripts/check-spec-drift.mjs",
+    "check:spec-drift": "node scripts/check-spec-drift.mjs"
+  },
+  "devDependencies": {
+    "@fission-ai/openspec": "^1.3.1"
+  }
+}

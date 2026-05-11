@@ -1,0 +1,31 @@
+# Wire-format delta — AsyncAPI 3.0 fragment
+# OPTIONAL: include only if this change modifies the wire format.
+# At archive time, reconcile this fragment into specs/wire-format/asyncapi.yaml.
+
+asyncapi: "3.0.0"
+# info:
+#   title: Postel wire format delta
+#   version: "<change-name>"
+#
+# channels:
+#   exampleEvent:
+#     address: webhooks
+#     messages:
+#       exampleEvent:
+#         $ref: "#/components/messages/exampleEvent"
+#
+# components:
+#   messages:
+#     exampleEvent:
+#       headers:
+#         type: object
+#         properties:
+#           webhook-id: { type: string }
+#           webhook-timestamp: { type: string }
+#           webhook-signature: { type: string }
+#       payload:
+#         type: object
+#         properties:
+#           type: { type: string, const: "example.created" }
+#           timestamp: { type: string, format: date-time }
+#           data: { type: object }

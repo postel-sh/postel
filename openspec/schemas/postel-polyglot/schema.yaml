@@ -1,0 +1,175 @@
+name: postel-polyglot
+version: 1
+description: >-
+  Postel OSS-library workflow. Polyglot-aware, lightweight at v0.
+  Adds language-impact (required), wire-format-delta (optional), db-schema-delta (optional)
+  to the upstream spec-driven flow. Design.md is genuinely optional in v0.
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Initial proposal document outlining the change
+    template: proposal.md
+    instruction: |
+      Create the proposal document that establishes WHY this change is needed.
+
+      Sections:
+      - **Why**: 1-2 sentences on the problem or opportunity. What problem does this solve? Why now?
+      - **What Changes**: Bullet list of changes. Be specific about new capabilities, modifications, or removals. Mark breaking changes with **BREAKING**.
+      - **Capabilities**: Identify which specs will be created or modified:
+        - **New Capabilities**: List capabilities being introduced. Each becomes a new `specs/<name>/spec.md`. Use kebab-case names (e.g., `sender`, `key-management`, `api-surface-go`).
+        - **Modified Capabilities**: List existing capabilities whose REQUIREMENTS are changing. Only include if spec-level behavior changes (not just implementation details). Each needs a delta spec file. Check `openspec/specs/` for existing spec names. Leave empty if no requirement changes.
+      - **Wire-format / DB-schema impact**: One-line each. If yes, the corresponding optional delta artifact must accompany this change.
+      - **Impact**: Affected code, APIs, dependencies, or systems.
+
+      IMPORTANT: The Capabilities section is critical. It creates the contract between
+      proposal and specs phases. Research existing specs before filling this in.
+
+      Keep it concise (1-2 pages). Focus on the "why" not the "how".
+    requires: []
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: Detailed specifications for the change (delta specs per capability)
+    template: spec.md
+    instruction: |
+      Create specification files that define WHAT the system should do.
+
+      Create one spec file per capability listed in the proposal's Capabilities section.
+      - New capabilities: use the exact kebab-case name from the proposal (specs/<capability>/spec.md).
+      - Modified capabilities: use the existing spec folder name from openspec/specs/<capability>/.
+
+      Delta operations (use ## headers):
+      - **ADDED Requirements**: New capabilities
+      - **MODIFIED Requirements**: Changed behavior - MUST include full updated content
+      - **REMOVED Requirements**: Deprecated features - MUST include **Reason** and **Migration**
+      - **RENAMED Requirements**: Name changes only - use FROM:/TO: format
+
+      Format requirements:
+      - Each requirement: `### Requirement: <name>` followed by description
+      - Use SHALL/MUST for normative requirements (avoid should/may)
+      - Each scenario: `#### Scenario: <name>` with WHEN/THEN format
+      - **CRITICAL**: Scenarios MUST use exactly 4 hashtags (`####`).
+      - Every requirement MUST have at least one scenario.
+
+      Specs should be testable - each scenario is a potential test case.
+    requires:
+      - proposal
+
+  - id: language-impact
+    generates: language-impact.md
+    description: Polyglot dimension — declares which language ports are affected
+    template: language-impact.md
+    instruction: |
+      Required for every change. Declares the polyglot impact so port authors know what to do.
+
+      Format:
+
+      | Port | Status | Notes |
+      |---|---|---|
+      | typescript-sender | unchanged / modified / new / deprecated | one-line |
+      | typescript-receiver | … | … |
+      | go-sender (planned) | … | … |
+      | go-receiver (planned) | … | … |
+      | python-sender (planned) | … | … |
+      | python-receiver (planned) | … | … |
+      | wire-format | unchanged / modified | … |
+      | db-schema | unchanged / modified | … |
+
+      One-line per row is fine when only one port is touched. State whether ports
+      MUST change in lockstep, MAY lag, or are unaffected.
+
+      For wire-format / db-schema rows: if "modified", the corresponding optional
+      delta artifact (wire-format-delta.yaml / db-schema-delta.sql) MUST accompany
+      this change.
+    requires:
+      - proposal
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist with trackable tasks
+    template: tasks.md
+    instruction: |
+      Create the task list that breaks down the implementation work.
+
+      **IMPORTANT: Follow the template below exactly.** The apply phase parses
+      checkbox format to track progress. Tasks not using `- [ ]` won't be tracked.
+
+      Guidelines:
+      - Group related tasks under ## numbered headings
+      - Each task MUST be a checkbox: `- [ ] X.Y Task description`
+      - Tasks should be small enough to complete in one session
+      - Order tasks by dependency
+
+      Example:
+      ```
+      ## 1. Setup
+
+      - [ ] 1.1 Create new module structure
+
+      ## 2. Core Implementation
+
+      - [ ] 2.1 Implement feature
+      ```
+
+      Reference specs for what needs to be built. Each task should be verifiable.
+    requires:
+      - specs
+      - language-impact
+
+  - id: design
+    generates: design.md
+    description: Technical design document (OPTIONAL at v0)
+    template: design.md
+    instruction: |
+      OPTIONAL at v0. Create a design document only if any apply:
+      - Cross-cutting change (multiple capabilities) or new architectural pattern
+      - New external dependency or significant data model changes
+      - Security, performance, or migration complexity
+      - Ambiguity that benefits from technical decisions before coding
+
+      Sections (when included):
+      - **Context**: Background, current state, constraints
+      - **Goals / Non-Goals**: What this design achieves and explicitly excludes
+      - **Decisions**: Key technical choices with rationale (why X over Y?)
+      - **Risks / Trade-offs**: [Risk] → Mitigation
+      - **Migration Plan**: Deploy steps, rollback strategy (if applicable)
+      - **Open Questions**: Outstanding unknowns
+
+      At v1 (strict mode): design.md becomes required.
+    requires:
+      - proposal
+
+  - id: wire-format-delta
+    generates: wire-format-delta.yaml
+    description: AsyncAPI 3.0 fragment showing wire-format changes (OPTIONAL)
+    template: wire-format-delta.yaml
+    instruction: |
+      OPTIONAL. Required only if this change modifies the wire format.
+
+      Provide an AsyncAPI 3.0 fragment showing additions/modifications.
+      During archive, reconcile this fragment into specs/wire-format/asyncapi.yaml.
+
+      Only the wire format goes here. Operational behavior (retries, fanout,
+      circuit breaking) belongs in markdown specs, not AsyncAPI.
+    requires:
+      - proposal
+
+  - id: db-schema-delta
+    generates: db-schema-delta.sql
+    description: Forward-only DDL fragment for DB schema changes (OPTIONAL)
+    template: db-schema-delta.sql
+    instruction: |
+      OPTIONAL. Required only if this change modifies the canonical DB schema.
+
+      Provide forward-only, idempotent DDL. During archive, move this file to
+      specs/db-schema/NNNN_<slug>.sql (next available migration number).
+    requires:
+      - proposal
+
+apply:
+  requires:
+    - tasks
+  tracks: tasks.md
+  instruction: |
+    Read context files, work through pending tasks, mark complete as you go.
+    Pause if you hit blockers or need clarification.
