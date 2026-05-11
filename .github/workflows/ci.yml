@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  spec:
+    name: Spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - name: Validate OpenSpec specs and changes
+        run: mise run spec:validate
+
+      - name: Validate postel schema
+        run: mise run spec:schema-validate
+
+      - name: Spec-test traceability
+        run: mise run check:spec-drift
+
+  # Per-language build jobs (TypeScript, Go, Python, Rust) land in dedicated
+  # workflow files under .github/workflows/<lang>.yml as each port ships.
+  # Until then there is no `build` job — the spec job above is the only gate.

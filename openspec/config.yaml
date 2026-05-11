@@ -1,0 +1,22 @@
+schema: postel
+
+context: |
+  Postel is a polyglot webhooks library backed by solid, executable specs.
+
+  - The TypeScript implementation (this repo) ships first.
+  - Go, Python, and Rust follow as first-class ports; each port is added via
+    an OpenSpec change with a language-impact.md artifact and is gated on
+    passing the @postel/compliance test suite.
+  - Every port conforms to the same shared specs: wire format
+    (specs/wire-format/asyncapi.yaml), DB schema (specs/db-schema/*.sql),
+    capability behaviors (openspec/specs/), architectural decisions
+    (decisions/*.md).
+  - Standard Webhooks-compliant by default. We use conventional commits.
+
+# Per-artifact rules (optional)
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#     tasks:
+#       - Break tasks into chunks of max 2 hours

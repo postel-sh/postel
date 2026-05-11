@@ -1,0 +1,19 @@
+-- DB schema delta — forward-only DDL fragment
+-- OPTIONAL: include only if this change modifies the canonical DB schema.
+-- At archive time, move this file to specs/db-schema/NNNN_<slug>.sql
+-- (use the next available migration number).
+--
+-- Conventions:
+--   - Forward-only (no DROP/ALTER that loses data)
+--   - Idempotent where possible (CREATE TABLE IF NOT EXISTS, etc.)
+--   - Postgres dialect; if SQLite needs different DDL, comment the variant inline
+--
+-- Example:
+--
+-- CREATE TABLE IF NOT EXISTS example (
+--   id           uuid PRIMARY KEY,
+--   tenant_id    text,
+--   created_at   timestamptz NOT NULL DEFAULT now()
+-- );
+--
+-- -- SQLite variant: replace uuid with text, timestamptz with text (ISO-8601).
