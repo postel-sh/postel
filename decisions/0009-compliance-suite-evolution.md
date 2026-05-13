@@ -8,7 +8,7 @@
 
 ## Context
 
-[ADR 0008](0008-conformance-levels.md) makes the compliance suite (`@postel/compliance`) the executable boundary of "normative" — what the suite tests is what every port must satisfy. That choice has a downstream consequence: **the suite's evolution becomes the project's most consequential governance surface.**
+[ADR 0008](0008-conformance-levels.md) makes the compliance suite (`@postel/compliance`) the executable boundary of CONTRACT — what the suite tests is what every port must satisfy. That choice has a downstream consequence: **the suite's evolution becomes the project's most consequential governance surface.**
 
 Naive SemVer applied to the suite isn't enough. Standard SemVer treats "added test" as a MINOR-version feature (additive, non-breaking). But functionally, every new mandatory test is a behavior requirement every port must now satisfy — which IS a breaking event from the port's perspective. Without explicit policy:
 
@@ -27,7 +27,7 @@ The fix is a policy that distinguishes test additions / modifications / removals
 
 ### Test addition (the common case)
 
-1. A spec change adds a new NORMATIVE requirement (per [ADR 0008](0008-conformance-levels.md)).
+1. A spec change adds a new CONTRACT requirement (per [ADR 0008](0008-conformance-levels.md)).
 2. The corresponding test lands in the suite's next MINOR release as **ADVISORY**: opt-in via a flag (`--advisory` or similar). Default-off. Ports that don't opt in still pass against the new MINOR.
 3. After a documented **runway window** (current sketch: 6 weeks), the next MINOR makes the test MANDATORY (default-on). Ports failing the test against this new MINOR are no longer conformant against that version.
 4. Ports bump their pin when they're ready (or when they've adapted to the new test). Bumping is an explicit PR choice, reviewed against the changelog.
@@ -36,7 +36,7 @@ The fix is a policy that distinguishes test additions / modifications / removals
 
 1. Mark the test as **DEPRECATED** in a MINOR release. It still runs, but its result no longer counts toward "must-pass."
 2. After a documented runway (current sketch: 6 months), the next MAJOR removes the test.
-3. Removal carries downstream meaning: the corresponding NORMATIVE requirement in the capability spec becomes IMPLEMENTATION-DEFINED (or is removed) in the same release window.
+3. Removal carries downstream meaning: the corresponding CONTRACT requirement in the capability spec becomes PORT-SPECIFIC (or is removed) in the same release window.
 
 ### Test modification
 
@@ -68,7 +68,7 @@ This changelog is the primary planning surface for port maintainers.
 
 ### Atomic test ↔ requirement mapping
 
-Each test corresponds to exactly one NORMATIVE requirement in a capability spec. The OpenSpec change that introduces the requirement is the natural unit of work; the test addition lands in the same change. The OpenSpec workflow's `language-impact.md` artifact gains a section: "Compliance suite impact — which new tests, which runway, which removal."
+Each test corresponds to exactly one CONTRACT requirement in a capability spec. The OpenSpec change that introduces the requirement is the natural unit of work; the test addition lands in the same change. The OpenSpec workflow's `language-impact.md` artifact gains a section: "Compliance suite impact — which new tests, which runway, which removal."
 
 ### Port pinning + adoption
 
@@ -95,7 +95,7 @@ Items the sketch hand-waves and that operational experience will inform:
 While Status is Proposed:
 
 - ADR 0008's claim "the suite is the boundary" is forward-looking. No tests exist; no port pinning happens; no runway is enforced.
-- New NORMATIVE requirements still get added freely in OpenSpec changes (no test version to be advisory in).
+- New CONTRACT requirements still get added freely in OpenSpec changes (no test version to be advisory in).
 - This ADR's existence is the commitment that **before any test ships, this policy is finalized**. The next agent or contributor implementing the first compliance test reads this draft, refines it based on actual experience, promotes to Accepted, and updates [distribution-packaging](../openspec/specs/distribution-packaging/spec.md) accordingly.
 
 ## How to close this ADR
@@ -103,8 +103,8 @@ While Status is Proposed:
 1. Wait for the first batch of compliance tests to be authored alongside the first capability implementation (likely `receiver` for edge-portability validation).
 2. Use that authoring experience to refine: runway durations, suite organization, test discovery, vectors-vs-code split.
 3. Move Status from Proposed → Accepted; update the "Working sketch" section into a final policy.
-4. Add the policy as actual normative requirements in `openspec/specs/distribution-packaging/spec.md` (or wherever the rename to `distribution-packaging-typescript` puts it). The policy itself becomes part of the cross-port contract — it's what port authors rely on when planning their suite-version adoption.
-5. Update AGENTS.md's workflow rules so contributors authoring a NORMATIVE-requirement change know the test goes in the same PR with the right runway tagging.
+4. Add the policy as actual CONTRACT-level requirements in `openspec/specs/distribution-packaging/spec.md` (or wherever the rename to `distribution-packaging-typescript` puts it). The policy itself becomes part of the cross-port contract — it's what port authors rely on when planning their suite-version adoption.
+5. Update AGENTS.md's workflow rules so contributors authoring a CONTRACT-requirement change know the test goes in the same PR with the right runway tagging.
 
 ## Alternatives considered
 
@@ -117,4 +117,4 @@ While Status is Proposed:
 
 - [ADR 0005 — Polyglot staged rollout](0005-polyglot-staged-rollout.md): every port must pass `@postel/compliance`. This ADR governs how that bar evolves.
 - [ADR 0007 — Storage strategy](0007-storage-strategy.md): each storage adapter must pass `@postel/compliance` (same suite, run against the adapter's HTTP boundary). The adapter matrix doesn't fork the compliance bar.
-- [ADR 0008 — Conformance levels](0008-conformance-levels.md): defines the NORMATIVE vs IMPLEMENTATION-DEFINED distinction whose operational mechanics this ADR governs.
+- [ADR 0008 — Conformance levels](0008-conformance-levels.md): defines the CONTRACT vs PORT-SPECIFIC distinction whose operational mechanics this ADR governs.

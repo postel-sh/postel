@@ -188,11 +188,11 @@ The `attempts.status` column SHALL use **kebab-case** for all multi-word values 
 - **WHEN** an attempt is recorded with a permanent failure (e.g., 4xx response other than 408/429)
 - **THEN** the `attempts.status` value is `'failed-permanent'` (kebab-case), never `failed_permanent`
 
-### Requirement: Concurrency model [IMPLEMENTATION-DEFINED]
+### Requirement: Concurrency model [PORT-SPECIFIC]
 
-The library SHALL run worker dispatch concurrently to meet the throughput target. The choice of concurrency primitive (async/await with a worker pool, threads, goroutines, asyncio, an event loop, fiber-based scheduling, etc.) SHALL be implementation-defined per port. Ports MAY pick whatever primitive best fits their runtime.
+The library SHALL run worker dispatch concurrently to meet the throughput target. The choice of concurrency primitive (async/await with a worker pool, threads, goroutines, asyncio, an event loop, fiber-based scheduling, etc.) SHALL be port-specific. Ports MAY pick whatever primitive best fits their runtime.
 
-**Conformance**: **IMPLEMENTATION-DEFINED**. The outcomes that MUST hold across all ports — at-least-once delivery (see `At-least-once delivery guarantee`), worker reservation correctness under concurrency (see `Workers drain the outbox safely under concurrency`), graceful shutdown (see `Graceful shutdown`), and the published throughput target (see `Worker throughput target`) — remain normative regardless of the underlying concurrency mechanism.
+**Conformance**: **PORT-SPECIFIC**. The outcomes that MUST hold across all ports — at-least-once delivery (see `At-least-once delivery guarantee`), worker reservation correctness under concurrency (see `Workers drain the outbox safely under concurrency`), graceful shutdown (see `Graceful shutdown`), and the published throughput target (see `Worker throughput target`) — remain CONTRACT regardless of the underlying concurrency mechanism.
 
 #### Scenario: Different ports, different mechanisms, same guarantees
 
@@ -200,11 +200,11 @@ The library SHALL run worker dispatch concurrently to meet the throughput target
 - **THEN** both ports pass the at-least-once, worker-reservation, graceful-shutdown, and throughput-target compliance tests
 - **AND** the specific concurrency primitive is not part of the conformance contract
 
-### Requirement: HTTP client implementation [IMPLEMENTATION-DEFINED]
+### Requirement: HTTP client implementation [PORT-SPECIFIC]
 
-The library SHALL issue outbound HTTP requests when dispatching webhooks. The choice of HTTP client (`fetch`, `undici`, native `net/http`, `httpx`, `reqwest`, `OkHttp`, etc.) SHALL be implementation-defined per port. Ports MAY pick whatever HTTP client best fits their runtime.
+The library SHALL issue outbound HTTP requests when dispatching webhooks. The choice of HTTP client (`fetch`, `undici`, native `net/http`, `httpx`, `reqwest`, `OkHttp`, etc.) SHALL be port-specific. Ports MAY pick whatever HTTP client best fits their runtime.
 
-**Conformance**: **IMPLEMENTATION-DEFINED**. The wire-format requirements (`standard-webhooks-compliance`), per-endpoint and overall delivery deadlines (`Per-endpoint and overall delivery deadlines`), TLS verification (`TLS verification by default`), SSRF protection (`SSRF protection on outbound delivery`), and DNS rebinding protection (`DNS rebinding protection`) MUST be honored regardless of which HTTP client a port uses.
+**Conformance**: **PORT-SPECIFIC**. The wire-format requirements (`standard-webhooks-compliance`), per-endpoint and overall delivery deadlines (`Per-endpoint and overall delivery deadlines`), TLS verification (`TLS verification by default`), SSRF protection (`SSRF protection on outbound delivery`), and DNS rebinding protection (`DNS rebinding protection`) MUST be honored regardless of which HTTP client a port uses.
 
 #### Scenario: Different ports, different HTTP clients, same wire output
 

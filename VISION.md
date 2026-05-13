@@ -123,10 +123,10 @@ Postel's cross-port contract is intentionally narrow. Two distinctions matter:
 
 Every capability-spec requirement is either:
 
-- **NORMATIVE** — part of the cross-port contract. Every port must satisfy it; `@postel/compliance` tests it. Examples: wire-format headers, signature schemes, endpoint state vocabulary, outbox transactional semantics, dedup atomicity, the `Storage` interface operation set.
-- **IMPLEMENTATION-DEFINED** — reference-implementation guidance; ports MAY vary the mechanism as long as the related normative outcomes hold. Examples: worker scheduler algorithm, lease renewal cadence, polling interval default, concurrency model, HTTP client choice, memory and cache strategies.
+- **CONTRACT** — part of the cross-port contract. Every port must satisfy it; `@postel/compliance` tests it. Examples: wire-format headers, signature schemes, endpoint state vocabulary, outbox transactional semantics, dedup atomicity, the `Storage` interface operation set.
+- **PORT-SPECIFIC** — reference-implementation guidance; ports MAY vary the mechanism as long as the related CONTRACT outcomes hold. Examples: worker scheduler algorithm, lease renewal cadence, polling interval default, concurrency model, HTTP client choice, memory and cache strategies.
 
-The compliance test suite (`@postel/compliance`) is the **executable boundary** between the two. What the suite tests is normative; what it doesn't is implementation-defined, regardless of how prose phrases it. See [ADR 0008](decisions/0008-conformance-levels.md) for the full distinction and worked examples.
+The compliance test suite (`@postel/compliance`) is the **executable boundary** between the two. What the suite tests is CONTRACT; what it doesn't is PORT-SPECIFIC, regardless of how prose phrases it. See [ADR 0008](decisions/0008-conformance-levels.md) for the full distinction and worked examples.
 
 ### Versioning
 
@@ -136,4 +136,4 @@ The compliance test suite (`@postel/compliance`) is the **executable boundary** 
 - **Wire format changes** are the most expensive layer to change because receivers in the wild verify against signature schemes. We anchor to Standard Webhooks for cover; deviations require multi-secret rotation windows and the `webhook-spec-version` header for backward compatibility.
 - **Compliance suite evolution** follows a runway model (sketched in [ADR 0009](decisions/0009-compliance-suite-evolution.md), Proposed until the first batch of tests informs the final policy). New tests land ADVISORY in a MINOR release and become MANDATORY in the next MINOR after a runway window; removals follow a deprecation period.
 
-The combination of these two distinctions — narrow normative contract + explicit `0.x` experimental phase + runway-versioned suite evolution — is the project's hedge against premature standardization. The architecture preserves the ability to learn operationally without locking ports into yesterday's decisions.
+The combination of these two distinctions — narrow CONTRACT-level surface + explicit `0.x` experimental phase + runway-versioned suite evolution — is the project's hedge against premature standardization. The architecture preserves the ability to learn operationally without locking ports into yesterday's decisions.

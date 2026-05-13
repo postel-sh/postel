@@ -65,7 +65,7 @@ The library SHALL provide Postgres support through multiple adapter packages acr
 
 The library SHALL provide SQLite support through multiple adapter packages across the adapter matrix (standalone, client-wrapping, ORM-wrapping). Feature parity with Postgres MUST be honored except for `LISTEN`/`NOTIFY`, where SQLite-targeting adapters fall back to polling. Single-writer constraints MUST be documented in each SQLite adapter's README.
 
-**Conformance**: the polling-as-fallback-when-`notify`-unavailable behavior is **normative**. The specific **polling cadence default** is **IMPLEMENTATION-DEFINED**: the TS reference implementation uses 100 ms by default with `BEGIN IMMEDIATE` reservation; ports MAY choose a different default appropriate to their runtime as long as worker reservation correctness is preserved.
+**Conformance**: the polling-as-fallback-when-`notify`-unavailable behavior is **CONTRACT**. The specific **polling cadence default** is **PORT-SPECIFIC**: the TS reference implementation uses 100 ms by default with `BEGIN IMMEDIATE` reservation; ports MAY choose a different default appropriate to their runtime as long as worker reservation correctness is preserved.
 
 #### Scenario: Standalone SQLite adapter polls
 
@@ -161,7 +161,7 @@ At minimum, `capabilities` includes: `notify` (boolean — does the adapter supp
 
 When a worker reserves an outbox row via `reserveBatch`, the adapter SHALL stamp the row with `reserved_by` (a worker id), `reserved_at` (timestamp), and `lease_expires_at = reserved_at + leaseMs`. The default `leaseMs` is **60_000** (60 seconds). Workers MUST extend the lease before expiry while processing; on graceful completion they release it via `releaseLease`. On crash, the lease expires naturally and another worker reclaims the row via `expireStaleLeases`. A reclaimed row MUST NOT result in a lost message — at-least-once delivery (see `sender` `At-least-once delivery guarantee`) depends on this.
 
-**Conformance**: the default lease duration (60_000 ms), expiry semantics, and reclamation-via-`expireStaleLeases` are **normative**. The **renewal cadence within the lease window** is **IMPLEMENTATION-DEFINED**: ports MAY renew on a fixed interval, on a per-attempt heartbeat, or eagerly at the start of long-running operations. The only normative renewal constraint is that the renewal MUST complete before `lease_expires_at` to retain the reservation.
+**Conformance**: the default lease duration (60_000 ms), expiry semantics, and reclamation-via-`expireStaleLeases` are **CONTRACT**. The **renewal cadence within the lease window** is **PORT-SPECIFIC**: ports MAY renew on a fixed interval, on a per-attempt heartbeat, or eagerly at the start of long-running operations. The only CONTRACT-level renewal constraint is that a renewal MUST complete before `lease_expires_at` to retain the reservation.
 
 #### Scenario: Default lease duration
 
@@ -197,11 +197,11 @@ A `@postel/storage-helpers` package (zero DB dependencies) SHALL export utilitie
 - **THEN** no Postgres, SQLite, or other DB client is pulled in transitively
 - **AND** the package is importable from edge runtimes if needed
 
-### Requirement: Memory and cache strategies [IMPLEMENTATION-DEFINED]
+### Requirement: Memory and cache strategies [PORT-SPECIFIC]
 
-Postel implementations SHALL treat the following as implementation-defined memory- and cache-resident state: JWKS cache eviction policy (TTL, LRU, refresh-on-`kid`-miss), in-memory dedup TTL backing data structure, secret-array layout in memory, retry-schedule timer wheel vs priority queue, and attempts-buffer pre-persistence shape. Ports MAY implement these freely as long as the observable behavior matches the normative requirements they support (wire output, persistence rows, and `Storage`-interface boundaries).
+Postel implementations SHALL treat the following as port-specific memory- and cache-resident state: JWKS cache eviction policy (TTL, LRU, refresh-on-`kid`-miss), in-memory dedup TTL backing data structure, secret-array layout in memory, retry-schedule timer wheel vs priority queue, and attempts-buffer pre-persistence shape. Ports MAY implement these freely as long as the observable behavior matches the CONTRACT-level requirements they support (wire output, persistence rows, and `Storage`-interface boundaries).
 
-**Conformance**: **IMPLEMENTATION-DEFINED**. None of the choices above influence the cross-port contract; compliance verifies the observable boundaries.
+**Conformance**: **PORT-SPECIFIC**. None of the choices above influence the cross-port contract; compliance verifies the observable boundaries.
 
 #### Scenario: Equivalent caching schemes yield identical observable behavior
 
