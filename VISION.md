@@ -20,6 +20,8 @@ The [Standard Webhooks](https://www.standardwebhooks.com/) specification covers 
 
 An embeddable, **library-only** kernel for outbound and inbound webhooks that runs inside the host application against the host application's database. Standard Webhooks-compliant, sender + receiver, opinionated defaults, programmable in code rather than configured by DSL.
 
+Postel writes through the host's existing database access layer — whether that's raw Postgres / SQLite, a query builder like Kysely, or an ORM like Drizzle or Prisma. Outbox inserts participate in the host's transaction, so `send()` commits or rolls back atomically with the host's business writes — the transactional-outbox guarantee without extra connections, brokers, or a sidecar process. The full strategy is in [decisions/0007-storage-strategy.md](decisions/0007-storage-strategy.md).
+
 Postel ships in multiple languages over time — TypeScript first, then Go, Python, and Rust. Every implementation conforms to the same shared specification — wire format ([AsyncAPI](specs/wire-format/asyncapi.yaml)), DB schema ([SQL DDL](specs/db-schema/0001_init.sql)), and capability behaviors ([per-capability specs](openspec/specs/)) — and is verified by the [executable compliance test suite](specs/compliance/README.md).
 
 ### Positioning
@@ -51,6 +53,7 @@ Postel ships in multiple languages over time — TypeScript first, then Go, Pyth
 
 - Outbound (sender) delivery: persistence, retry, signing, key rotation, replay, dead-letter, circuit breaker, filtering, transformation
 - Inbound (receiver) verification: middleware adapters, raw-bytes preservation, idempotency dedup, JWKS consumer
+- **Storage adapter matrix**: standalone / client / ORM adapters for Postgres and SQLite (the canonical first-class databases), with host-transaction passthrough as the outbox-pattern enabler. Other relational backends (libSQL, Turso, D1, Cockroach, PlanetScale, …) connect via the same `Storage` interface contract
 - Endpoint and key management primitives (programmatic only)
 - Admin HTTP handlers (mounted on the host's router) for ops dashboards
 - TypeScript implementation across Node, Bun, Deno, and edge runtimes (ships first)
