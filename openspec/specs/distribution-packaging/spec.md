@@ -5,7 +5,6 @@
 The TypeScript-port distribution contract: published package set, bundle-size budgets, semver discipline, ESM+CJS dual-export expectations, DB schema version handshake, forward-only migrations across two major versions, deprecation period, and the wire-format spec-version header.
 
 **Note:** This capability is scheduled to be renamed `distribution-packaging-typescript` per [ADR 0006](../../../decisions/0006-monorepo-layout.md), and the Tier-1 adapter set from [ADR 0007](../../../decisions/0007-storage-strategy.md) will replace the current legacy package list. The rename + adapter refresh land in a dedicated future OpenSpec change. Until then, the TS-specific assumptions here are intentional.
-
 ## Requirements
 ### Requirement: Package map
 
@@ -54,12 +53,22 @@ Packages SHALL be published unminified (the consumer's bundler is responsible fo
 
 ### Requirement: Strict SemVer from 1.0
 
-From 1.0 onward, all `@postel/*` packages SHALL follow strict SemVer. No breaking changes in minor or patch releases.
+From 1.0 onward, all `@postel/*` packages SHALL follow strict SemVer: no breaking changes in minor or patch releases. **Before 1.0 (the `0.x` line), breaking changes are explicitly allowed across minor versions.** Library consumers SHOULD NOT pin to `^0.x` ranges without expecting churn; pin to a specific minor (e.g., `~0.5.0` or `0.5.x`) during the experimental phase. The OpenSpec change history is the canonical record of what changed and when. Compliance-suite-version coordination during `0.x` follows the runway model sketched in [ADR 0009](../../../decisions/0009-compliance-suite-evolution.md) (Proposed).
 
-#### Scenario: Patch is non-breaking
+#### Scenario: Patch is non-breaking (post-1.0)
 
 - **WHEN** consumers upgrade from `1.2.3` to `1.2.4`
 - **THEN** their existing code compiles and runs unchanged
+
+#### Scenario: 0.x minor MAY be breaking
+
+- **WHEN** consumers upgrade from `0.4.7` to `0.5.0`
+- **THEN** their existing code MAY require adjustment (e.g., API renames, behavior changes); the CHANGELOG documents the migration
+
+#### Scenario: 0.x patch is non-breaking
+
+- **WHEN** consumers upgrade from `0.4.7` to `0.4.8`
+- **THEN** their existing code compiles and runs unchanged (patches remain non-breaking even pre-1.0)
 
 ### Requirement: Shared major version across packages
 

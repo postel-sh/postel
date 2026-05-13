@@ -114,3 +114,26 @@ A reasonable observer can answer YES to all of:
 10. Are the wire format (AsyncAPI), DB schema (SQL), and capability specs documented well enough that the first community port (Go receiver) is plausible — and validated by passing the compliance suite?
 
 If all yes → 1.0. Otherwise it's not done.
+
+## 8. Conformance & versioning policy
+
+Postel's cross-port contract is intentionally narrow. Two distinctions matter:
+
+### Conformance levels
+
+Every capability-spec requirement is either:
+
+- **NORMATIVE** — part of the cross-port contract. Every port must satisfy it; `@postel/compliance` tests it. Examples: wire-format headers, signature schemes, endpoint state vocabulary, outbox transactional semantics, dedup atomicity, the `Storage` interface operation set.
+- **IMPLEMENTATION-DEFINED** — reference-implementation guidance; ports MAY vary the mechanism as long as the related normative outcomes hold. Examples: worker scheduler algorithm, lease renewal cadence, polling interval default, concurrency model, HTTP client choice, memory and cache strategies.
+
+The compliance test suite (`@postel/compliance`) is the **executable boundary** between the two. What the suite tests is normative; what it doesn't is implementation-defined, regardless of how prose phrases it. See [ADR 0008](decisions/0008-conformance-levels.md) for the full distinction and worked examples.
+
+### Versioning
+
+- **Pre-1.0 (the `0.x` line) is experimental semantics.** Breaking changes are explicitly allowed across `0.x` minor versions; consumers SHOULD pin to a specific minor (e.g., `~0.5.0`), not a `^0.x` range. The OpenSpec change history is the canonical record of what changed and when.
+- **From 1.0 onward**, all `@postel/*` packages follow strict SemVer: no breaking changes in minor or patch releases. All `@postel/*` packages share a major version and release together.
+- **DB schema migrations are forward-only** and gated by `_postel_meta.schema_version`. Pre-1.0 migrations may be semantically breaking; post-1.0, the library reads state written by the previous two majors.
+- **Wire format changes** are the most expensive layer to change because receivers in the wild verify against signature schemes. We anchor to Standard Webhooks for cover; deviations require multi-secret rotation windows and the `webhook-spec-version` header for backward compatibility.
+- **Compliance suite evolution** follows a runway model (sketched in [ADR 0009](decisions/0009-compliance-suite-evolution.md), Proposed until the first batch of tests informs the final policy). New tests land ADVISORY in a MINOR release and become MANDATORY in the next MINOR after a runway window; removals follow a deprecation period.
+
+The combination of these two distinctions — narrow normative contract + explicit `0.x` experimental phase + runway-versioned suite evolution — is the project's hedge against premature standardization. The architecture preserves the ability to learn operationally without locking ports into yesterday's decisions.

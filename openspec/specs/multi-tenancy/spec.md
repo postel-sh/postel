@@ -31,12 +31,15 @@ The library SHALL provide `postel.tenants.setRateLimit(tenantId, { perSecond })`
 
 ### Requirement: Worker fairness across tenants
 
-The worker scheduler SHALL round-robin across tenants by default so a burst from one tenant cannot starve others. Weighted-fair queueing MAY be configured per tenant.
+The library SHALL prevent tenant starvation: a burst of pending messages from one tenant MUST NOT block dispatch for messages belonging to other tenants for an unbounded period. The outcome — bounded latency across tenants under burst conditions — is normative.
+
+**Conformance**: the no-starvation outcome above is **normative**. The specific **scheduling algorithm** is **IMPLEMENTATION-DEFINED**: the TypeScript reference implementation uses round-robin across tenants; ports MAY use weighted-fair queueing, asyncio's natural scheduling, deficit round-robin, or any equivalent scheme that satisfies the outcome. Optional weighted configuration (e.g., per-tenant priority) MAY be exposed per port.
 
 #### Scenario: Burst does not starve
 
 - **WHEN** tenant A has 10,000 pending messages and tenant B has 10
-- **THEN** workers interleave dispatch across both tenants instead of finishing A entirely first
+- **THEN** workers interleave dispatch across both tenants
+- **AND** tenant B's 10 messages are dispatched within bounded time of tenant A's burst arriving (specific bound is per-port; for the TS reference impl: ≤ 10 dispatch cycles per tenant before yielding)
 
 ### Requirement: Per-tenant circuit breaker isolation
 
