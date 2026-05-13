@@ -1,8 +1,24 @@
-# storage-layer Specification
+# storage-layer — delta spec
 
-## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
-## Requirements
+## REMOVED Requirements
+
+### Requirement: Postgres adapter is the primary backend
+
+**Reason**: The "single primary Postgres adapter" framing is replaced by an adapter matrix (standalone / client / ORM). Postgres support now lives across multiple packages, with the host's existing DB access layer as the execution context. See [ADR 0007 — Storage strategy](../../../decisions/0007-storage-strategy.md).
+**Migration**: Use any of the Postgres-targeting adapters from the matrix — `@postel/standalone-pg` (Postel owns the pool), `@postel/pg` / `@postel/postgres-js` (host hands a client), or `@postel/drizzle` / `@postel/prisma` / `@postel/kysely` (host hands a query builder / ORM instance). All exercise the same `FOR UPDATE SKIP LOCKED` + `LISTEN`/`NOTIFY` behavior; the new `Postgres support across the adapter matrix` requirement consolidates the contract.
+
+### Requirement: SQLite adapter with feature parity except listen/notify
+
+**Reason**: Same as above — the "single SQLite adapter" framing is replaced by the adapter matrix. SQLite support is delivered via multiple packages.
+**Migration**: Use any of the SQLite-targeting adapters from the matrix (`@postel/standalone-sqlite`, `@postel/better-sqlite3`, the SQLite-mode of `@postel/drizzle` / `@postel/kysely`). The new `SQLite support across the adapter matrix` requirement consolidates the contract; feature parity with Postgres still excludes `LISTEN`/`NOTIFY` (polling fallback).
+
+### Requirement: Migrations bundled in the library
+
+**Reason**: The original requirement assumed one delivery path (raw SQL migrations). The adapter matrix needs two delivery paths: raw SQL for standalone / client adapters and ORM-native schema fragments for query-builder / ORM adapters.
+**Migration**: The replacement requirement (`Migrations runnable from CLI and programmatic API`, ADDED below) covers both delivery paths.
+
+## MODIFIED Requirements
+
 ### Requirement: BYO storage interface
 
 The library SHALL document and stabilize a `Storage` interface that every adapter — first-party and third-party — implements. The interface MUST be technology-agnostic (a third-party author MUST NOT need to import any library-internal SQL builder or ORM to implement it), operation-shaped (not CRUD-shaped), and stable across minor versions.
@@ -21,23 +37,7 @@ The operation set MUST include at minimum: `insertMessage`, `insertOrReuseByIdem
 - **THEN** none exists — `reserveBatch` is an operation that combines lock acquisition, lease assignment, and row return atomically
 - **AND** the spec documents why (`FOR UPDATE SKIP LOCKED` with lease semantics doesn't decompose into pure CRUD)
 
-### Requirement: Tenant-scoped row-level access in queries
-
-All library-issued queries SHALL include the `tenantId` filter when one is configured. This is defense in depth even though the host application is also responsible for tenancy enforcement.
-
-#### Scenario: Tenant filter applied
-
-- **WHEN** the library queries the messages table on behalf of tenant `t_42`
-- **THEN** the SQL includes `WHERE tenant_id = 't_42'`
-
-### Requirement: Schema is a fixed set of canonical tables
-
-The DB schema SHALL include the tables `tenants`, `endpoints`, `endpoint_secrets`, `messages`, `attempts`, `endpoint_state_transitions`, plus a `dead_letter` view over `attempts`. The canonical DDL lives in `specs/db-schema/` and is the source of truth.
-
-#### Scenario: Canonical DDL inspectable
-
-- **WHEN** a contributor opens `specs/db-schema/0001_init.sql`
-- **THEN** the file contains the full DDL for all six tables plus the dead_letter view
+## ADDED Requirements
 
 ### Requirement: Postgres support across the adapter matrix
 
@@ -154,4 +154,3 @@ At minimum, `capabilities` includes: `notify` (boolean — does the adapter supp
 - **WHEN** an adapter declares `capabilities.notify = true` (e.g., `@postel/standalone-pg`, `@postel/pg`)
 - **THEN** workers `subscribe` to a channel and receive wakeups via `notify` from `send()` paths
 - **AND** poll-fallback is not used
-

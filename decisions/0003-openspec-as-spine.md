@@ -1,4 +1,4 @@
-# 0005 — OpenSpec as the SDD spine
+# 0003 — OpenSpec as the SDD spine
 
 - **Status**: accepted
 - **Date**: 2026-05-09

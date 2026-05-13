@@ -1,4 +1,4 @@
-# 0007 — Polyglot staged rollout (TypeScript first, then Go, Python, Rust)
+# 0005 — Polyglot staged rollout (TypeScript first, then Go, Python, Rust)
 
 - **Status**: accepted
 - **Date**: 2026-05-09

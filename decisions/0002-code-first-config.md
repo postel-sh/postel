@@ -1,4 +1,4 @@
-# 0003 — Code-first configuration (no YAML, no DSL)
+# 0002 — Code-first configuration (no YAML, no DSL)
 
 - **Status**: accepted
 - **Date**: 2026-05-09

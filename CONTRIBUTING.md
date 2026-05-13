@@ -4,7 +4,7 @@ This guide covers the repository layout, dev environment setup, and the workflow
 
 ## Repository layout
 
-Polyglot monorepo with per-language top-level directories. See [`decisions/0010-monorepo-layout.md`](./decisions/0010-monorepo-layout.md) for the full rationale.
+Polyglot monorepo with per-language top-level directories. See [`decisions/0006-monorepo-layout.md`](./decisions/0006-monorepo-layout.md) for the full rationale.
 
 ```
 postel/

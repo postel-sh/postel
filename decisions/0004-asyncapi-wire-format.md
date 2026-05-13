@@ -1,4 +1,4 @@
-# 0006 — AsyncAPI 3.0 as the canonical wire-format doc
+# 0004 — AsyncAPI 3.0 as the canonical wire-format doc
 
 - **Status**: accepted
 - **Date**: 2026-05-09

@@ -1,14 +1,12 @@
-# 0010 — Polyglot monorepo layout
+# 0006 — Polyglot monorepo layout
 
-- **Status**: **Proposed** (decision pending; this layout shapes how every future port lands)
+- **Status**: Accepted
 - **Date**: 2026-05-11
 - **Decision drivers**: spec ↔ port lockstep, compliance gate as the binding contract, single contributor mental model, atomic cross-language changes, ecosystem fit per language
 
-> **For the next agent picking this up**: this ADR sets the repo-wide layout for the polyglot library. Once accepted, every port-adding change builds on top of this. The bulk of the layout is already physically reflected in this PR (mise.toml at root, AGENTS.md, no top-level package.json). What's left is the directory shape — moving the TypeScript packages into a `typescript/` root — and that lands in the PR that bootstraps the first TS package.
-
 ## Context
 
-[ADR 0007](0007-polyglot-staged-rollout.md) commits us to maintaining ports across TypeScript, Go, Python, and Rust, each gated on the compliance test suite. That decision raises an immediate structural question: do all the ports live in one repository or in sibling repositories?
+[ADR 0005](0005-polyglot-staged-rollout.md) commits us to maintaining ports across TypeScript, Go, Python, and Rust, each gated on the compliance test suite. That decision raises an immediate structural question: do all the ports live in one repository or in sibling repositories?
 
 The answer drives:
 - Where shared specs (wire format, DB schema, capability behaviors, ADRs) live relative to language implementations.

@@ -8,13 +8,12 @@
 
 ## 2. Architecture decisions
 
-- [x] 2.1 Write `decisions/0001-library-not-service.md` (drawn from §1.4 non-goals, §11, §7 AR-1).
-- [x] 2.2 Write `decisions/0002-no-redis-no-broker.md` (§1.4, §5.4 NFR-C-5, AR-9).
-- [x] 2.3 Write `decisions/0003-code-first-config.md` (§7 AR-2).
-- [x] 2.4 Write `decisions/0004-postgres-and-sqlite-only.md` (§5.4 NFR-C-3/4, §6.2 SR-1/2).
-- [x] 2.5 Write `decisions/0005-openspec-as-spine.md` recording the SDD framework choice and the upstream OpenSpec selection.
-- [x] 2.6 Write `decisions/0006-asyncapi-as-wire-format-doc.md` recording the choice of AsyncAPI 3.0 for the canonical wire format spec.
-- [x] 2.7 Write `decisions/0007-polyglot-staged-rollout.md` recording the §3.2 reversal and the staged port roadmap (TS first, Go receiver next, gated on `@postel/compliance`).
+- [x] 2.1 Write `decisions/0001-library-shape.md` covering both the "library, not service" identity AND the "no Redis / no broker" stance (drawn from §1.4 non-goals, §11, §5.4 NFR-C-5, §7 AR-1, AR-9). _Originally tracked as separate ADRs 0001 and 0002; consolidated post-archive since nothing shipped against the split._
+- [x] 2.2 Write `decisions/0002-code-first-config.md` (§7 AR-2). _Renumbered from original 0003._
+- [x] 2.3 Write `decisions/0003-openspec-as-spine.md` recording the SDD framework choice and the upstream OpenSpec selection. _Renumbered from original 0005._
+- [x] 2.4 Write `decisions/0004-asyncapi-wire-format.md` recording the choice of AsyncAPI 3.0 for the canonical wire format spec. _Renumbered from original 0006._
+- [x] 2.5 Write `decisions/0005-polyglot-staged-rollout.md` recording the §3.2 reversal and the staged port roadmap (TS first, Go receiver next, gated on `@postel/compliance`). _Renumbered from original 0007._
+- [x] 2.6 (Originally `decisions/0004-postgres-and-sqlite-only.md` — content folded into the consolidated `decisions/0007-storage-strategy.md` together with the L1 SQL-tool and L2 BYO-interface drafts, since they describe one coherent storage strategy.)
 
 ## 3. Canonical machine-readable artifacts
 

@@ -7,7 +7,7 @@
 #
 # Per-language tooling (TypeScript / Go / Python / Rust) lives inside
 # each language's root directory, not here. The top-level config is
-# deliberately language-agnostic. See `decisions/0010-monorepo-layout.md`.
+# deliberately language-agnostic. See `decisions/0006-monorepo-layout.md`.
 
 [tools]
 node = "20"

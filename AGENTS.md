@@ -9,7 +9,7 @@ Postel is a **polyglot** webhooks library backed by solid, executable specs. The
 | Layer | Location |
 |---|---|
 | Top-level positioning, scope, success criteria | [VISION.md](VISION.md) |
-| Repo layout (monorepo, per-language roots) | [decisions/0010-monorepo-layout.md](decisions/0010-monorepo-layout.md) |
+| Repo layout (monorepo, per-language roots) | [decisions/0006-monorepo-layout.md](decisions/0006-monorepo-layout.md) |
 | Capability behaviors (what the lib does) | `openspec/specs/<capability>/spec.md` |
 | Wire format | `specs/wire-format/asyncapi.yaml` (AsyncAPI 3.0) |
 | DB schema | `specs/db-schema/0001_init.sql` |
