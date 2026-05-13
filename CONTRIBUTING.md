@@ -12,7 +12,19 @@ postel/
 ├── openspec/             # spec-driven dev spine (active changes + main specs)
 ├── decisions/            # ADRs
 ├── compliance/           # executable test suite every port must pass (planned)
-├── typescript/           # TS port root (lands in a follow-up PR)
+├── typescript/           # TS port root (pnpm workspace; toolchain in ADR 0010)
+│   ├── packages/
+│   │   ├── core/  edge/
+│   │   ├── standalone-pg/  standalone-sqlite/
+│   │   ├── drizzle/  prisma/  kysely/  storage-helpers/
+│   │   ├── express/  hono/  fastify/  nextjs/  bun/
+│   │   ├── admin/  effect/  test/  compliance/  cli/
+│   ├── package.json      # workspace root; private; not published
+│   ├── pnpm-workspace.yaml
+│   ├── tsconfig.base.json
+│   ├── turbo.json
+│   ├── biome.json
+│   └── AGENTS.md         # TS-port idioms (host-tx pattern, error hierarchy)
 ├── go/  python/  rust/   # future
 ├── AGENTS.md             # canonical agent guidance (cross-agent standard)
 ├── CLAUDE.md             # @AGENTS.md import (Claude Code expands inline)
@@ -25,10 +37,13 @@ postel/
 This repo uses [mise](https://mise.jdx.dev) to manage tool versions (Node, the OpenSpec CLI) and orchestrate repo-level tasks. After [installing mise](https://mise.jdx.dev/getting-started.html):
 
 ```bash
-mise trust          # one-time; accepts this repo's mise.toml
-mise install        # installs Node 20 and the OpenSpec CLI binary
-mise run check:all  # runs the spec-level CI gate locally
+mise trust                 # one-time; accepts this repo's mise.toml
+mise install               # installs Node 20 and the OpenSpec CLI binary
+cd typescript && pnpm install && cd ..  # set up the TS workspace
+mise run check:all         # runs the spec-level CI gate locally
 ```
+
+The TS toolchain (pnpm workspaces + Turbo + tsup + Biome + Vitest) is documented in [`decisions/0010-typescript-toolchain.md`](./decisions/0010-typescript-toolchain.md). Per-language idioms live in [`typescript/AGENTS.md`](./typescript/AGENTS.md).
 
 The `openspec` binary is on PATH after `mise install`. You can call it directly:
 
