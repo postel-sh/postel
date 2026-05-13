@@ -3,7 +3,6 @@
 ## Purpose
 
 Receiver-side verification of incoming webhook deliveries: signature verification (multi-secret rotation window, JWKS consumer, constant-time comparison), structured `verify()` errors that name the failing step, raw-bytes preservation across framework middleware adapters, timestamp window enforcement against replay, and an idempotency dedup helper. Designed to run unmodified on edge runtimes within a 50 KB minified+gzipped bundle.
-
 ## Requirements
 ### Requirement: Verify returns parsed event or structured error
 
@@ -49,7 +48,7 @@ The library SHALL provide middleware adapters for Express, Fastify, Koa, Hono, E
 
 ### Requirement: Idempotency dedup helper
 
-The library SHALL provide `postel.dedup(messageId, { ttl })` returning `{ duplicate: boolean }` atomically. Backing store adapters MUST exist for Postgres, SQLite, Redis, and in-memory.
+The library SHALL provide `postel.dedup(messageId, { ttl })` returning `{ duplicate: boolean }` atomically (a second call within the TTL MUST return `{ duplicate: true }` even when the two calls race). First-party adapters MUST exist for **Postgres, SQLite, and in-memory**. An optional **Redis** adapter MAY be shipped for hosts that already run Redis — consistent with [ADR 0001 — Library shape](../../../decisions/0001-library-shape.md): Postel does NOT require Redis as a runtime dependency, but accommodates hosts that already have one.
 
 #### Scenario: First receipt
 
@@ -61,6 +60,18 @@ The library SHALL provide `postel.dedup(messageId, { ttl })` returning `{ duplic
 
 - **WHEN** `dedup('msg_123', { ttl: '1h' })` is called twice within the TTL
 - **THEN** the second call returns `{ duplicate: true }`
+
+#### Scenario: Concurrent dedup calls
+
+- **WHEN** two concurrent `dedup('msg_X')` calls arrive (no prior recording)
+- **THEN** exactly one call returns `{ duplicate: false }`
+- **AND** the other returns `{ duplicate: true }`
+
+#### Scenario: Redis is opt-in only
+
+- **WHEN** a host has NOT installed or configured the Redis dedup adapter
+- **THEN** Postel runs without Redis as a dependency
+- **AND** Postgres, SQLite, or in-memory dedup remains available
 
 ### Requirement: JWKS consumer
 

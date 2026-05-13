@@ -3,7 +3,6 @@
 ## Purpose
 
 Outbound webhook delivery. Persists events to a transactional outbox (insert wrappable in the host's unit of work), reserves them for dispatch under row-level locks with crash-recoverable leases, retries with policy-driven backoff, fans out a single `send()` to all matching endpoints at dispatch time (late binding), and guarantees at-least-once delivery.
-
 ## Requirements
 ### Requirement: Send is non-blocking and returns a MessageId
 
@@ -100,24 +99,6 @@ Endpoints SHALL accept constant or computed-per-message custom HTTP headers that
 - **WHEN** an endpoint defines a header function `({ message }) => ({ 'x-trace': message.id })`
 - **THEN** each attempt's request carries `x-trace: <message id>`
 
-### Requirement: Per-endpoint payload transformation
-
-Endpoints SHALL accept a pure transform function `(event) => bodyToSend`. Returning `null` or `undefined` SHALL skip delivery (no attempt, no retry).
-
-#### Scenario: Transform skips delivery
-
-- **WHEN** an endpoint's transform returns `null` for a given event
-- **THEN** no HTTP request is made and the attempts log records `skipped`
-
-### Requirement: Per-endpoint payload filter
-
-Endpoints SHALL accept a pure predicate `(event) => boolean`. A `false` result SHALL skip delivery without retries.
-
-#### Scenario: Filter rejects event
-
-- **WHEN** an endpoint's filter returns `false` for a given event
-- **THEN** no HTTP request is made and the attempts log records `filtered`
-
 ### Requirement: Graceful shutdown
 
 Workers SHALL support a graceful shutdown that finishes in-flight HTTP attempts, persists their outcome, and exits cleanly. In-flight messages MUST NOT be lost.
@@ -129,12 +110,12 @@ Workers SHALL support a graceful shutdown that finishes in-flight HTTP attempts,
 
 ### Requirement: At-least-once delivery guarantee
 
-The sender SHALL guarantee at-least-once delivery. The contract MUST be documented and verified by tests. Duplicate delivery is acceptable; lost delivery is not.
+The sender SHALL guarantee at-least-once delivery. The contract MUST be documented and verified by tests. Duplicate delivery is acceptable; lost delivery is not. Crash recovery relies on the worker lease lifecycle owned by `storage-layer` (see `Worker lease lifecycle`): expired leases SHALL be reclaimable by another worker so a crashed worker never strands a message permanently.
 
 #### Scenario: Worker crash mid-attempt
 
 - **WHEN** a worker reserves a message and crashes before recording the attempt outcome
-- **THEN** the lease expires and another worker picks the message up
+- **THEN** the lease (per `storage-layer` `Worker lease lifecycle`) expires and another worker reclaims the message via `expireStaleLeases`
 - **AND** the message is eventually delivered
 
 ### Requirement: Send latency budget
@@ -192,12 +173,18 @@ For each delivery attempt, the dispatcher SHALL resolve the endpoint hostname on
 - **WHEN** a delivery resolves `hooks.example.com` to `203.0.113.10` and starts a connection
 - **THEN** the connection uses `203.0.113.10` even if DNS subsequently changes
 
-### Requirement: Outbox writes are part of the host transaction
+### Requirement: Attempt status enum casing
 
-The sender MUST NOT have a "send succeeded but the host transaction rolled back" failure mode. Outbox semantics require the insert to participate in the host's transaction.
+The `attempts.status` column SHALL use **kebab-case** for all multi-word values to keep the enum visually uniform. The canonical set is: `pending`, `success`, `failed`, `failed-permanent`, `dead-letter`, `expired`, `filtered`, `skipped`, `ssrf-blocked`. The previously-used snake_case form (`ssrf_blocked`) is replaced by `ssrf-blocked` for casing consistency. When an outbound delivery is blocked by SSRF defense, the dispatcher MUST record the attempt with `status: 'ssrf-blocked'` AND a human-readable `error` field of `"SSRF_BLOCKED: <details>"` (the uppercase error code is separate from the column value, mirroring the receiver-side error-class convention).
 
-#### Scenario: Host rollback eliminates the message
+#### Scenario: SSRF block records consistent casing
 
-- **WHEN** the host opens a transaction, calls `send()`, then rolls back
-- **THEN** no outbox row remains and no delivery occurs
+- **WHEN** an outbound delivery is blocked because the endpoint URL resolves to a disallowed IP range
+- **THEN** the `attempts` row has `status = 'ssrf-blocked'` (kebab-case)
+- **AND** the `error` field starts with `"SSRF_BLOCKED:"` (uppercase) and contains the resolved IP for debugging
+
+#### Scenario: Other status values use kebab-case
+
+- **WHEN** an attempt is recorded with a permanent failure (e.g., 4xx response other than 408/429)
+- **THEN** the `attempts.status` value is `'failed-permanent'` (kebab-case), never `failed_permanent`
 

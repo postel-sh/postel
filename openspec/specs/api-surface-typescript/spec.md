@@ -3,11 +3,10 @@
 ## Purpose
 
 The TypeScript-port public API surface — the `createPostel` factory, typed event-shape generics, structured `PostelError` class hierarchy, Effect-TS adapter, and the convention that every write accepts an optional transaction handle (host-transaction passthrough). One port among the planned polyglot set per [ADR 0005](../../../decisions/0005-polyglot-staged-rollout.md); future language ports follow the same compliance contract under their own `api-surface-<lang>` capabilities.
-
 ## Requirements
 ### Requirement: createPostel factory returns the library instance
 
-The TypeScript reference implementation SHALL expose `createPostel({ db, ...opts })` returning a fully-typed instance carrying `send`, `verify`, `start`, `endpoints`, `keys`, `tenants`, `replay`, `reconcile`, `dedup`, `jwksHandler`, `health`, and `on`.
+The TypeScript port SHALL expose `createPostel({ db, ...opts })` returning a fully-typed instance carrying `send`, `verify`, `start`, `endpoints`, `keys`, `tenants`, `replay`, `reconcile`, `dedup`, `jwksHandler`, `health`, and `on`. This capability spec describes the TypeScript port — one of several first-class language ports per [ADR 0005 — Polyglot staged rollout](../../../decisions/0005-polyglot-staged-rollout.md). Other ports' API surfaces are defined under their own `api-surface-<lang>` capabilities and conform to the same compliance contract.
 
 #### Scenario: Type inference
 
@@ -25,12 +24,44 @@ The TS API SHALL accept and produce events shaped as `{ type, timestamp, data, c
 
 ### Requirement: Structured error classes
 
-Every public failure mode SHALL throw a typed error class derived from `PostelError`. Error subclasses MUST cover at least: `SignatureInvalid`, `TimestampTooOld`, `MalformedHeader`, `UnknownKeyId`, `RawBytesMismatchDetected`, `EndpointDisabled`, `IdempotencyKeyConflict`, `MigrationRequired`. Consumers MUST be able to discriminate via `instanceof`.
+Every public failure mode SHALL throw a typed error class derived from `PostelError`. Each subclass MUST have:
+
+- A **PascalCase class name** (TypeScript-idiomatic).
+- A stable **`code` property** in SCREAMING_SNAKE_CASE that matches the corresponding error code documented in `receiver` (so the codes are consumable from contexts that don't have access to the class hierarchy — e.g., admin handler JSON payloads, cross-port port API audits, log correlation).
+- Discoverable via `instanceof` AND via `err.code === 'X'` checks.
+
+The canonical class ↔ code mapping is:
+
+| Class | `.code` |
+|---|---|
+| `SignatureInvalid` | `SIGNATURE_INVALID` |
+| `TimestampTooOld` | `TIMESTAMP_TOO_OLD` |
+| `MalformedHeader` | `MALFORMED_HEADER` |
+| `UnknownKeyId` | `UNKNOWN_KEY_ID` |
+| `RawBytesMismatchDetected` | `RAW_BYTES_MISMATCH_DETECTED` |
+| `EndpointDisabled` | `ENDPOINT_DISABLED` |
+| `IdempotencyKeyConflict` | `IDEMPOTENCY_KEY_CONFLICT` |
+| `MigrationRequired` | `MIGRATION_REQUIRED` |
+| `EndpointValidation` | `ENDPOINT_VALIDATION` |
+| `SsrfBlocked` | `SSRF_BLOCKED` |
+
+Adding a new error class MUST add both names atomically. The `receiver` capability's error-code list and this table are synchronized — drift between the two is treated as a bug.
 
 #### Scenario: instanceof discrimination
 
 - **WHEN** a consumer wraps `verify(...)` in try/catch and inspects the error
 - **THEN** `err instanceof SignatureInvalid` correctly identifies signature failures
+
+#### Scenario: code property discrimination
+
+- **WHEN** a consumer reads `err.code` on a thrown error of class `SignatureInvalid`
+- **THEN** the value is the stable string `'SIGNATURE_INVALID'`
+
+#### Scenario: Cross-port code parity
+
+- **WHEN** the equivalent Go / Python / Rust port produces an error for the same failure mode
+- **THEN** the error carries the same SCREAMING_SNAKE code (`'SIGNATURE_INVALID'`)
+- **AND** consumers can match on `code` across language boundaries via JSON payloads
 
 ### Requirement: No string matching on errors
 

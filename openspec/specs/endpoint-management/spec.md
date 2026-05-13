@@ -3,7 +3,6 @@
 ## Purpose
 
 CRUD and lifecycle primitives for delivery endpoints. Covers URL / HTTPS / SSRF validation at create time, the endpoint state machine with audit trail, per-endpoint signing configuration, per-endpoint custom headers and metadata, tenant scoping, and back-pressure caps (max in-flight retries).
-
 ## Requirements
 ### Requirement: Endpoint CRUD
 
@@ -17,12 +16,26 @@ The library SHALL expose `postel.endpoints.create`, `update`, `disable`, `delete
 
 ### Requirement: Endpoint state machine with audit trail
 
-Endpoints SHALL transition between `active`, `disabled`, and `re-enabled` states. Every transition MUST be recorded in an audit table with the actor, timestamp, and reason (manual or automatic).
+Endpoints SHALL transition between three states — `active`, `disabled`, and `circuit-open` — matching the canonical `endpoints.state` CHECK list in [`specs/db-schema/0001_init.sql`](../../../specs/db-schema/0001_init.sql). `re-enabled` is NOT a state; it is a transition *reason* recorded in `endpoint_state_transitions.reason` when a `disabled` endpoint moves back to `active`. Every state transition MUST be recorded in `endpoint_state_transitions` with the actor (`'system'` or a host-supplied user id), timestamp, the originating reason, and optional metadata.
 
-#### Scenario: Auto-disable after failures
+#### Scenario: Auto-disable transition
 
-- **WHEN** an endpoint hits the auto-disable threshold (e.g., 100% failures over 24h)
-- **THEN** its state moves to `disabled` and the transition is recorded with `actor: system` and `reason: auto-disable`
+- **WHEN** an endpoint hits the auto-disable threshold (see `retry-policy` for the canonical default)
+- **THEN** its state transitions from `active` to `disabled`
+- **AND** a row is appended to `endpoint_state_transitions` with `from_state: 'active'`, `to_state: 'disabled'`, `reason: 'auto-disable'`, `actor: 'system'`
+
+#### Scenario: Circuit breaker opens
+
+- **WHEN** an endpoint's circuit breaker (see `retry-policy`) trips
+- **THEN** its state transitions from `active` to `circuit-open`
+- **AND** the transition is recorded with `reason: 'circuit-open'`
+- **AND** when the cooldown elapses and the breaker closes, a second transition records the `active` return with `reason: 'circuit-close'`
+
+#### Scenario: Manual re-enable
+
+- **WHEN** a disabled endpoint is manually re-enabled by an operator
+- **THEN** its state transitions from `disabled` to `active`
+- **AND** the transition is recorded with `reason: 're-enabled'` and the operator's actor id
 
 ### Requirement: Per-endpoint signing config
 
@@ -54,12 +67,26 @@ Endpoints MAY configure a maximum number of in-flight retries. Once exceeded, ad
 
 ### Requirement: URL validation at create time
 
-Endpoint create SHALL validate the URL: HTTPS required by default (overrideable), DNS resolution succeeds, SSRF check passes (no private/loopback/link-local IPs).
+Endpoint create SHALL validate the URL at the moment of creation:
+
+- **HTTPS-only by default.** HTTP URLs are rejected unless the caller passes `allowHttp: true` as an explicit option to `endpoints.create`. The `allowHttp` flag MUST be discoverable in TypeScript types and is documented as intended for local development / testing only.
+- **DNS resolution** MUST succeed. URLs whose hostnames don't resolve at create time are rejected.
+- **SSRF check** MUST refuse private, loopback, or link-local IP ranges using the same policy enforced at dispatch (see `sender` `SSRF protection on outbound delivery`). The policy is defined once in this spec and referenced by `sender`.
 
 #### Scenario: Reject http:// without override
 
-- **WHEN** `endpoints.create({ url: 'http://example.com/hook' })` is called without HTTPS override
-- **THEN** the call fails with a structured validation error
+- **WHEN** `endpoints.create({ url: 'http://example.com/hook' })` is called without `allowHttp`
+- **THEN** the call fails with a structured `EndpointValidation` error naming the failing check (HTTPS-required)
+
+#### Scenario: Accept http:// with override
+
+- **WHEN** `endpoints.create({ url: 'http://localhost:3000/hook', allowHttp: true })` is called
+- **THEN** the call succeeds (and the resulting endpoint carries the override; subsequent dispatch attempts also honor it)
+
+#### Scenario: Reject SSRF-eligible IP
+
+- **WHEN** an endpoint URL resolves to a private range (e.g., `10.0.0.5`) without an SSRF override
+- **THEN** the call fails with a structured `EndpointValidation` error naming the failing check (SSRF-blocked)
 
 ### Requirement: Per-endpoint metadata field
 
@@ -69,4 +96,34 @@ Endpoints SHALL accept a host-defined JSON `metadata` field that is persisted al
 
 - **WHEN** the host creates an endpoint with `metadata: { customerEmail: 'a@b' }`
 - **THEN** `endpoints.get(id).metadata.customerEmail` equals `'a@b'`
+
+### Requirement: Endpoint deletion semantics
+
+When `endpoints.delete(endpointId)` is called, the library SHALL apply the following cascade behavior:
+
+- **In-flight retries**: any in-flight `attempts` (rows whose latest `attempts.status` is `pending` and whose lease is still active) MUST complete or expire naturally; deletion MUST NOT abort an in-flight HTTP request mid-flight.
+- **`endpoint_secrets`**: the DDL's `ON DELETE CASCADE` removes secret rows automatically; the caller is responsible for revoking those secrets at upstream KMS if applicable.
+- **`attempts` history**: by default, historical attempt rows are PRESERVED for audit; the operator can opt into `endpoints.delete(id, { purgeAttempts: true })` to remove them.
+- **`endpoint_state_transitions`**: preserved; the deletion itself is recorded as a final transition with `to_state: NULL` and `reason: 'deleted'`.
+- **Dead-letter view**: rows from this endpoint remain visible in `dead_letter` after deletion unless `purgeAttempts: true` is used.
+
+#### Scenario: Default deletion preserves audit trail
+
+- **WHEN** `endpoints.delete('ep_42')` is called and `ep_42` has 1,000 historical attempts
+- **THEN** the endpoint row is removed
+- **AND** secrets cascade-delete via the DDL constraint
+- **AND** all 1,000 attempts remain readable in `attempts` and `dead_letter`
+- **AND** a final `endpoint_state_transitions` row is appended with `reason: 'deleted'`
+
+#### Scenario: Purge variant removes history
+
+- **WHEN** `endpoints.delete('ep_42', { purgeAttempts: true })` is called
+- **THEN** the endpoint row, its secrets, and all its `attempts` rows are removed in a single transaction
+- **AND** the `endpoint_state_transitions` history is also removed
+
+#### Scenario: In-flight attempt isn't aborted
+
+- **WHEN** an HTTP request to `ep_42` is in flight and `endpoints.delete('ep_42')` is called concurrently
+- **THEN** the HTTP request completes (or times out) before the endpoint row is removed
+- **AND** the resulting attempt row is recorded before deletion proceeds
 

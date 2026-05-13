@@ -3,7 +3,6 @@
 ## Purpose
 
 The shared, operation-shaped `Storage` interface every adapter implements, plus the adapter matrix that lets a host plug Postel against whatever DB access layer it already runs (standalone connections, raw clients, or query-builder / ORM instances). Covers the canonical Postgres / SQLite contract, host-transaction passthrough (the outbox-pattern enabler), migrations runnable from CLI and programmatic API, tenant-scoped row-level access, and optional adapter capabilities (`notify` / `subscribe`, `transactional`, `streaming`). The full strategy is in [ADR 0007](../../../decisions/0007-storage-strategy.md).
-
 ## Requirements
 ### Requirement: BYO storage interface
 
@@ -34,12 +33,17 @@ All library-issued queries SHALL include the `tenantId` filter when one is confi
 
 ### Requirement: Schema is a fixed set of canonical tables
 
-The DB schema SHALL include the tables `tenants`, `endpoints`, `endpoint_secrets`, `messages`, `attempts`, `endpoint_state_transitions`, plus a `dead_letter` view over `attempts`. The canonical DDL lives in `specs/db-schema/` and is the source of truth.
+The DB schema SHALL include the tables `_postel_meta`, `tenants`, `endpoints`, `endpoint_secrets`, `messages`, `attempts`, and `endpoint_state_transitions`, plus a `dead_letter` view over `attempts`. `_postel_meta` records the schema version (read by the library at boot to refuse to run against an incompatible schema). The canonical DDL lives in [`specs/db-schema/0001_init.sql`](../../../specs/db-schema/0001_init.sql) and is the source of truth.
 
 #### Scenario: Canonical DDL inspectable
 
 - **WHEN** a contributor opens `specs/db-schema/0001_init.sql`
-- **THEN** the file contains the full DDL for all six tables plus the dead_letter view
+- **THEN** the file contains the full DDL for the seven canonical tables (`_postel_meta`, `tenants`, `endpoints`, `endpoint_secrets`, `messages`, `attempts`, `endpoint_state_transitions`) plus the `dead_letter` view
+
+#### Scenario: Schema version handshake
+
+- **WHEN** the library starts up against a database
+- **THEN** it reads `_postel_meta.schema_version` and refuses to run if the value is incompatible with the library's expected schema version
 
 ### Requirement: Postgres support across the adapter matrix
 
@@ -133,12 +137,6 @@ Every write operation on the `Storage` interface SHALL accept an optional `tx` p
 - **AND** the adapter's `capabilities.transactional` MUST be `false`
 - **AND** the documentation warns about the consequences
 
-#### Scenario: Helpers package exports adapter-author utilities
-
-- **WHEN** an adapter author implements `Storage`
-- **THEN** they import `@postel/storage-helpers` for timestamp normalization, retry-policy JSON serialization, idempotency-key formatting, and row encode / decode
-- **AND** they do not need to reimplement these utilities
-
 ### Requirement: Optional storage capabilities
 
 Each adapter SHALL declare a `capabilities` object at construction time describing which optional features it supports. The worker scheduler and dispatcher MUST consult `capabilities` and degrade gracefully when an optional feature is absent.
@@ -156,4 +154,42 @@ At minimum, `capabilities` includes: `notify` (boolean — does the adapter supp
 - **WHEN** an adapter declares `capabilities.notify = true` (e.g., `@postel/standalone-pg`, `@postel/pg`)
 - **THEN** workers `subscribe` to a channel and receive wakeups via `notify` from `send()` paths
 - **AND** poll-fallback is not used
+
+### Requirement: Worker lease lifecycle
+
+When a worker reserves an outbox row via `reserveBatch`, the adapter SHALL stamp the row with `reserved_by` (a worker id), `reserved_at` (timestamp), and `lease_expires_at = reserved_at + leaseMs`. The default `leaseMs` is **60_000** (60 seconds). Workers MUST extend the lease before expiry while processing; on graceful completion they release it via `releaseLease`. On crash, the lease expires naturally and another worker reclaims the row via `expireStaleLeases`. A reclaimed row MUST NOT result in a lost message — at-least-once delivery (see `sender` `At-least-once delivery guarantee`) depends on this.
+
+#### Scenario: Default lease duration
+
+- **WHEN** a worker calls `reserveBatch({ workerId: 'w1', batchSize: 10 })` without specifying `leaseMs`
+- **THEN** each reserved row has `lease_expires_at = reserved_at + 60_000ms`
+
+#### Scenario: Lease reclaimed after worker crash
+
+- **WHEN** a worker reserves a message and crashes without calling `releaseLease`
+- **AND** the time since `lease_expires_at` exceeds the configured reclamation interval
+- **THEN** a subsequent `expireStaleLeases(now)` call clears `reserved_by` / `reserved_at` / `lease_expires_at` on the row
+- **AND** the row becomes available for reservation by another worker via `reserveBatch`
+
+#### Scenario: Lease renewal during long-running attempt
+
+- **WHEN** a worker is processing an attempt that will take longer than the lease duration
+- **THEN** the worker MAY renew the lease before expiry (extending `lease_expires_at`)
+- **AND** the row remains reserved while the renewal succeeds
+
+### Requirement: Helpers package for adapter authors
+
+A `@postel/storage-helpers` package (zero DB dependencies) SHALL export utilities every adapter would otherwise reimplement: timestamp normalization, retry-policy JSON serialization, idempotency-key formatting, capability-flag declarations, and message/attempt row encode/decode. This package is the equivalent of Better Auth's `transformInput` / `transformOutput` / `getFieldName` / `getModelName` helpers — the L1↔L2 glue that keeps each adapter small.
+
+#### Scenario: Adapter author imports helpers
+
+- **WHEN** an adapter author begins implementing the `Storage` interface for a new backend
+- **THEN** they import `@postel/storage-helpers` for the standard utilities listed above
+- **AND** they do not reimplement those utilities locally
+
+#### Scenario: Helpers package has no DB dependency
+
+- **WHEN** a consumer installs `@postel/storage-helpers`
+- **THEN** no Postgres, SQLite, or other DB client is pulled in transitively
+- **AND** the package is importable from edge runtimes if needed
 

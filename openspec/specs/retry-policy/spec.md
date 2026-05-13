@@ -3,7 +3,6 @@
 ## Purpose
 
 Retry scheduling and failure handling for outbound deliveries. Specifies the default exponential-backoff schedule with jitter, programmable per-endpoint overrides, HTTP status-code-aware behavior (Retry-After honored, 4xx non-retryable except 408/429), per-endpoint circuit-breaker suspension, dead-letter on exhaustion, and configurable auto-disable thresholds.
-
 ## Requirements
 ### Requirement: Default retry schedule with jitter
 
@@ -58,19 +57,16 @@ After all retries are exhausted, the attempt SHALL be marked `dead-letter` and t
 
 ### Requirement: Endpoint auto-disable
 
-The library SHALL support a configurable auto-disable threshold (e.g., 100% failures over 24h). When triggered, the endpoint state moves to `disabled` and a state transition is recorded.
+The library SHALL support automatic endpoint disabling on sustained failure. The canonical default threshold is **100% failure rate over a rolling 24-hour window, with a minimum of 50 attempts in that window** (the minimum-attempt floor prevents endpoints with one or two failing attempts from being prematurely disabled). The threshold MUST be configurable per endpoint. When triggered, the endpoint state moves to `disabled` and a row is appended to `endpoint_state_transitions` with `reason: 'auto-disable'`.
 
-#### Scenario: 100%-failure window triggers disable
+#### Scenario: Default threshold triggers auto-disable
 
-- **WHEN** an endpoint has >50 attempts in a 24h window all failing
-- **THEN** its state transitions to `disabled` with `reason: auto-disable`
+- **WHEN** an endpoint has at least 50 attempts in the past 24 hours and 100% of them failed
+- **THEN** its state transitions to `disabled`
+- **AND** `endpoint_state_transitions` records the transition with `actor: 'system'` and `reason: 'auto-disable'`
 
-### Requirement: Replay safety contract
+#### Scenario: Below minimum-attempt floor
 
-When a message is replayed, the host MUST be able to choose between using a fresh `webhook-id` or reusing the original. The choice MUST be explicit (no implicit default that surprises receivers).
-
-#### Scenario: Replay with fresh id
-
-- **WHEN** the host calls `replay(messageId, { freshWebhookId: true })`
-- **THEN** the dispatched headers carry a new `webhook-id` distinct from the original
+- **WHEN** an endpoint has 10 attempts in the past 24 hours all failing
+- **THEN** the endpoint remains `active` (the 50-attempt floor is not met)
 
