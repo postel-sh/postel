@@ -11,16 +11,18 @@ postel/
 ├── specs/                # shared: wire format, DB schema, compliance contract
 ├── openspec/             # spec-driven dev spine (active changes + main specs)
 ├── decisions/            # ADRs
-├── compliance/           # executable test suite every port must pass (planned)
+├── compliance/           # @postel/compliance — executable test suite every port must
+│                         # pass; lives at root (not in typescript/) because it's a
+│                         # cross-language asset (ADR 0006). TS runner is first impl.
 ├── typescript/           # TS port root (pnpm workspace; toolchain in ADR 0010)
 │   ├── packages/
 │   │   ├── core/  edge/
 │   │   ├── standalone-pg/  standalone-sqlite/
 │   │   ├── drizzle/  prisma/  kysely/  storage-helpers/
 │   │   ├── express/  hono/  fastify/  nextjs/  bun/
-│   │   ├── admin/  effect/  test/  compliance/  cli/
+│   │   └── admin/  effect/  test/  cli/
 │   ├── package.json      # workspace root; private; not published
-│   ├── pnpm-workspace.yaml
+│   ├── pnpm-workspace.yaml  # packages/* + ../compliance
 │   ├── tsconfig.base.json
 │   ├── turbo.json
 │   ├── biome.json

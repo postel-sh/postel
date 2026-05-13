@@ -23,10 +23,9 @@ typescript/
 │   ├── admin/                     # @postel/admin
 │   ├── effect/                    # @postel/effect
 │   ├── test/                      # @postel/test
-│   ├── compliance/                # @postel/compliance
 │   └── cli/                       # @postel/cli
 ├── package.json                   # pnpm workspace root; private; not published
-├── pnpm-workspace.yaml
+├── pnpm-workspace.yaml            # includes packages/* AND ../compliance
 ├── tsconfig.base.json             # strict, ES2022, NodeNext
 ├── turbo.json                     # build / test / lint / typecheck pipeline
 ├── biome.json                     # single-tool lint + format
@@ -34,6 +33,10 @@ typescript/
 ```
 
 The 18-package map is normative — see [`openspec/specs/distribution-packaging-typescript/spec.md`](../openspec/specs/distribution-packaging-typescript/spec.md). Adding or removing a package requires an OpenSpec change against that capability.
+
+### Why `@postel/compliance` lives outside `typescript/packages/`
+
+`@postel/compliance` ships as one of the 18 npm packages in the map, but its source lives at the **repo root** in [`compliance/`](../compliance/) — not under `typescript/packages/`. Per [ADR 0006](../decisions/0006-monorepo-layout.md), the compliance suite is a shared cross-language asset: every port's CI invokes it, the contract is language-agnostic, and the runner implementation is allowed to migrate or be re-implemented later without affecting the contract. The TypeScript runner is the first implementation, so the package is wired into this workspace via `../compliance` in `pnpm-workspace.yaml` — same TS toolchain, same `@postel/compliance` npm identity, but its on-disk home reflects that it doesn't belong to any single port.
 
 ## Runtimes
 

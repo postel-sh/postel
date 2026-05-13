@@ -13,9 +13,9 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "format": "biome format --write .",
+    "lint": "biome check . ../compliance",
+    "lint:fix": "biome check --write . ../compliance",
+    "format": "biome format --write . ../compliance",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules .turbo"
   },

@@ -24,13 +24,13 @@ importers:
         specifier: 2.1.8
         version: 2.1.8
 
+  ../compliance: {}
+
   packages/admin: {}
 
   packages/bun: {}
 
   packages/cli: {}
-
-  packages/compliance: {}
 
   packages/core: {}
 
