@@ -3,7 +3,7 @@
 **Status:** v0 draft, pre-implementation.
 **Audience:** maintainers, contributors, reviewers, future selves, port authors.
 
-> **Postel is a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [@postel/compliance](specs/compliance/README.md) test suite.**
+> **Postel is a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [@postel/compliance](compliance/README.md) test suite.**
 
 ---
 
@@ -22,7 +22,7 @@ An embeddable, **library-only** kernel for outbound and inbound webhooks that ru
 
 Postel writes through the host's existing database access layer — whether that's raw Postgres / SQLite, a query builder like Kysely, or an ORM like Drizzle or Prisma. Outbox inserts participate in the host's transaction, so `send()` commits or rolls back atomically with the host's business writes — the transactional-outbox guarantee without extra connections, brokers, or a sidecar process. The full strategy is in [decisions/0007-storage-strategy.md](decisions/0007-storage-strategy.md).
 
-Postel ships in multiple languages over time — TypeScript first, then Go, Python, and Rust. Every implementation conforms to the same shared specification — wire format ([AsyncAPI](specs/wire-format/asyncapi.yaml)), DB schema ([SQL DDL](specs/db-schema/0001_init.sql)), and capability behaviors ([per-capability specs](openspec/specs/)) — and is verified by the [executable compliance test suite](specs/compliance/README.md).
+Postel ships in multiple languages over time — TypeScript first, then Go, Python, and Rust. Every implementation conforms to the same shared specification — wire format ([AsyncAPI](specs/wire-format/asyncapi.yaml)), DB schema ([SQL DDL](specs/db-schema/0001_init.sql)), and capability behaviors ([per-capability specs](openspec/specs/)) — and is verified by the [executable compliance test suite](compliance/README.md).
 
 ### Positioning
 
@@ -134,6 +134,6 @@ The compliance test suite (`@postel/compliance`) is the **executable boundary** 
 - **From 1.0 onward**, all `@postel/*` packages follow strict SemVer: no breaking changes in minor or patch releases. All `@postel/*` packages share a major version and release together.
 - **DB schema migrations are forward-only** and gated by `_postel_meta.schema_version`. Pre-1.0 migrations may be semantically breaking; post-1.0, the library reads state written by the previous two majors.
 - **Wire format changes** are the most expensive layer to change because receivers in the wild verify against signature schemes. We anchor to Standard Webhooks for cover; deviations require multi-secret rotation windows and the `webhook-spec-version` header for backward compatibility.
-- **Compliance suite evolution** follows a runway model (sketched in [ADR 0009](decisions/0009-compliance-suite-evolution.md), Proposed until the first batch of tests informs the final policy). New tests land ADVISORY in a MINOR release and become MANDATORY in the next MINOR after a runway window; removals follow a deprecation period.
+- **Compliance suite evolution** follows a runway model defined as testable CONTRACT requirements in [`openspec/specs/compliance/spec.md`](openspec/specs/compliance/spec.md) and motivated in [ADR 0009](decisions/0009-compliance-suite-evolution.md). New tests land ADVISORY in a MINOR release and become MANDATORY in the next MINOR after a runway window; removals follow a deprecation period; breaking modifications gate on MAJOR. Ports MUST pin against a specific MINOR.
 
 The combination of these two distinctions — narrow CONTRACT-level surface + explicit `0.x` experimental phase + runway-versioned suite evolution — is the project's hedge against premature standardization. The architecture preserves the ability to learn operationally without locking ports into yesterday's decisions.
