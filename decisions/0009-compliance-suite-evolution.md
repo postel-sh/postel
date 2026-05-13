@@ -96,14 +96,14 @@ While Status is Proposed:
 
 - ADR 0008's claim "the suite is the boundary" is forward-looking. No tests exist; no port pinning happens; no runway is enforced.
 - New CONTRACT requirements still get added freely in OpenSpec changes (no test version to be advisory in).
-- This ADR's existence is the commitment that **before any test ships, this policy is finalized**. The next agent or contributor implementing the first compliance test reads this draft, refines it based on actual experience, promotes to Accepted, and updates [distribution-packaging](../openspec/specs/distribution-packaging/spec.md) accordingly.
+- This ADR's existence is the commitment that **before any test ships, this policy is finalized**. The next agent or contributor implementing the first compliance test reads this draft, refines it based on actual experience, promotes to Accepted, and updates [distribution-packaging-typescript](../openspec/specs/distribution-packaging-typescript/spec.md) accordingly.
 
 ## How to close this ADR
 
 1. Wait for the first batch of compliance tests to be authored alongside the first capability implementation (likely `receiver` for edge-portability validation).
 2. Use that authoring experience to refine: runway durations, suite organization, test discovery, vectors-vs-code split.
 3. Move Status from Proposed → Accepted; update the "Working sketch" section into a final policy.
-4. Add the policy as actual CONTRACT-level requirements in `openspec/specs/distribution-packaging/spec.md` (or wherever the rename to `distribution-packaging-typescript` puts it). The policy itself becomes part of the cross-port contract — it's what port authors rely on when planning their suite-version adoption.
+4. Add the policy as actual CONTRACT-level requirements in `openspec/specs/distribution-packaging-typescript/spec.md`. The policy itself becomes part of the cross-port contract — it's what port authors rely on when planning their suite-version adoption.
 5. Update AGENTS.md's workflow rules so contributors authoring a CONTRACT-requirement change know the test goes in the same PR with the right runway tagging.
 
 ## Alternatives considered

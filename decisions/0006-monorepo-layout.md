@@ -105,7 +105,7 @@ mise wins by being the only one that ALSO manages tool versions, which keeps "wh
 
 ## Consequences
 
-- The current [`distribution-packaging`](../openspec/specs/distribution-packaging/spec.md) capability spec is TS-only (npm package names, ESM+CJS dual export). It will be renamed to `distribution-packaging-typescript` via an OpenSpec change before the first TypeScript code lands. Each language port introduces its own `distribution-packaging-<lang>` capability (Go modules, Python wheels, Rust crates).
+- The TS distribution contract lives at [`distribution-packaging-typescript`](../openspec/specs/distribution-packaging-typescript/spec.md) (renamed from the original `distribution-packaging` as part of this layout decision). Each future language port introduces its own `distribution-packaging-<lang>` capability with its native conventions (Go modules, Python wheels, Rust crates).
 - The existing `api-surface-typescript` capability is already structured correctly for this model.
 - `compliance/` lives at repo root; its implementation can start in TypeScript but the contract stays language-agnostic.
 - Repo-wide `AGENTS.md` + per-language `AGENTS.md` becomes the canonical agent-guidance model.
@@ -122,4 +122,4 @@ mise wins by being the only one that ALSO manages tool versions, which keeps "wh
 
 1. Confirm the layout via maintainer review.
 2. Move status to "Accepted"; the PR that introduces the `typescript/` directory (likely the first PR after this one merges) carries the move of any TS-related files into it.
-3. Open the OpenSpec change `rename-distribution-packaging` to handle the capability split before the first TypeScript code lands.
+3. The `distribution-packaging` → `distribution-packaging-typescript` rename has now landed; subsequent OpenSpec changes targeting this capability use the new name.

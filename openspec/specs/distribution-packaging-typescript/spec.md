@@ -1,19 +1,54 @@
-# distribution-packaging Specification
+# distribution-packaging-typescript Specification
 
 ## Purpose
 
-The TypeScript-port distribution contract: published package set, bundle-size budgets, semver discipline, ESM+CJS dual-export expectations, DB schema version handshake, forward-only migrations across two major versions, deprecation period, and the wire-format spec-version header.
-
-**Note:** This capability is scheduled to be renamed `distribution-packaging-typescript` per [ADR 0006](../../../decisions/0006-monorepo-layout.md), and the Tier-1 adapter set from [ADR 0007](../../../decisions/0007-storage-strategy.md) will replace the current legacy package list. The rename + adapter refresh land in a dedicated future OpenSpec change. Until then, the TS-specific assumptions here are intentional.
+The TypeScript port's distribution contract: published package set, bundle-size budgets, semver discipline, ESM+CJS dual-export expectations, DB schema version handshake, forward-only migrations across two major versions, deprecation period, and the wire-format spec-version header. Scoped to the TypeScript port specifically per [ADR 0006 — Polyglot monorepo layout](../../../decisions/0006-monorepo-layout.md); each future language port introduces its own `distribution-packaging-<lang>` capability with its native conventions (Go modules, Python wheels, Rust crates, etc.).
 ## Requirements
 ### Requirement: Package map
 
-The library SHALL be distributed as the following npm packages: `@postel/core`, `@postel/edge`, `@postel/postgres`, `@postel/sqlite`, `@postel/express`, `@postel/hono`, `@postel/fastify`, `@postel/nextjs`, `@postel/bun`, `@postel/admin`, `@postel/effect`, `@postel/test`, `@postel/compliance`, `@postel/cli`. Each MUST have a single, documented purpose.
+The library SHALL be distributed as the following npm packages, grouped by purpose:
+
+**Core:**
+- `@postel/core` — sender + receiver + types + errors.
+- `@postel/edge` — receiver + JWKS consumer scoped to edge runtimes (≤ 50 KB minified+gzipped).
+
+**Storage adapters (Tier 1 — must ship for 1.0, per [ADR 0007](../../../decisions/0007-storage-strategy.md)):**
+- `@postel/standalone-pg` — Postel owns the Postgres pool; zero-config drop-in.
+- `@postel/standalone-sqlite` — same for SQLite.
+- `@postel/drizzle` — host hands Postel a Drizzle instance (Postgres or SQLite).
+- `@postel/prisma` — host hands Postel a `PrismaClient`.
+- `@postel/kysely` — host hands Postel a `Kysely<DB>`.
+- `@postel/storage-helpers` — zero-DB-dependency helpers package every adapter (first-party or third-party) imports for timestamp normalization, retry-policy JSON serialization, idempotency-key formatting, capability flags, and message/attempt row encode/decode.
+
+(Tier 2 raw-client adapters — `@postel/pg`, `@postel/postgres-js`, `@postel/better-sqlite3` — are explicitly post-1.0 demand-driven additions per ADR 0007, not in this Tier-1 package map.)
+
+**Framework adapters:**
+- `@postel/express`, `@postel/hono`, `@postel/fastify`, `@postel/nextjs`, `@postel/bun` — receiver middleware + admin handlers.
+
+**Auxiliary:**
+- `@postel/admin` — framework-agnostic admin HTTP handler builder.
+- `@postel/effect` — Effect-TS layer over the core API.
+- `@postel/test` — test fixtures + signature generators + mock receivers.
+- `@postel/compliance` — Standard Webhooks compliance test suite (CLI).
+- `@postel/cli` — `postel` CLI binary (migrate, sign, verify, replay, simulate).
+
+Each package MUST have a single, documented purpose declared in its `package.json` `description` field (≤ 120 chars).
 
 #### Scenario: Importing edge does not pull core
 
 - **WHEN** a Cloudflare Worker imports only `@postel/edge`
 - **THEN** the bundle does not include sender, worker, or DB code
+
+#### Scenario: Importing a storage adapter does not pull other adapters
+
+- **WHEN** a host installs only `@postel/drizzle`
+- **THEN** `@postel/prisma`, `@postel/kysely`, `@postel/standalone-pg`, and `@postel/standalone-sqlite` are NOT transitively installed
+
+#### Scenario: storage-helpers has no DB dependency
+
+- **WHEN** a consumer installs `@postel/storage-helpers`
+- **THEN** no Postgres / SQLite / other DB client is pulled in transitively
+- **AND** the package is importable from edge runtimes if needed
 
 ### Requirement: Core bundle budget
 

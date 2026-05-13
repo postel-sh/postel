@@ -165,7 +165,7 @@ Better Auth uses CRUD because auth flows are stateless request/response. We can'
 ## Consequences
 
 - **Capability spec `storage-layer`** needs an "Adapter matrix" requirement and a clarification that the BYO `Storage` interface is what every adapter implements (first-party included).
-- **Capability spec `distribution-packaging`** package list expands to cover the Tier 1 adapters.
+- **Capability spec `distribution-packaging-typescript`** package list expands to cover the Tier 1 adapters.
 - **No top-level `package.json`** still holds; each adapter is a sub-package inside `typescript/packages/`.
 - **Schema generators per adapter** are an implementation responsibility — Drizzle exports, Prisma fragments, raw SQL, all from one source of truth (`specs/db-schema/`).
 - **The compliance test suite (`@postel/compliance`)** is the contract every adapter passes. Adapter-specific integration tests cover their own quirks; compliance covers behavioral parity.
