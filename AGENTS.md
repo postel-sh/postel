@@ -33,6 +33,8 @@ Postel is a **polyglot** webhooks library backed by solid, executable specs. The
 
 5. **Compliance suite is the behavioral gate.** PRs touching the sender/receiver path must keep `@postel/compliance` green. When the package lands, this becomes the deciding signal — not unit tests.
 
+6. **VISION.md tracks scope and identity.** Before merging any PR, ask: *does this change what a stranger would get when they ask "what is this project?"* If yes — i.e., the PR shifts project scope (in/out of scope), introduces or invalidates a persona, changes the positioning statement, moves a non-goal into scope, alters a §7 success criterion, or surfaces a *defining property* a newcomer must learn immediately — then update [VISION.md](VISION.md) in the same PR. Do NOT update VISION for routine capability changes (those go through OpenSpec), implementation choices (ADRs), API tweaks, spec-quality cleanups, or tooling decisions — those have their own homes. Most PRs should not touch VISION; that ratio is the point.
+
 ## Per-capability implementation loop
 
 For each capability you implement:
