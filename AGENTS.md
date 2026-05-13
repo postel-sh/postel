@@ -9,7 +9,7 @@ Postel is a **polyglot** webhooks library backed by solid, executable specs. The
 | Layer | Location |
 |---|---|
 | Top-level positioning, scope, success criteria | [VISION.md](VISION.md) |
-| Repo layout (monorepo, per-language roots) | [decisions/0010-monorepo-layout.md](decisions/0010-monorepo-layout.md) |
+| Repo layout (monorepo, per-language roots) | [decisions/0006-monorepo-layout.md](decisions/0006-monorepo-layout.md) |
 | Capability behaviors (what the lib does) | `openspec/specs/<capability>/spec.md` |
 | Wire format | `specs/wire-format/asyncapi.yaml` (AsyncAPI 3.0) |
 | DB schema | `specs/db-schema/0001_init.sql` |
@@ -32,6 +32,10 @@ Postel is a **polyglot** webhooks library backed by solid, executable specs. The
    That runs `spec:validate`, `spec:schema-validate`, and `check:spec-drift`. Each language port has its own test/lint/build verification chain inside its language root — run those too.
 
 5. **Compliance suite is the behavioral gate.** PRs touching the sender/receiver path must keep `@postel/compliance` green. When the package lands, this becomes the deciding signal — not unit tests.
+
+6. **VISION.md tracks scope and identity.** Before merging any PR, ask: *does this change what a stranger would get when they ask "what is this project?"* If yes — i.e., the PR shifts project scope (in/out of scope), introduces or invalidates a persona, changes the positioning statement, moves a non-goal into scope, alters a §7 success criterion, or surfaces a *defining property* a newcomer must learn immediately — then update [VISION.md](VISION.md) in the same PR. Do NOT update VISION for routine capability changes (those go through OpenSpec), implementation choices (ADRs), API tweaks, spec-quality cleanups, or tooling decisions — those have their own homes. Most PRs should not touch VISION; that ratio is the point.
+
+7. **Every requirement carries a conformance level.** Per [ADR 0008](decisions/0008-conformance-levels.md), each `### Requirement` is either CONTRACT (default; part of the cross-port contract; will be tested by `@postel/compliance`) or PORT-SPECIFIC (explicit opt-out; reference-implementation guidance; ports MAY vary the mechanism). To opt out, add `[PORT-SPECIFIC]` to the requirement title AND include a `**Conformance**:` note in the body explaining what stays CONTRACT (the outcome) vs what's PORT-SPECIFIC (the mechanism). Default is CONTRACT — you must justify the opt-out. The compliance suite is the executable boundary between the two; what the suite tests is CONTRACT, regardless of how prose phrases it.
 
 ## Per-capability implementation loop
 

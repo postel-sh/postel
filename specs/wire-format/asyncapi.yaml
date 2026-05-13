@@ -1,0 +1,174 @@
+asyncapi: "3.0.0"
+
+info:
+  title: Postel wire format
+  version: "0.1.0"
+  description: |
+    Canonical machine-readable wire-format spec for Postel.
+
+    Postel is Standard Webhooks-compliant by default. This document is the
+    source of truth for byte-level wire details: header set, signature
+    versions, payload structure, and secret prefixes.
+
+    Operational behavior (retry policy, fanout, circuit breaking, replay) is
+    NOT modeled here — it lives in capability specs under
+    `openspec/specs/<capability>/spec.md`.
+
+    Spec extensions covered:
+      - Versioning extension via `webhook-version` header.
+      - JWKS discovery extension at `/.well-known/webhooks-keys`.
+      - IETF-alignment compatibility (receiver accepts either Standard
+        Webhooks headers or `Content-Digest` + `Idempotency-Key`).
+  license:
+    name: TBD
+    url: "https://github.com/dogganidhal/postel"
+  externalDocs:
+    description: Standard Webhooks spec
+    url: "https://www.standardwebhooks.com/"
+
+defaultContentType: application/json
+
+servers:
+  receiver:
+    host: "{receiverHost}"
+    pathname: "{webhookPath}"
+    protocol: https
+    description: HTTPS receiver. The receiver URL is configured per endpoint by the host.
+    variables:
+      receiverHost:
+        default: hooks.example.com
+        description: The receiver's hostname.
+      webhookPath:
+        default: /webhooks
+        description: The path on which the receiver listens.
+
+channels:
+  webhookEvent:
+    address: "{webhookPath}"
+    title: Webhook event delivery
+    description: |
+      A single webhook delivery from Postel to a configured receiver.
+    parameters:
+      webhookPath:
+        description: Receiver path (configured per endpoint by the host).
+        default: /webhooks
+    messages:
+      webhookEvent:
+        $ref: "#/components/messages/webhookEvent"
+
+operations:
+  sendWebhook:
+    action: send
+    channel:
+      $ref: "#/channels/webhookEvent"
+    summary: Postel signs the event and POSTs it to the receiver.
+    bindings:
+      http:
+        method: POST
+
+components:
+  messages:
+    webhookEvent:
+      name: webhookEvent
+      title: Standard Webhooks-compliant webhook event
+      headers:
+        type: object
+        required:
+          - webhook-id
+          - webhook-timestamp
+          - webhook-signature
+        properties:
+          webhook-id:
+            type: string
+            description: Globally-unique id for this delivery (used for receiver-side dedup).
+            example: "msg_2NiR3VGr3Z3DnlAa1zh5UO5gFx9"
+          webhook-timestamp:
+            type: string
+            description: |
+              Unix timestamp (seconds since epoch) at which Postel signed the
+              event. Receivers SHOULD reject timestamps outside a configured
+              window (default 5 minutes).
+            example: "1715250000"
+          webhook-signature:
+            type: string
+            description: |
+              Space-separated list of `<version>,<base64-signature>` tuples.
+              `v1` is HMAC-SHA256 over `${webhook-id}.${webhook-timestamp}.${body}`.
+              `v1a` is Ed25519 over the same canonical message.
+              At least one tuple MUST be present.
+            example: "v1,UN9XynZF3oFZ1YCZxEoR9NgJgT4LtPdLA1u8sFBndjs="
+          webhook-version:
+            type: string
+            description: |
+              OPTIONAL. Postel versioning extension. Indicates the producer's
+              event-schema version for this delivery. Receivers that don't
+              recognize the version SHOULD process the event normally if the
+              `data` shape is backward-compatible.
+            example: "2"
+          webhook-spec-version:
+            type: string
+            description: |
+              OPTIONAL. Indicates the wire-format spec generation. Receivers
+              MAY ignore unknown new fields without rejecting the request.
+            example: "1"
+      payload:
+        type: object
+        required:
+          - type
+          - timestamp
+          - data
+        properties:
+          type:
+            type: string
+            description: |
+              Event type in dotted notation. Hosts SHOULD use stable, hierarchical
+              names (e.g., `order.created`, `user.profile.updated`).
+            example: order.created
+          timestamp:
+            type: string
+            format: date-time
+            description: ISO 8601 timestamp at which the underlying business event occurred.
+            example: "2026-05-09T11:30:00Z"
+          data:
+            type: object
+            description: Host-defined event payload. Shape varies per `type`.
+          channels:
+            type: array
+            description: |
+              OPTIONAL. Standard Webhooks `channels` field for receiver-side
+              fan-in routing.
+            items:
+              type: string
+            example: ["tenant_42"]
+
+  securitySchemes:
+    webhookSignatureV1:
+      type: symmetricEncryption
+      description: |
+        Symmetric HMAC-SHA256 signature using a shared secret prefixed with
+        `whsec_`. Computed over `${webhook-id}.${webhook-timestamp}.${body}`.
+        Carried in the `webhook-signature` header as `v1,<base64>`.
+    webhookSignatureV1a:
+      type: asymmetricEncryption
+      description: |
+        Ed25519 signature using a private key prefixed with `whsk_`. Public
+        keys are prefixed with `whpk_` and published via the JWKS discovery
+        extension at `/.well-known/webhooks-keys`. Carried in the
+        `webhook-signature` header as `v1a,<base64>`.
+
+# Notes for port authors:
+#
+# 1. `webhook-id`, `webhook-timestamp`, and `webhook-signature` are REQUIRED
+#    on every outgoing request. Order in the header list is not significant.
+#
+# 2. Receivers MUST verify the signature against the raw bytes of the body.
+#    JSON re-serialization between receipt and verification will break the
+#    signature. Framework adapters in this library exist specifically to
+#    preserve raw bytes.
+#
+# 3. The signature header MAY contain multiple tuples (e.g., during key
+#    rotation). Receivers SHOULD accept the message if ANY tuple verifies.
+#
+# 4. Compliance: the @postel/compliance test suite is the executable oracle
+#    for this wire format. Any port claiming Standard Webhooks compliance
+#    MUST pass the suite end-to-end.

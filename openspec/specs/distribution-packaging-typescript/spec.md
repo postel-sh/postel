@@ -1,0 +1,173 @@
+# distribution-packaging-typescript Specification
+
+## Purpose
+
+The TypeScript port's distribution contract: published package set, bundle-size budgets, semver discipline, ESM+CJS dual-export expectations, DB schema version handshake, forward-only migrations across two major versions, deprecation period, and the wire-format spec-version header. Scoped to the TypeScript port specifically per [ADR 0006 — Polyglot monorepo layout](../../../decisions/0006-monorepo-layout.md); each future language port introduces its own `distribution-packaging-<lang>` capability with its native conventions (Go modules, Python wheels, Rust crates, etc.).
+## Requirements
+### Requirement: Package map
+
+The library SHALL be distributed as the following npm packages, grouped by purpose:
+
+**Core:**
+- `@postel/core` — sender + receiver + types + errors.
+- `@postel/edge` — receiver + JWKS consumer scoped to edge runtimes (≤ 50 KB minified+gzipped).
+
+**Storage adapters (Tier 1 — must ship for 1.0, per [ADR 0007](../../../decisions/0007-storage-strategy.md)):**
+- `@postel/standalone-pg` — Postel owns the Postgres pool; zero-config drop-in.
+- `@postel/standalone-sqlite` — same for SQLite.
+- `@postel/drizzle` — host hands Postel a Drizzle instance (Postgres or SQLite).
+- `@postel/prisma` — host hands Postel a `PrismaClient`.
+- `@postel/kysely` — host hands Postel a `Kysely<DB>`.
+- `@postel/storage-helpers` — zero-DB-dependency helpers package every adapter (first-party or third-party) imports for timestamp normalization, retry-policy JSON serialization, idempotency-key formatting, capability flags, and message/attempt row encode/decode.
+
+(Tier 2 raw-client adapters — `@postel/pg`, `@postel/postgres-js`, `@postel/better-sqlite3` — are explicitly post-1.0 demand-driven additions per ADR 0007, not in this Tier-1 package map.)
+
+**Framework adapters:**
+- `@postel/express`, `@postel/hono`, `@postel/fastify`, `@postel/nextjs`, `@postel/bun` — receiver middleware + admin handlers.
+
+**Auxiliary:**
+- `@postel/admin` — framework-agnostic admin HTTP handler builder.
+- `@postel/effect` — Effect-TS layer over the core API.
+- `@postel/test` — test fixtures + signature generators + mock receivers.
+- `@postel/compliance` — Standard Webhooks compliance test suite (CLI).
+- `@postel/cli` — `postel` CLI binary (migrate, sign, verify, replay, simulate).
+
+Each package MUST have a single, documented purpose declared in its `package.json` `description` field (≤ 120 chars).
+
+#### Scenario: Importing edge does not pull core
+
+- **WHEN** a Cloudflare Worker imports only `@postel/edge`
+- **THEN** the bundle does not include sender, worker, or DB code
+
+#### Scenario: Importing a storage adapter does not pull other adapters
+
+- **WHEN** a host installs only `@postel/drizzle`
+- **THEN** `@postel/prisma`, `@postel/kysely`, `@postel/standalone-pg`, and `@postel/standalone-sqlite` are NOT transitively installed
+
+#### Scenario: storage-helpers has no DB dependency
+
+- **WHEN** a consumer installs `@postel/storage-helpers`
+- **THEN** no Postgres / SQLite / other DB client is pulled in transitively
+- **AND** the package is importable from edge runtimes if needed
+
+### Requirement: Core bundle budget
+
+`@postel/core` SHALL ship at ≤ 250 KB minified+gzipped. CI MUST enforce this budget on every build.
+
+#### Scenario: Core size enforced in CI
+
+- **WHEN** a change increases `@postel/core` to 280 KB minified+gzipped
+- **THEN** the bundle-size CI check fails
+
+### Requirement: Tree-shakeability
+
+The library SHALL be tree-shakeable. Importing `verify` MUST NOT pull in worker or DB code.
+
+#### Scenario: verify is standalone
+
+- **WHEN** a consumer's bundler tree-shakes `import { verify } from '@postel/core'`
+- **THEN** the resulting bundle excludes the worker, dispatcher, and DB adapters
+
+### Requirement: ESM and CJS dual export, TypeScript types
+
+Each package SHALL ship dual ESM + CJS entry points with TypeScript 5+ type definitions. Node ≥ 20 LTS, Bun ≥ 1.0, and Deno ≥ 2.0 MUST be supported.
+
+#### Scenario: CJS require works
+
+- **WHEN** a Node 20 CJS project does `const { send } = require('@postel/core')`
+- **THEN** the import succeeds and types are available via `@types`
+
+### Requirement: Published unminified for tooling readability
+
+Packages SHALL be published unminified (the consumer's bundler is responsible for minification). Source maps MUST be published.
+
+#### Scenario: Unminified read
+
+- **WHEN** a consumer opens `node_modules/@postel/core/dist/index.js`
+- **THEN** the source is human-readable (not minified)
+
+### Requirement: Strict SemVer from 1.0
+
+From 1.0 onward, all `@postel/*` packages SHALL follow strict SemVer: no breaking changes in minor or patch releases. **Before 1.0 (the `0.x` line), breaking changes are explicitly allowed across minor versions.** Library consumers SHOULD NOT pin to `^0.x` ranges without expecting churn; pin to a specific minor (e.g., `~0.5.0` or `0.5.x`) during the experimental phase. The OpenSpec change history is the canonical record of what changed and when. Compliance-suite-version coordination during `0.x` follows the runway model sketched in [ADR 0009](../../../decisions/0009-compliance-suite-evolution.md) (Proposed).
+
+#### Scenario: Patch is non-breaking (post-1.0)
+
+- **WHEN** consumers upgrade from `1.2.3` to `1.2.4`
+- **THEN** their existing code compiles and runs unchanged
+
+#### Scenario: 0.x minor MAY be breaking
+
+- **WHEN** consumers upgrade from `0.4.7` to `0.5.0`
+- **THEN** their existing code MAY require adjustment (e.g., API renames, behavior changes); the CHANGELOG documents the migration
+
+#### Scenario: 0.x patch is non-breaking
+
+- **WHEN** consumers upgrade from `0.4.7` to `0.4.8`
+- **THEN** their existing code compiles and runs unchanged (patches remain non-breaking even pre-1.0)
+
+### Requirement: Shared major version across packages
+
+All `@postel/*` packages SHALL share a major version. Breaking changes MUST be released across the package set together.
+
+#### Scenario: 2.0 release
+
+- **WHEN** `@postel/core` releases `2.0.0`
+- **THEN** every other `@postel/*` package also releases `2.0.0` in the same release
+
+### Requirement: DB schema version embedded in metadata table
+
+The library SHALL maintain a `_postel_meta` table containing the DB schema version. The library MUST refuse to run against a DB whose schema version is incompatible with the library version.
+
+#### Scenario: Mismatched schema
+
+- **WHEN** the library is at schema v3 and the DB is at schema v1
+- **THEN** the library fails fast at startup with a clear message indicating which migration to run
+
+### Requirement: Forward-only migrations supporting two majors
+
+DB migrations SHALL be forward-only. The library MUST be able to read state written by older library versions for at least the previous two major versions.
+
+#### Scenario: Read 1.x state from 3.x
+
+- **WHEN** a 3.x library starts against a DB last touched by a 1.x library
+- **THEN** the migration path runs cleanly forward; no data is lost
+
+### Requirement: Six-month deprecation period
+
+Public APIs marked deprecated SHALL remain functional for at least six months before removal. Removals MUST coincide with a major version bump.
+
+#### Scenario: Deprecation lifecycle
+
+- **WHEN** a public API is marked `@deprecated` in a minor release
+- **THEN** it remains functional in subsequent minor releases for at least 6 months and is only removed at the next major
+
+### Requirement: Wire format spec versioning
+
+Outgoing requests MAY include a `webhook-spec-version` header indicating the wire-format spec generation. Future spec changes MUST use this header so existing endpoints continue to function.
+
+#### Scenario: Old endpoint receives new spec
+
+- **WHEN** an existing endpoint receives a request with a future `webhook-spec-version`
+- **THEN** the endpoint can ignore the new fields and continue verifying as before
+
+### Requirement: Spec-test traceability is enforced in CI
+
+Every `### Requirement` declared under `openspec/specs/<capability>/spec.md` SHALL be covered by at least one test that names it (e.g., the requirement title appears in a `describe`/`test`/`it` block, or in a comment immediately above the test). CI MUST fail when a requirement has no matching test, so requirements cannot be silently dropped during implementation.
+
+#### Scenario: Drift detected fails CI
+
+- **WHEN** a contributor adds a new `### Requirement: Foo` to a capability spec without adding a test that names "Foo"
+- **THEN** the `check:spec-drift` CI step exits non-zero
+- **AND** the failure message lists the requirement name and the spec file it came from
+
+#### Scenario: Pre-implementation no-op
+
+- **WHEN** the spec-drift check runs and there are no test files yet (e.g., `packages/` is empty)
+- **THEN** the check emits an informational message and exits 0
+- **AND** no requirement is reported as drifted
+
+#### Scenario: New port extends the check
+
+- **WHEN** a future change adds a non-TypeScript port (e.g., Go)
+- **THEN** that change MUST extend `scripts/check-spec-drift.mjs` (or add a sibling script wired into the same CI step) to also walk that port's test files
+

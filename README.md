@@ -9,78 +9,7 @@
 
 ## Status
 
-Pre-alpha. **This PR sets up the scaffolding only** — the OpenSpec workflow, custom schema, agent-facing rules, CI gates, and the polyglot monorepo layout. The full specification migration (capability specs, ADRs, AsyncAPI wire format, SQL DDL, VISION.md) lands in a stacked follow-up PR. The original [SPECIFICATION.md](./SPECIFICATION.md) is unchanged here.
-
-## Repository layout
-
-Polyglot monorepo with per-language top-level directories. See [`decisions/0010-monorepo-layout.md`](./decisions/0010-monorepo-layout.md) for the full rationale.
-
-```
-postel/
-├── specs/                # shared: wire format, DB schema (follow-up PR)
-├── openspec/             # spec-driven dev spine (active changes + main specs)
-├── decisions/            # ADRs
-├── compliance/           # executable test suite every port must pass (planned)
-├── typescript/           # TS port root (follow-up PR)
-├── go/  python/  rust/   # future
-├── AGENTS.md             # canonical agent guidance (cross-agent standard)
-├── CLAUDE.md             # @AGENTS.md import (Claude Code expands inline)
-├── mise.toml             # tool versions + repo-level tasks
-└── scripts/              # repo-level scripts (spec-drift checker, …)
-```
-
-## Getting started
-
-This repo uses [mise](https://mise.jdx.dev) to manage tool versions (Node, the OpenSpec CLI) and orchestrate repo-level tasks. After [installing mise](https://mise.jdx.dev/getting-started.html):
-
-```bash
-mise trust          # one-time; accepts this repo's mise.toml
-mise install        # installs Node 20 and the OpenSpec CLI binary
-mise run check:all  # runs the spec-level CI gate locally
-```
-
-The `openspec` binary is on PATH after `mise install`. You can call it directly:
-
-```bash
-openspec list --specs        # show all capabilities + requirement counts
-openspec show <cap>          # display a capability spec
-openspec validate --all      # validate every spec + active change
-```
-
-## Contributing
-
-**Read [AGENTS.md](./AGENTS.md)** first — it has the workflow rules in detail. Agentic tools (Claude Code, Codex, Cursor, Aider, Gemini, …) should follow them too. `CLAUDE.md` is a one-line `@AGENTS.md` import for Claude Code; other agents read `AGENTS.md` directly. Single source of truth, zero drift.
-
-### Spec changes flow through OpenSpec
-
-Never edit `openspec/specs/<cap>/spec.md` directly. Open a change:
-
-```bash
-openspec new change <kebab-name>   # creates the change folder
-# author proposal.md, language-impact.md, specs/<cap>/spec.md, tasks.md
-openspec validate <change-name>    # check artifact completeness
-# implement the tasks
-openspec archive <name> -y         # auto-syncs delta specs into main specs
-```
-
-### Every change declares its language impact
-
-The project-local `postel` OpenSpec schema **requires** a `language-impact.md` artifact on every change, naming which language ports are affected. This is the polyglot dimension's structural enforcement — a port-adding change literally cannot be archived without declaring its impact.
-
-### Verification chain before commit
-
-```bash
-mise run check:all
-```
-
-Runs `openspec validate --all`, the custom-schema validation, and the spec-test traceability check (`scripts/check-spec-drift.mjs`). All three must be green before opening a PR.
-
-### House conventions
-
-- **Conventional commits** (`feat:`, `fix:`, `chore:`, `spec:`, `docs:`).
-- **One logical change per PR.** Don't bundle unrelated edits.
-- **Postgres dialect in DDL files**, SQLite variants commented inline.
-- **No top-level `package.json`.** Language-specific tooling lives inside each language root (`typescript/`, `go/`, …).
+Pre-alpha. Specification stage. See [`VISION.md`](./VISION.md) for the top-level positioning, scope, and success criteria. Detailed specs live under [`openspec/specs/`](./openspec/specs/) and [`specs/`](./specs/).
 
 ## Positioning
 
@@ -91,9 +20,20 @@ Postel does not compete with Svix or Hookdeck on customer-facing webhook portals
 
 Postel is a **library, not a service**. It will never have a hosted offering, never run a separate dispatcher process, never require Redis or a message broker, never ship a customer-facing portal as a packaged product. If you need any of that, use Svix or Hookdeck Outpost.
 
-## Specification
+## Specs (sources of truth)
 
-The full design (pre-migration) is in [SPECIFICATION.md](./SPECIFICATION.md). It is being broken up into capability specs, ADRs, and machine-readable artifacts in a stacked follow-up PR. Once that PR merges, this section will point at `VISION.md`, `openspec/specs/`, `specs/wire-format/`, and `specs/db-schema/`.
+| Layer | Source of truth | Format |
+|---|---|---|
+| Top-level positioning, scope, success criteria | [`VISION.md`](./VISION.md) | Markdown |
+| Wire format | [`specs/wire-format/asyncapi.yaml`](./specs/wire-format/asyncapi.yaml) | AsyncAPI 3.0 |
+| DB schema | [`specs/db-schema/0001_init.sql`](./specs/db-schema/0001_init.sql) | SQL DDL |
+| Capability behaviors | [`openspec/specs/`](./openspec/specs/) | Markdown (per capability) |
+| Architectural decisions | [`decisions/`](./decisions/) | Markdown ADRs |
+| Behavioral oracle | `@postel/compliance` (planned) | Executable test suite |
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the repository layout, dev environment setup ([mise](https://mise.jdx.dev)-based), the OpenSpec change workflow, the verification chain, and house conventions. Agentic tools (Claude Code, Codex, Cursor, Aider, Gemini, …) should also read [AGENTS.md](./AGENTS.md).
 
 ## Inspiration
 
