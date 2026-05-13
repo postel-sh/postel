@@ -1,7 +1,9 @@
 # retry-policy Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+Retry scheduling and failure handling for outbound deliveries. Specifies the default exponential-backoff schedule with jitter, programmable per-endpoint overrides, HTTP status-code-aware behavior (Retry-After honored, 4xx non-retryable except 408/429), per-endpoint circuit-breaker suspension, dead-letter on exhaustion, and configurable auto-disable thresholds.
+
 ## Requirements
 ### Requirement: Default retry schedule with jitter
 

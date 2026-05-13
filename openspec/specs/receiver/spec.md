@@ -1,7 +1,9 @@
 # receiver Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+Receiver-side verification of incoming webhook deliveries: signature verification (multi-secret rotation window, JWKS consumer, constant-time comparison), structured `verify()` errors that name the failing step, raw-bytes preservation across framework middleware adapters, timestamp window enforcement against replay, and an idempotency dedup helper. Designed to run unmodified on edge runtimes within a 50 KB minified+gzipped bundle.
+
 ## Requirements
 ### Requirement: Verify returns parsed event or structured error
 

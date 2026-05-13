@@ -1,7 +1,11 @@
 # distribution-packaging Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+The TypeScript-port distribution contract: published package set, bundle-size budgets, semver discipline, ESM+CJS dual-export expectations, DB schema version handshake, forward-only migrations across two major versions, deprecation period, and the wire-format spec-version header.
+
+**Note:** This capability is scheduled to be renamed `distribution-packaging-typescript` per [ADR 0006](../../../decisions/0006-monorepo-layout.md), and the Tier-1 adapter set from [ADR 0007](../../../decisions/0007-storage-strategy.md) will replace the current legacy package list. The rename + adapter refresh land in a dedicated future OpenSpec change. Until then, the TS-specific assumptions here are intentional.
+
 ## Requirements
 ### Requirement: Package map
 

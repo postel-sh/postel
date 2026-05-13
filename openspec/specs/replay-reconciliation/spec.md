@@ -1,7 +1,9 @@
 # replay-reconciliation Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+Replay-as-a-first-class-verb and reconciliation queries. Supports replaying a single message, a time-bounded range, or an arbitrary predicate; replays are tagged in the attempts audit trail (`replay_of` references the original `messages.id`) and may be throttled via a configurable replay throughput. Reconciliation surfaces messages that were never confirmed delivered for nightly catch-up jobs and admin tooling.
+
 ## Requirements
 ### Requirement: Replay a single message
 

@@ -1,7 +1,9 @@
 # observability Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+OpenTelemetry spans across send / dispatch / attempt / retry / replay operations, Prometheus metrics with `tenant_id` / `endpoint_id` / `event_type` labels, structured JSON logs correlated to active traces, a framework-agnostic admin HTTP handler builder, and a health-check endpoint suitable for load-balancer probes.
+
 ## Requirements
 ### Requirement: OpenTelemetry spans on every operation
 

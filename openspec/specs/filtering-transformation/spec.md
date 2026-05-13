@@ -1,7 +1,9 @@
 # filtering-transformation Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+Per-endpoint subscription filters and payload transformations applied at dispatch time. Filters narrow which events reach which endpoints (event type globs, Standard Webhooks channels, host-supplied predicates); transforms reshape the outgoing body. Filter and transform functions are evaluated per attempt with late binding (so endpoint changes during retry windows are honored) and fail closed on exceptions.
+
 ## Requirements
 ### Requirement: Type filter with glob support
 

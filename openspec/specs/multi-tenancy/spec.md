@@ -1,7 +1,9 @@
 # multi-tenancy Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+Tenant scoping across all persistent rows, per-tenant rate limits, worker fairness across tenants (round-robin or weighted-fair queueing), circuit-breaker isolation so one tenant's failures don't affect another's deliveries, and atomic tenant deletion with cascading semantics.
+
 ## Requirements
 ### Requirement: Tenant-scoped persistence
 

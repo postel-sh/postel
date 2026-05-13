@@ -1,7 +1,9 @@
 # endpoint-management Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+CRUD and lifecycle primitives for delivery endpoints. Covers URL / HTTPS / SSRF validation at create time, the endpoint state machine with audit trail, per-endpoint signing configuration, per-endpoint custom headers and metadata, tenant scoping, and back-pressure caps (max in-flight retries).
+
 ## Requirements
 ### Requirement: Endpoint CRUD
 

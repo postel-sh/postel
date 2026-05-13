@@ -1,7 +1,9 @@
 # storage-layer Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+The shared, operation-shaped `Storage` interface every adapter implements, plus the adapter matrix that lets a host plug Postel against whatever DB access layer it already runs (standalone connections, raw clients, or query-builder / ORM instances). Covers the canonical Postgres / SQLite contract, host-transaction passthrough (the outbox-pattern enabler), migrations runnable from CLI and programmatic API, tenant-scoped row-level access, and optional adapter capabilities (`notify` / `subscribe`, `transactional`, `streaming`). The full strategy is in [ADR 0007](../../../decisions/0007-storage-strategy.md).
+
 ## Requirements
 ### Requirement: BYO storage interface
 

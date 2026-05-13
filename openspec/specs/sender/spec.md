@@ -1,7 +1,9 @@
 # sender Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+Outbound webhook delivery. Persists events to a transactional outbox (insert wrappable in the host's unit of work), reserves them for dispatch under row-level locks with crash-recoverable leases, retries with policy-driven backoff, fans out a single `send()` to all matching endpoints at dispatch time (late binding), and guarantees at-least-once delivery.
+
 ## Requirements
 ### Requirement: Send is non-blocking and returns a MessageId
 

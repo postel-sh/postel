@@ -1,7 +1,9 @@
 # standard-webhooks-compliance Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+Conformance with the [Standard Webhooks](https://www.standardwebhooks.com/) wire format — header set (`webhook-id`, `webhook-timestamp`, `webhook-signature`), signature versions (`v1` HMAC, `v1a` Ed25519), payload structure, and secret prefixes (`whsec_`, `whsk_`, `whpk_`) — plus three Postel-proposed extensions: versioning (`webhook-version`), JWKS discovery at `/.well-known/webhooks-keys`, and IETF-alignment compatibility on the receiver side. The canonical machine-readable form lives at [`specs/wire-format/asyncapi.yaml`](../../../specs/wire-format/asyncapi.yaml); the executable conformance contract is `@postel/compliance`.
+
 ## Requirements
 ### Requirement: Compliant headers, signatures, payload structure, and prefixes by default
 

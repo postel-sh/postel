@@ -1,7 +1,9 @@
 # key-management Specification
 
 ## Purpose
-TBD - created by archiving change migrate-specification-md. Update Purpose after archive.
+
+Generation, storage, and rotation of signing material. Symmetric (HMAC, `whsec_`) and asymmetric (Ed25519, `whsk_` / `whpk_`) keypair generation; per-endpoint priority-ordered secret arrays with `primary` / `verifying` / `expiring` lifecycle states; rotation APIs with explicit overlap windows; KMS-backed encryption at rest; JWKS publication for the asymmetric scheme; and optional ephemeral keys that auto-rotate on a schedule.
+
 ## Requirements
 ### Requirement: Symmetric secret generation
 
