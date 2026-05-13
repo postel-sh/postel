@@ -28,3 +28,26 @@ run = "node scripts/check-spec-drift.mjs"
 [tasks."check:all"]
 description = "Run the full spec-level CI gate locally"
 depends = ["spec:validate", "spec:schema-validate", "check:spec-drift"]
+
+# TypeScript port — thin delegations into typescript/ via pnpm.
+# Tooling rationale: decisions/0010-typescript-toolchain.md.
+
+[tasks."typecheck"]
+description = "Run TypeScript typecheck across the TS port (delegates to pnpm)"
+dir = "typescript"
+run = "pnpm typecheck"
+
+[tasks."lint"]
+description = "Lint + format check the TS port via Biome (delegates to pnpm)"
+dir = "typescript"
+run = "pnpm lint"
+
+[tasks."test"]
+description = "Run the TS port test suites via Vitest (delegates to pnpm)"
+dir = "typescript"
+run = "pnpm test"
+
+[tasks."build"]
+description = "Build all TS packages (ESM + CJS + types) via tsup (delegates to pnpm)"
+dir = "typescript"
+run = "pnpm build"

@@ -18,7 +18,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const SPEC_ROOT = "openspec/specs";
-const PACKAGES_ROOT = "packages";
+const PACKAGES_ROOT = "typescript/packages";
 const TEST_RE = /\.test\.(ts|tsx|js|mjs|cjs)$/;
 const REQUIREMENT_RE = /^### Requirement:\s+(.+?)\s*$/gm;
 
@@ -75,7 +75,9 @@ function main() {
       `spec-drift: ${reqs.length} requirement(s) waiting for tests; no test files exist yet.`,
     );
     console.log("           Skipping drift check (pre-implementation).");
-    console.log("           This step will activate automatically once packages/ contains tests.");
+    console.log(
+      `           This step will activate automatically once ${PACKAGES_ROOT}/ contains tests.`,
+    );
     return 0;
   }
 
