@@ -1,0 +1,26 @@
+id: jwks/public-only
+requirement:
+  capability: key-management
+  title: JWKS publishes only public keys
+description: |
+  GET /.well-known/webhooks-keys on the receiver under test. The vector
+  asserts the endpoint exists and returns 200 (the JWKS document).
+  The structural assertion — "no entry exposes private key material" —
+  is enforced out-of-band by the receiver implementation's test suite
+  (e.g., the Track B `@postel/edge` build's JWKS handler tests). When
+  the v0.1.0 vector schema is extended with a `response_body_schema`
+  field, this vector will additionally schema-validate that no `whsk_`-
+  prefixed or `d:` JWK fields appear in the response body.
+
+  Receiver-under-test prerequisite: a JWKS handler mounted at
+  /.well-known/webhooks-keys (the path defined by `key-management`'s
+  `JWKS endpoint mounter` requirement).
+input:
+  method: GET
+  url: /.well-known/webhooks-keys
+  headers: {}
+  body_b64: ""
+secrets: []
+signature_mode: static
+expected:
+  outcome: accept
