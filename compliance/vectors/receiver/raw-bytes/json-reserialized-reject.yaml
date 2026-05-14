@@ -1,0 +1,33 @@
+id: receiver/raw-bytes/json-reserialized-reject
+requirement:
+  capability: receiver
+  title: Framework adapters preserve raw bytes
+description: |
+  The signature is computed over a canonical (no-whitespace) JSON body,
+  but the request sends a semantically-equivalent body with added
+  whitespace. A receiver that hands the raw bytes through to verify
+  computes HMAC over the whitespace bytes, sees a mismatch with the
+  signature header (which was computed against the canonical bytes),
+  and rejects with SIGNATURE_INVALID — the correct, conformant
+  behavior.
+
+  A non-conformant lenient receiver that JSON-parses and re-serializes
+  before verifying would canonicalize the body, produce a signature
+  matching the header, and ACCEPT. That accept would fail this vector
+  (expected reject, observed accept), surfacing the bug.
+
+  Pin --now to 2026-01-01T00:00:00Z in CI: signature_mode=static
+  implies a literal webhook-timestamp.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_rawbytes_reserialized
+    webhook-timestamp: "1767225600"
+    webhook-signature: v1,9yIHNZqCjfmYCUeRbA8ewvA8j4r92Pj7bBasAkvdRSY=
+  body_b64: eyJ0eXBlIjogInRlc3QuaGVsbG8iLCAiZGF0YSI6IHsia2V5IjogInZhbHVlIn19
+secrets: []
+signature_mode: static
+expected:
+  outcome: reject
+  error_code: SIGNATURE_INVALID
