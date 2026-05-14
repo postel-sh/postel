@@ -1,24 +1,21 @@
 ---
 title: Welcome
-description: Postel — polyglot webhooks library backed by solid, executable specs.
+description: Postel is a polyglot webhooks library backed by executable specs. Standard Webhooks-compliant. Library, not a service.
 ---
 
-> **Pre-alpha.** Receiver-side `v0.1.0` is the only thing currently shipping code. Most pages on this site document the spec; not all of it is implemented yet. See [implementation status](/docs/status) once it lands.
+Postel is a **library, not a service.** It runs inside the host application against the host application's database — Postgres or SQLite — and ships in multiple languages over time. The TypeScript implementation ships first; Go, Python, and Rust follow.
 
-Postel is a **library, not a service.** It runs inside the host application against the host application's database — Postgres or SQLite — and ships in multiple languages over time. Every port conforms to the same wire format, DB schema, and capability behaviors, verified end-to-end by the [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) test suite.
+> Svix is for when webhooks are your **product**.
+> Postel is for when webhooks are a **feature** of your product.
 
-## Positioning
+## Where to start
 
-> Svix is for when webhooks are your product. Postel is for when webhooks are a feature of your product.
+- **New to Postel?** Read [Get started](/docs/get-started) — install the receiver, verify your first signed request in under a minute.
+- **Evaluating the library?** Read [Why Postel](/docs/why) — the positioning, the tradeoffs, and the design rationale.
+- **Already integrating?** Jump to the [Concepts](/docs/concepts) (idempotency, key rotation, raw bytes, edge runtimes) or the [API reference](/docs/api).
 
-## What's documented here
+## Status
 
-This site is generated from the canonical specs in the [Postel monorepo](https://github.com/postel-sh/postel):
+Pre-alpha. `@postel/edge` (receiver-side) is what ships today: `verify`, JWKS consumer, dedup helper, multi-secret rotation, raw-bytes-preserving framework adapters. Sender, outbox, retries, fanout, replay land in v0.2.0. Polyglot ports follow.
 
-- **Capability behaviors** — the [`openspec/specs/*`](https://github.com/postel-sh/postel/tree/main/openspec/specs) tree, one page per capability.
-- **Wire format** — [AsyncAPI 3.0](https://github.com/postel-sh/postel/blob/main/specs/wire-format/asyncapi.yaml).
-- **DB schema** — [canonical SQL DDL](https://github.com/postel-sh/postel/blob/main/specs/db-schema/0001_init.sql).
-- **Architectural decisions** — the [`decisions/`](https://github.com/postel-sh/postel/tree/main/decisions) ADRs.
-- **Compliance corpus** — the YAML vectors that gate every port.
-
-Each page carries an implementation-status badge. Today, only `@postel/edge` (receiver) is `Available`. Everything else is `Spec stable · not implemented`.
+We document the spec ahead of the implementation. Pages covering unimplemented capabilities are explicit about it — assume nothing ships until the [API reference](/docs/api) lists it.

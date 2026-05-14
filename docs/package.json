@@ -9,7 +9,10 @@
     "dev": "next dev",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "postinstall": "fumadocs-mdx"
+    "postinstall": "fumadocs-mdx",
+    "prebuild": "node scripts/build-api-reference.mjs",
+    "predev": "node scripts/build-api-reference.mjs",
+    "typedoc": "typedoc"
   },
   "dependencies": {
     "fumadocs-core": "^16.8.11",
@@ -27,6 +30,8 @@
     "@types/react-dom": "^19.2.3",
     "postcss": "^8.5.14",
     "tailwindcss": "^4.3.0",
+    "typedoc": "^0.28.19",
+    "typedoc-plugin-markdown": "^4.11.0",
     "typescript": "5.7.2"
   }
 }

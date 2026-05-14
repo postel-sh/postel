@@ -1,0 +1,24 @@
+---
+title: API reference
+description: Every export, every type, every error class. Generated from the package source.
+---
+
+The reference pages below are generated from the package source via TypeDoc — the source is the ground truth, so the reference can't drift.
+
+## Available packages
+
+| Package | What it does |
+|---|---|
+| **[`@postel/edge`](/docs/api/edge)** | Receiver-side build for edge runtimes. `verify`, `createKeyset`, `jwksHandler`, `dedup`, `signFixture`, structured errors. ≤ 50 KB. |
+
+## Coming next
+
+| Package | What it will do |
+|---|---|
+| `@postel/hono` | Hono middleware that wires raw bytes into `verify` and exposes the parsed event on the Hono context. Ships alongside v0.1.0. |
+| `@postel/standalone-pg` | The Postgres dedup adapter as a standalone (no workspace-wide install required). Ships alongside v0.1.0. |
+| `@postel/standalone-sqlite` | The SQLite dedup adapter. Ships alongside v0.1.0. |
+| `@postel/core` | Sender — `send()`, the transactional outbox, retry, fanout. v0.2.0. |
+| `@postel/express`, `@postel/fastify`, `@postel/nextjs`, `@postel/bun` | Framework adapters. v0.1.x as each lands. |
+
+The shape of these packages is fixed by the [capability specs](https://github.com/postel-sh/postel/tree/main/openspec/specs) and the [compliance suite](https://github.com/postel-sh/postel/tree/main/compliance). What changes is when they ship code — the API is designed up-front, not as we go.

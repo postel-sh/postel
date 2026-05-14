@@ -1,0 +1,97 @@
+---
+title: Get started
+description: Install @postel/edge and verify a signed webhook in under a minute. Works in Node, Bun, Deno, and on the edge.
+---
+
+This page gets you from zero to a verified webhook on your laptop. The receiver-side build is `@postel/edge` — small enough to run on Cloudflare Workers (≤ 50 KB), portable to Node, Bun, and Deno.
+
+## 1. Install
+
+```bash
+pnpm add @postel/edge
+# or: npm install @postel/edge
+# or: yarn add @postel/edge
+# or: bun add @postel/edge
+# or (Deno): import { verify } from "npm:@postel/edge";
+```
+
+`@postel/edge` has zero runtime dependencies. The bundle uses Web Crypto only; nothing imports from `node:*`.
+
+## 2. Verify a webhook
+
+The minimum viable receiver: pass the raw request bytes, the headers, and your shared secret to `verify`. On success you get the parsed [Standard Webhooks](https://www.standardwebhooks.com) event; on failure a structured error tells you which step failed.
+
+```ts title="app/api/webhooks/route.ts"
+import {
+  verify,
+  SignatureInvalid,
+  TimestampTooOld,
+  MalformedHeader,
+} from "@postel/edge";
+
+export async function POST(req: Request) {
+  // IMPORTANT: pass the raw bytes — never JSON.stringify(await req.json()).
+  // The signature is over the exact bytes the producer sent.
+  const body = new Uint8Array(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers);
+
+  try {
+    const { event } = await verify(body, headers, process.env.WEBHOOK_SECRET!);
+
+    console.log("received:", event.type, event.data);
+    return new Response("ok", { status: 200 });
+  } catch (err) {
+    if (err instanceof SignatureInvalid) {
+      return new Response("bad signature", { status: 401 });
+    }
+    if (err instanceof TimestampTooOld) {
+      return new Response("timestamp out of window", { status: 401 });
+    }
+    if (err instanceof MalformedHeader) {
+      return new Response("malformed headers", { status: 400 });
+    }
+    throw err;
+  }
+}
+```
+
+That's it. The route handler above works unmodified on Cloudflare Workers, Vercel Edge, Next.js, Bun, and Deno. See [Cloudflare Workers](/docs/guides/cloudflare-workers) for a complete deployment walkthrough.
+
+## 3. Try it locally
+
+You need a signed request to verify. The library ships a fixture helper for this:
+
+```ts
+import { signFixture } from "@postel/edge";
+
+const secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5";
+const fixture = await signFixture({
+  secret,
+  payload: { type: "order.created", data: { id: "ord_123" } },
+});
+
+// fixture.headers + fixture.body are byte-for-byte what a producer would send.
+const res = await fetch("http://localhost:3000/api/webhooks", {
+  method: "POST",
+  headers: fixture.headers,
+  body: fixture.body,
+});
+
+console.log(res.status); // 200
+```
+
+`signFixture` exists so tests don't need to stand up a real producer. It is **not** for production signing — that's the sender's job, which lands in v0.2.0.
+
+## 4. Pick a framework adapter
+
+Calling `verify` directly works everywhere. If you're on a framework, the matching adapter takes care of plumbing the raw bytes and surfacing the parsed event:
+
+- **Hono** — [`@postel/hono`](/docs/api/hono). Middleware exposes `c.get("postel")` on every route.
+- **Express, Fastify, Bun.serve, Deno.serve, Next.js Route Handlers, SvelteKit, Astro, Nitro** — adapters land alongside the v0.1.0 release. Until then, the framework-agnostic `verify(bytes, headers, secret)` call works.
+
+## What's next
+
+- [Concepts → Signing and verification](/docs/concepts/signing-and-verification) — how the pipeline works under the hood.
+- [Concepts → Key rotation](/docs/concepts/key-rotation) — multi-secret windows and JWKS.
+- [Concepts → Idempotency](/docs/concepts/idempotency) — at-least-once delivery + the dedup helper.
+- [Guides → Cloudflare Workers](/docs/guides/cloudflare-workers) — production deployment.

@@ -1,0 +1,120 @@
+---
+title: Idempotency
+description: Webhooks are at-least-once. The dedup helper makes them once-effectively, atomically, in Postgres, SQLite, or memory.
+---
+
+Every webhook delivery system worth using is **at-least-once**. The producer retries on failure; the network drops packets; the receiver acks but its acknowledgment doesn't make it back. Plan for the same message arriving twice. Plan for it arriving twice within the same second from two competing workers.
+
+The fix is well-known: index each receipt on a stable identifier (the `webhook-id` header), and ignore the second one. The hard part is the **atomically** — across concurrent workers, across crashes, with no race where two workers both think they're the first.
+
+Postel ships a dedup helper that gets this right. The contract is simple: hand it an ID and a TTL, get back `{ duplicate: boolean }`. Concurrent calls with the same ID see exactly one `duplicate: false` and one or more `duplicate: true`.
+
+## The dedup contract
+
+```ts
+import { dedup } from "@postel/edge";
+
+const { duplicate } = await dedup(event.type, "msg_123", {
+  ttl: 60 * 60 * 24,        // remember this id for 24 hours
+  adapter: pgDedupAdapter({ client: pgPool }),
+});
+
+if (duplicate) {
+  return new Response("duplicate", { status: 200 });
+}
+
+// First receipt. Do the work.
+await processOrder(event.data);
+```
+
+A few things to note:
+
+- **TTL is your choice.** Pick a window longer than the producer's retry budget — 24h to 7d is typical. The downside of a too-short TTL is accepting a duplicate after expiry; the downside of a too-long TTL is more storage.
+- **The first-receipt branch must succeed.** If your work fails after `dedup` returns `{ duplicate: false }`, the next retry will be marked duplicate and skipped. Either move the dedup call after a successful commit, or use the host-transaction passthrough (below).
+- **Concurrent calls race exactly once.** Two parallel `dedup('msg_X')` calls return `{ duplicate: false }` from exactly one of them. The other (or others) return `{ duplicate: true }`. The compliance suite tests this.
+
+## Adapters
+
+`dedup` accepts an adapter that controls storage. Postel ships three first-party adapters; you can plug in others by implementing the `DedupAdapter` interface (one method, `record(id, ttlSeconds) → { duplicate }`).
+
+### Postgres — `@postel/standalone-pg`
+
+```ts
+import { pgDedupAdapter } from "@postel/standalone-pg";
+
+const adapter = pgDedupAdapter({
+  client: pgPool, // node-postgres pool or compatible
+  // tableName: "postel_received_messages",   (default)
+  // schema: undefined,                        (search_path)
+  // autoMigrate: true,                        (creates the table on first use)
+});
+```
+
+The adapter uses `INSERT ... ON CONFLICT ... DO UPDATE WHERE expires_at <= now()` — atomic at the DB level, no application-level locks. The table is two columns: `message_id text PRIMARY KEY`, `expires_at timestamptz`. An index on `expires_at` keeps cleanup cheap.
+
+### SQLite — `@postel/standalone-sqlite`
+
+```ts
+import { sqliteDedupAdapter } from "@postel/standalone-sqlite";
+
+const adapter = sqliteDedupAdapter({
+  db: betterSqlite3Db,
+});
+```
+
+Uses `INSERT OR IGNORE`, identical contract. Periodically purges expired rows.
+
+### In-memory — `inMemoryDedupAdapter` (built into `@postel/edge`)
+
+```ts
+import { inMemoryDedupAdapter } from "@postel/edge";
+
+const adapter = inMemoryDedupAdapter({ maxEntries: 10_000 });
+```
+
+Per-instance, not shared. Fine for development; **not** fine for production with more than one process — concurrent receivers can both accept the same message. Use it when:
+
+- You're running tests.
+- You're running on a single edge isolate (Cloudflare Worker with a single instance) and an at-most-twice window is acceptable.
+- You're pairing it with at-least-once application-level idempotency anyway.
+
+For anything else, use Postgres or SQLite.
+
+### Redis — opt-in
+
+A Redis dedup adapter ships as a separate package for hosts that already run Redis. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, the adapter is there. If you don't, don't stand one up just for dedup; Postgres or SQLite work.
+
+## Where to put the dedup call
+
+The naive placement is "before the work":
+
+```ts
+const { duplicate } = await dedup(event.type, event.id, options);
+if (duplicate) return new Response("dup", { status: 200 });
+await processOrder(event.data);
+```
+
+This is correct as long as `processOrder` is itself idempotent on its own writes. If it isn't — if you're charging a card, sending an email, calling an external API — you want **the dedup row and the side effect to commit together**.
+
+The cleanest pattern is the **transactional outbox** in reverse: the dedup insert participates in the same DB transaction as the work.
+
+```ts
+await pgPool.tx(async (tx) => {
+  const { duplicate } = await dedup(event.type, event.id, {
+    ttl: 60 * 60 * 24,
+    adapter: pgDedupAdapter({ client: tx }), // <-- the transaction, not the pool
+  });
+  if (duplicate) return; // tx commits with no work; safe.
+
+  await processOrder(tx, event.data);        // joins the same tx
+});
+```
+
+If `processOrder` throws, both the dedup row and the work roll back. The next retry sees the ID as unseen and tries again. If `processOrder` succeeds, both commit; the next retry is correctly skipped.
+
+This is exactly the pattern the v0.2.0 sender uses for outbox inserts — see [Why Postel](/docs/why#1-library-not-service).
+
+## What's next
+
+- [Raw bytes](/docs/concepts/raw-bytes) — the silent failure mode that breaks signature verification.
+- [Key rotation](/docs/concepts/key-rotation) — rotating without dropped messages.
