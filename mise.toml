@@ -26,6 +26,10 @@ run = "openspec schema validate postel --verbose"
 description = "Check spec-test traceability — every requirement must have a matching test"
 run = "node scripts/check-spec-drift.mjs"
 
+[tasks."check:edge-bundle"]
+description = "Bundle @postel/edge and verify ≤ 50 KB minified+gzipped + no node:* imports"
+run = "node scripts/check-edge-bundle.mjs"
+
 [tasks."check:all"]
 description = "Run the full spec-level CI gate locally"
 depends = ["spec:validate", "spec:schema-validate", "check:spec-drift"]
