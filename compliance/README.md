@@ -5,27 +5,28 @@ The `@postel/compliance` suite is the **behavioral oracle** for Postel: the exec
 ## Role
 
 - **Vendor-neutral.** Drives any HTTP receiver that claims Standard Webhooks compliance, not just Postel's own.
-- **Language-agnostic vectors + open-language runner.** The test corpus is JSON; the runner's implementation language is an open choice (recorded by the PR that introduces it).
+- **Language-agnostic vectors + Go runner.** Test corpus is YAML (safe subset); the runner is implemented in Go and ships as a versioned binary. Per [ADR 0011](../decisions/0011-compliance-suite-tooling.md).
 - **Source of truth.** What the suite tests is CONTRACT. What it doesn't is PORT-SPECIFIC — regardless of what the prose specs imply. See [ADR 0008](../decisions/0008-conformance-levels.md).
 
 ## Layout
 
 ```
 compliance/
-├── README.md       <-- you are here
-├── CHANGELOG.md    <-- structured changelog of test additions / modifications / removals per release
-├── vectors/        <-- (added when the first vectors land) language-agnostic JSON test data
-│   ├── _keys/      <-- test-only key fixtures (never used in production code paths)
+├── README.md         <-- you are here
+├── CHANGELOG.md      <-- structured changelog of test additions / modifications / removals per release
+├── vectors/          <-- language-agnostic YAML test data (added as clusters land)
+│   ├── _keys/        <-- test-only key fixtures as YAML (never used in production code paths)
 │   ├── wire-format/
 │   ├── signature-v1/
 │   ├── signature-v1a/
 │   ├── receiver/
 │   └── jwks/
-└── <runner>/       <-- runner source (the directory name and implementation language are an open choice
-                       made by the PR that introduces the first runner)
+├── schema/           <-- canonical JSON Schema for vector files (used by CI to validate every vector)
+└── cli/              <-- Go module + main package; the runner. Builds to a single static binary
+                         distributed as a tagged GitHub release asset.
 ```
 
-The runner is **not tied to TypeScript** — nothing in the spec assumes a specific implementation language, distribution channel, or invocation mechanism. It MAY end up as a Node-published npm package, a Go binary, a Rust crate, a Python module, or anything else; whatever is chosen, the source lives here at top level.
+The runner is implemented in **Go** per [ADR 0011](../decisions/0011-compliance-suite-tooling.md). The Go choice was driven by single-binary distribution (no Node / Python / Rust runtime required on consumers), stdlib-native HTTP/crypto/YAML/JSON, and cross-compilation for `linux/{amd64,arm64}`, `darwin/{amd64,arm64}`, `windows/amd64`. The compliance spec keeps the language formally open — re-implementing the runner in another language is allowed if it produces identical verdicts on the same vectors.
 
 ## Versioning — lockstep with the `@postel/*` release train
 
@@ -65,20 +66,32 @@ The exhaustive enumerations live in [`openspec/specs/compliance/spec.md`](../ope
 
 ## CLI
 
-Once the runner ships, the CLI flag surface is fixed cross-port (the invocation mechanism is the runner's choice):
+The Go runner ships as a single static binary. Once the runner ships (Track A of the v0.1.0 plan), the invocation is:
 
 ```bash
-# Generic shape — actual invocation depends on the runner's implementation language
-<runner-cli> --target https://your-receiver.example.com/webhooks \
+# Download per the matching tag: compliance-v0.1.0
+curl -sSL https://github.com/postel-sh/postel/releases/download/compliance-v0.1.0/compliance-linux-amd64 \
+    -o compliance && chmod +x ./compliance
+
+# Run
+./compliance --target https://your-receiver.example.com/webhooks \
              [--format json|tap|junit] \
              [--now <ISO8601>]
 ```
 
 - `--target` — REQUIRED. The receiver URL.
-- `--format` — OPTIONAL. Default is human-readable text. JSON is consumed by port CIs and is the source of truth for "what tests does this suite version run."
+- `--format` — OPTIONAL. Default is human-readable text. JSON output is consumed by port CIs and is the source of truth for "what tests does this suite version run."
 - `--now` — OPTIONAL. Baseline timestamp for resolving `{{now±<duration>}}` templates in vectors. Default: process wall-clock at run start. Pinning `--now` in CI makes time-sensitive vectors fully reproducible.
 
-Per the capability spec, the **flag set + semantics + exit-code rules + output formats** are CONTRACT. The **invocation mechanism**, **CLI command name**, and **distribution channel** are PORT-SPECIFIC.
+Per the capability spec, the **flag set + semantics + exit-code rules + output formats** are CONTRACT (cross-port). The **invocation mechanism**, **CLI command name**, and **distribution channel** are PORT-SPECIFIC — if/when a re-implementation in another language ships, it MAY choose different invocation ergonomics so long as it accepts the same flags and exhibits the same behavior.
+
+## Distribution
+
+Per [ADR 0011](../decisions/0011-compliance-suite-tooling.md):
+
+- **Tag**: each suite release tags `compliance-v<X.Y.Z>` on `main`. Separate namespace from the TS `@postel/*` packages, but the `X.Y.Z` is lockstep with them per the compliance capability spec.
+- **Assets**: tag triggers cross-compilation to per-OS binaries (`linux/{amd64,arm64}`, `darwin/{amd64,arm64}`, `windows/amd64`) attached as release assets.
+- **Consumption**: ports' CIs pull the right asset via `curl + tar + chmod`. No language-specific package manager required.
 
 ## Pointer
 
