@@ -1,0 +1,17 @@
+id: wire-format/headers/missing-id-reject
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: webhook-id header absent — the receiver rejects with MALFORMED_HEADER without examining the signature.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-timestamp: "{{now}}"
+    webhook-signature: v1,QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE9
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets: []
+signature_mode: static
+expected:
+  outcome: reject
+  error_code: MALFORMED_HEADER
