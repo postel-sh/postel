@@ -207,6 +207,7 @@ expected:
 		format:     "json",
 		now:        fixedNow,
 		vectorsDir: vectorsDir,
+		schemaDir:  canonicalSchemaDir(t),
 	}
 	buf := &bytes.Buffer{}
 	code, err := run(opts, buf)
@@ -259,7 +260,7 @@ expected:
   outcome: accept
 `, bodyB64))
 
-	opts := &cliOpts{target: srv.URL, format: "text", now: time.Now().UTC(), vectorsDir: vectorsDir}
+	opts := &cliOpts{target: srv.URL, format: "text", now: time.Now().UTC(), vectorsDir: vectorsDir, schemaDir: canonicalSchemaDir(t)}
 	buf := &bytes.Buffer{}
 	code, err := run(opts, buf)
 	if err != nil {
@@ -272,7 +273,7 @@ expected:
 
 func TestRun_EmptyVectorsDirExitsZero(t *testing.T) {
 	vectorsDir := t.TempDir()
-	opts := &cliOpts{target: "http://nowhere.invalid", format: "json", now: time.Now().UTC(), vectorsDir: vectorsDir}
+	opts := &cliOpts{target: "http://nowhere.invalid", format: "json", now: time.Now().UTC(), vectorsDir: vectorsDir, schemaDir: canonicalSchemaDir(t)}
 	buf := &bytes.Buffer{}
 	code, err := run(opts, buf)
 	if err != nil {

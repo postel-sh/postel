@@ -30,6 +30,7 @@ type SuiteRun struct {
 	Target       string       `json:"target"`
 	Now          time.Time    `json:"now"`
 	VectorsDir   string       `json:"vectors_dir"`
+	SchemaDir    string       `json:"schema_dir,omitempty"`
 	Results      []TestResult `json:"results"`
 }
 
@@ -49,6 +50,14 @@ func run(opts *cliOpts, out io.Writer) (int, error) {
 	if err != nil {
 		return 2, err
 	}
+	schemaDir := opts.schemaDir
+	if schemaDir == "" {
+		schemaDir = filepath.Join(vectorsDir, "..", "schema")
+	}
+	schemas, err := LoadSchemas(schemaDir)
+	if err != nil {
+		return 2, fmt.Errorf("load schemas: %w", err)
+	}
 	paths, err := DiscoverVectors(vectorsDir)
 	if err != nil {
 		return 2, fmt.Errorf("discover vectors in %s: %w", vectorsDir, err)
@@ -58,10 +67,11 @@ func run(opts *cliOpts, out io.Writer) (int, error) {
 		Target:       opts.target,
 		Now:          opts.now,
 		VectorsDir:   vectorsDir,
+		SchemaDir:    schemas.Source,
 	}
 	client := &http.Client{Timeout: defaultDriverTimeout}
 	for _, p := range paths {
-		suite.Results = append(suite.Results, executeVector(p, vectorsDir, opts, client))
+		suite.Results = append(suite.Results, executeVector(p, vectorsDir, schemas, opts, client))
 	}
 	if err := WriteFormatted(out, opts.format, suite); err != nil {
 		return 2, fmt.Errorf("write output: %w", err)
@@ -73,10 +83,22 @@ func run(opts *cliOpts, out io.Writer) (int, error) {
 	return 0, nil
 }
 
-func executeVector(path, vectorsDir string, opts *cliOpts, client *http.Client) TestResult {
+func executeVector(path, vectorsDir string, schemas *CompiledSchemas, opts *cliOpts, client *http.Client) TestResult {
 	started := time.Now()
 	res := TestResult{File: relOrPath(vectorsDir, path)}
-	v, err := LoadVectorFile(path)
+
+	rawBytes, err := os.ReadFile(path)
+	if err != nil {
+		res.Error = err.Error()
+		res.DurationMs = time.Since(started).Milliseconds()
+		return res
+	}
+	if err := ValidateVectorBytes(rawBytes, schemas); err != nil {
+		res.Error = err.Error()
+		res.DurationMs = time.Since(started).Milliseconds()
+		return res
+	}
+	v, err := LoadVectorYAML(rawBytes)
 	if err != nil {
 		res.Error = err.Error()
 		res.DurationMs = time.Since(started).Milliseconds()
@@ -97,7 +119,7 @@ func executeVector(path, vectorsDir string, opts *cliOpts, client *http.Client) 
 	switch v.SignatureMode {
 	case "static":
 	case "computed":
-		if err := computeSignatureInPlace(v, vectorsDir); err != nil {
+		if err := computeSignatureInPlace(v, vectorsDir, schemas); err != nil {
 			res.Error = fmt.Sprintf("compute signature: %v", err)
 			res.DurationMs = time.Since(started).Milliseconds()
 			return res
@@ -131,15 +153,22 @@ func verdictMatches(expected VectorExpected, observed ObservedVerdict) bool {
 	return true
 }
 
-func computeSignatureInPlace(v *Vector, vectorsDir string) error {
+func computeSignatureInPlace(v *Vector, vectorsDir string, schemas *CompiledSchemas) error {
 	if len(v.Secrets) == 0 {
 		return fmt.Errorf("signature_mode=computed requires at least one secret reference")
 	}
 	primary := v.Secrets[0]
 	fixturePath := filepath.Join(vectorsDir, "_keys", primary.Fixture)
-	fixture, err := LoadKeyFixtureFile(fixturePath)
+	fixtureBytes, err := os.ReadFile(fixturePath)
 	if err != nil {
 		return fmt.Errorf("load fixture %s: %w", primary.Fixture, err)
+	}
+	if err := ValidateKeyFixtureBytes(fixtureBytes, schemas); err != nil {
+		return fmt.Errorf("fixture %s: %w", primary.Fixture, err)
+	}
+	fixture, err := LoadKeyFixtureYAML(fixtureBytes)
+	if err != nil {
+		return fmt.Errorf("decode fixture %s: %w", primary.Fixture, err)
 	}
 	id := v.Input.Headers["webhook-id"]
 	ts := v.Input.Headers["webhook-timestamp"]

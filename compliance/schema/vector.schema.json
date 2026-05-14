@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/postel-sh/postel/blob/main/compliance/schema/vector.schema.json",
+  "title": "Postel Compliance Vector",
+  "description": "Canonical schema for @postel/compliance test vectors. Vectors are authored as YAML files under compliance/vectors/<category>/<id>.yaml; the in-memory structure after parsing (YAML or JSON) is what this schema validates. The schema is itself a CONTRACT artifact governed by the compliance capability spec — every conformant runner agrees on this shape. Per the spec's `Vector file schema` requirement (openspec/specs/compliance/spec.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "requirement", "description", "input", "signature_mode", "expected"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable test identifier of the form <category>/<vector-id> (e.g., 'signature-v1/tampered-body').",
+      "pattern": "^[a-z0-9][a-z0-9-]*(?:/[a-z0-9][a-z0-9-]*)+$"
+    },
+    "requirement": {
+      "type": "object",
+      "description": "The CONTRACT requirement this vector covers. Both fields verbatim-match a `### Requirement: <title>` block in openspec/specs/<capability>/spec.md.",
+      "additionalProperties": false,
+      "required": ["capability", "title"],
+      "properties": {
+        "capability": {
+          "type": "string",
+          "description": "OpenSpec capability name (e.g., 'receiver', 'standard-webhooks-compliance', 'key-management').",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Requirement title, verbatim from the capability spec (no leading '### Requirement:' prefix).",
+          "minLength": 1
+        }
+      }
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable one-line summary of the vector's intent.",
+      "minLength": 1
+    },
+    "input": {
+      "type": "object",
+      "description": "The HTTP request the runner sends to the target.",
+      "additionalProperties": false,
+      "required": ["method", "url", "body_b64"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "HTTP method (typically POST).",
+          "enum": ["POST", "PUT", "PATCH", "GET", "DELETE", "HEAD", "OPTIONS"]
+        },
+        "url": {
+          "type": "string",
+          "description": "Path or absolute URL. Relative paths resolve against --target. May contain {{now±duration}} time templates."
+        },
+        "headers": {
+          "type": "object",
+          "description": "Request headers. Values are strings; the runner resolves {{now±duration}} templates in each value before sending.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "body_b64": {
+          "type": "string",
+          "description": "Base64-encoded raw request body bytes. Preserves byte-exactness across runners. Empty string is allowed (sends an empty body).",
+          "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+        }
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "description": "References to test secret/key fixtures used by the vector. Required when signature_mode is 'computed'; optional otherwise.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "fixture"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Logical name for this secret within the vector (e.g., 'primary', 'verifying'). The first entry is used to compute signatures.",
+            "minLength": 1
+          },
+          "fixture": {
+            "type": "string",
+            "description": "Filename of a key fixture under compliance/vectors/_keys/ (e.g., 'hmac_primary.yaml').",
+            "pattern": "^[a-z0-9][a-z0-9_-]*\\.ya?ml$"
+          }
+        }
+      }
+    },
+    "signature_mode": {
+      "type": "string",
+      "description": "'static' = the signature in input.headers.webhook-signature is pre-computed at vector-authoring time and frozen. 'computed' = the runner resolves time templates, then computes the HMAC or Ed25519 signature using the first secrets[].fixture, then injects it into the outgoing request.",
+      "enum": ["static", "computed"]
+    },
+    "expected": {
+      "type": "object",
+      "description": "The verdict the runner asserts against the target's HTTP response.",
+      "additionalProperties": false,
+      "required": ["outcome"],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "description": "'accept' = target should HTTP 2xx. 'reject' = target should HTTP 4xx with the structured error_code in the X-Postel-Verify-Error header or JSON body.",
+          "enum": ["accept", "reject"]
+        },
+        "error_code": {
+          "type": "string",
+          "description": "Structured error code from the receiver capability spec's verify-error vocabulary. Required when outcome is 'reject'; forbidden when outcome is 'accept'.",
+          "enum": [
+            "SIGNATURE_INVALID",
+            "TIMESTAMP_TOO_OLD",
+            "MALFORMED_HEADER",
+            "UNKNOWN_KEY_ID",
+            "RAW_BYTES_MISMATCH_DETECTED"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "const": "accept" } }
+          },
+          "then": {
+            "not": { "required": ["error_code"] }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "reject" } }
+          },
+          "then": {
+            "required": ["error_code"]
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "signature_mode": { "const": "computed" } }
+      },
+      "then": {
+        "properties": {
+          "secrets": {
+            "type": "array",
+            "minItems": 1
+          }
+        },
+        "required": ["secrets"]
+      }
+    }
+  ]
+}
