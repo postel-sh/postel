@@ -1,0 +1,9 @@
+id: hmac_alt
+algorithm: hmac-sha256
+key_material: whsec_7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+8=
+description: >-
+  Second deterministic HMAC-SHA256 secret used by signature-v1/wrong-key
+  and the receiver/multi-secret rotation vectors. Seed: 32 bytes of
+  0xef. for-test-only — never reference this material from any
+  production code path. Distinct from hmac_primary.yaml so the
+  wrong-key vector can sign with a key the receiver does NOT trust.

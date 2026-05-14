@@ -1,0 +1,18 @@
+id: signature-v1/valid
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: HMAC v1 request, signed with the receiver's known key inside the timestamp window — the receiver accepts and verify returns the parsed event.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1_valid
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: accept

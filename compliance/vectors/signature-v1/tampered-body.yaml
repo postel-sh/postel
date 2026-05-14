@@ -1,0 +1,25 @@
+id: signature-v1/tampered-body
+requirement:
+  capability: receiver
+  title: Verify returns parsed event or structured error
+description: |
+  The body sent over the wire differs from the body the signature was
+  computed for (modeling an attacker who tampered with the payload
+  after the sender signed it). The receiver re-computes HMAC over the
+  observed body, fails to match the static signature in the header,
+  and rejects with SIGNATURE_INVALID. The webhook-timestamp is a
+  literal because signature_mode=static — pin --now to the same
+  timestamp in CI for reproducible verdicts.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1_tamper
+    webhook-timestamp: "1767225600"
+    webhook-signature: v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJ0YW1wZXJlZCI6dHJ1ZX19
+secrets: []
+signature_mode: static
+expected:
+  outcome: reject
+  error_code: SIGNATURE_INVALID

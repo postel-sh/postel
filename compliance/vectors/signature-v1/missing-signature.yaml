@@ -1,0 +1,24 @@
+id: signature-v1/missing-signature
+requirement:
+  capability: receiver
+  title: Verify returns parsed event or structured error
+description: |
+  The webhook-signature header is well-formed as <version>,<base64>
+  but carries no v1 tuple — only a v2 scheme the receiver does not
+  understand. Receivers configured for HMAC v1 reject with
+  MALFORMED_HEADER without attempting verification. Distinct from
+  wire-format/headers/malformed-signature-reject, which uses a
+  syntactically-invalid header value.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1_missing
+    webhook-timestamp: "1767225600"
+    webhook-signature: v2,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets: []
+signature_mode: static
+expected:
+  outcome: reject
+  error_code: MALFORMED_HEADER

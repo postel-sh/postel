@@ -1,0 +1,23 @@
+id: signature-v1/future-timestamp
+requirement:
+  capability: receiver
+  title: Timestamp window enforcement
+description: |
+  webhook-timestamp is 10 minutes in the future relative to --now; the
+  default 5-minute window rejects with TIMESTAMP_TOO_OLD (the receiver
+  capability spec's structured-error vocabulary uses this code for
+  "out-of-window" rejections in either direction).
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1_future_ts
+    webhook-timestamp: "{{now+10m}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: reject
+  error_code: TIMESTAMP_TOO_OLD

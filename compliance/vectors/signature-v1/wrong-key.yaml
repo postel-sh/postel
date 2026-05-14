@@ -1,0 +1,25 @@
+id: signature-v1/wrong-key
+requirement:
+  capability: receiver
+  title: Verify returns parsed event or structured error
+description: |
+  Request is signed with hmac_alt — a fixture the receiver does NOT
+  trust. The receiver verifies against its configured key (hmac_primary)
+  and fails to match, rejecting with SIGNATURE_INVALID. Distinct from
+  tampered-body, which uses a static non-matching signature; this
+  vector exercises the computed-signature path against a non-trusted
+  key fixture.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1_wrongkey
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: foreign
+    fixture: hmac_alt.yaml
+signature_mode: computed
+expected:
+  outcome: reject
+  error_code: SIGNATURE_INVALID
