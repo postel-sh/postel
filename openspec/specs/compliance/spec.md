@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The `@postel/compliance` test suite as a tool — its architecture (language-agnostic JSON test vectors + a runner whose implementation language is open, both housed at top-level `compliance/`), CLI surface, test taxonomy, vector file schema, v0.1.0 contract set, lockstep versioning with the rest of the `@postel/*` release train, sender-side deferral, and changelog discipline. The behavioral oracle that gates every port's claim of conformance — what every port (TypeScript today; Go / Python / Rust tomorrow) MUST pass at the release version it ships.
+The `@postel/compliance` test suite as a tool — its architecture (language-agnostic YAML test vectors + a runner whose implementation language is open, both housed at top-level `compliance/`), CLI surface, test taxonomy, vector file schema, v0.1.0 contract set, lockstep versioning with the rest of the `@postel/*` release train, sender-side deferral, and changelog discipline. The behavioral oracle that gates every port's claim of conformance — what every port (TypeScript today; Go / Python / Rust tomorrow) MUST pass at the release version it ships.
 
 Distinct from [`standard-webhooks-compliance`](../standard-webhooks-compliance/spec.md), which owns the wire-format contract this suite enforces. Where `standard-webhooks-compliance` says *what* a conformant wire format is, this capability says *how* we know a port honors it. The suite identity `@postel/compliance` is a brand for the suite, not a claim about its implementation language or distribution channel — both of which are open implementation choices.
 ## Requirements
@@ -32,7 +32,7 @@ The wire-format contract the suite enforces is owned by [`standard-webhooks-comp
 
 The suite SHALL be split into two layers, both housed under the top-level `compliance/` directory:
 
-- **Test vectors**: language-agnostic JSON files under `compliance/vectors/`. Each vector encodes inputs (keys, signatures, timestamps, payloads, headers), the requirement it covers, and the expected receiver outcome (`accept` | `reject:<error-code>`). The vector format is defined by the "Vector file schema" requirement below.
+- **Test vectors**: language-agnostic YAML files under `compliance/vectors/`. Each vector encodes inputs (keys, signatures, timestamps, payloads, headers), the requirement it covers, and the expected receiver outcome (`accept` | `reject:<error-code>`). The vector format is defined by the "Vector file schema" requirement below.
 - **Runner**: source under `compliance/<runner>/` (the directory name is the runner's chosen identifier, e.g., `compliance/cli/`). The runner reads the vectors and drives them at a target HTTP receiver. The runner's **implementation language is open** — it MAY be TypeScript, Go, Rust, Python, or any other; the choice is recorded by the change that introduces the first runner. No part of this spec assumes a particular language.
 
 Vectors are the cross-port asset; the runner is the executable layer. If multiple runner implementations exist at any point in the project's life, they MUST produce identical verdicts on the same vector against the same target — divergence is a runner bug, not a vector ambiguity.
@@ -41,7 +41,7 @@ Vectors are the cross-port asset; the runner is the executable layer. If multipl
 
 #### Scenario: Vectors are language-agnostic
 
-- **WHEN** the same JSON vector is exercised by any conformant runner against the same target with the same `--now` baseline
+- **WHEN** the same vector file is exercised by any conformant runner against the same target with the same `--now` baseline
 - **THEN** the verdict is identical
 - **AND** any divergence between runners is a runner bug, not a vector ambiguity
 
@@ -59,7 +59,7 @@ Vectors are the cross-port asset; the runner is the executable layer. If multipl
 
 ### Requirement: Vector file schema
 
-Every test vector under `compliance/vectors/` SHALL be a JSON file conforming to a shared schema. The schema itself is CONTRACT — every runner MUST agree on the format so vectors are portable across runners without translation.
+Every test vector under `compliance/vectors/` SHALL be a YAML 1.2 file (safe subset; see below) conforming to a shared schema. The on-disk format is YAML; the in-memory structure (after parsing) is what the schema validates and is identical to what an equivalent JSON file would produce. The schema itself is CONTRACT — every runner MUST agree on the format so vectors are portable across runners without translation. Per [ADR 0011](../../../decisions/0011-compliance-suite-tooling.md), YAML was chosen over JSON for authoring ergonomics; the safe-subset constraints below dodge YAML's known footguns.
 
 A vector file SHALL declare the following fields:
 
@@ -67,15 +67,19 @@ A vector file SHALL declare the following fields:
 - `requirement` — the CONTRACT requirement this vector covers, as `{ capability, title }`. Both fields verbatim-match a `### Requirement: <title>` block in `openspec/specs/<capability>/spec.md`.
 - `description` — human-readable one-line summary.
 - `input` — the HTTP request the runner sends to the target. An object with `method`, `url` (path), `headers` (string map), and `body_b64` (base64-encoded raw request bytes — preserves byte-exactness across runners).
-- `secrets` — array of test secret/key references used by the vector. Each entry is `{ id, fixture }` where `fixture` names a JSON file under `compliance/vectors/_keys/`.
+- `secrets` — array of test secret/key references used by the vector. Each entry is `{ id, fixture }` where `fixture` names a YAML file under `compliance/vectors/_keys/`.
 - `signature_mode` — either `"static"` (the signature in the input header is pre-computed at vector-authoring time and frozen) or `"computed"` (the runner computes the signature at execution time, after resolving any time templates, using the named secret fixture).
 - `expected` — the verdict. Either `{ outcome: "accept" }` or `{ outcome: "reject", error_code: "<code>" }` where `<code>` matches the structured error vocabulary defined by the `receiver` capability spec (`SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `UNKNOWN_KEY_ID`, `RAW_BYTES_MISMATCH_DETECTED`).
+
+**YAML safe subset**: vector files SHALL use YAML 1.2 with scalars, sequences, and mappings only. No anchors, no aliases, no custom tags, no merge keys. Parsers run in safe mode (no arbitrary-type construction). Strings that could be misread as non-string types (timestamps, version numbers, boolean-shaped tokens like `yes`/`no`/`on`/`off`, two-letter codes) MUST be explicitly quoted — e.g., `webhook-timestamp: "1735689600"`, not `webhook-timestamp: 1735689600`. This avoids YAML's well-known type-coercion footguns (the Norway problem and friends) without sacrificing readability for the rest of the file.
 
 **Time templating**: any string field MAY contain the literal token `{{now}}`, `{{now-<duration>}}`, or `{{now+<duration>}}` (durations expressed as `<integer><s|m|h>`, e.g., `{{now-10m}}`). Runners SHALL resolve these tokens against a baseline `now` supplied via `--now <ISO8601>` (default: process wall-clock at run start). Pinning `--now` in CI makes time-sensitive vectors fully reproducible.
 
 **Signature material**: vectors with `signature_mode: "static"` carry the pre-computed signature in `input.headers["webhook-signature"]` as-is; the timestamp in `input.headers["webhook-timestamp"]` is a literal, not a template. Vectors with `signature_mode: "computed"` MAY use time templates; the runner resolves the templates, then computes the HMAC or Ed25519 signature using the referenced secret fixture, then injects the result into the outgoing request.
 
-**Test key fixtures**: a fixed set of test keys lives under `compliance/vectors/_keys/` as JSON files. Each fixture declares `{ id, algorithm, key_material }` with `algorithm` in `{ "hmac-sha256", "ed25519" }`. Real ports SHALL NEVER reference these fixtures in production code paths — they are test-only material with documented "for-test-only" provenance.
+**Test key fixtures**: a fixed set of test keys lives under `compliance/vectors/_keys/` as YAML files. Each fixture declares `{ id, algorithm, key_material }` with `algorithm` in `{ "hmac-sha256", "ed25519" }`. Real ports SHALL NEVER reference these fixtures in production code paths — they are test-only material with documented "for-test-only" provenance.
+
+**Schema validation in CI**: the suite SHALL ship a canonical JSON Schema describing the vector file shape (committed to the repo). CI SHALL parse every vector and validate the in-memory structure against the schema. Vectors with field-name typos, missing required fields, or wrong types fail CI with a clear message. JSON Schema is used regardless of on-disk format because the in-memory shape after YAML parsing is identical to what JSON would produce.
 
 **Schema evolution**: the vector file schema itself is governed by the lockstep versioning rule. Adding or modifying a schema field is a CONTRACT change recorded in `compliance/CHANGELOG.md` against the release version that ships it; breaking schema changes (removing a required field, semantic shift) gate on a MAJOR bump.
 
@@ -83,6 +87,24 @@ A vector file SHALL declare the following fields:
 
 - **WHEN** a vector's `requirement.title` does not match any `### Requirement:` block in `openspec/specs/<requirement.capability>/spec.md`
 - **THEN** the suite's CI check fails with a clear message naming the orphan vector
+
+#### Scenario: YAML safe-subset only
+
+- **WHEN** a vector file uses YAML anchors (`&anchor`), aliases (`*ref`), custom tags (`!!set`, `!!binary`), or merge keys (`<<:`)
+- **THEN** the suite's CI parser SHALL reject the file with a clear message naming the disallowed construct
+- **AND** the rejection happens before schema validation, so the safe-subset rule is independently enforceable
+
+#### Scenario: Ambiguous strings are explicitly quoted
+
+- **WHEN** a vector field's value could be misread as a non-string type — examples: `webhook-timestamp: 1735689600` parses as integer; `webhook-version: 2` parses as integer; a header value of `no` parses as boolean
+- **THEN** schema validation rejects the vector because the typed field (e.g., a string-typed timestamp) received the wrong type
+- **AND** the fix is to quote the value: `webhook-timestamp: "1735689600"`, `webhook-version: "2"`, header value `"no"`
+
+#### Scenario: JSON-Schema validation enforces field shape
+
+- **WHEN** the suite's CI runs against any vector (new or modified)
+- **THEN** the parsed in-memory structure is validated against the canonical JSON Schema (committed to the repo)
+- **AND** vectors with field-name typos, missing required fields, wrong types, or unrecognized fields fail CI with a clear message
 
 #### Scenario: Static-signature vector is byte-stable
 
