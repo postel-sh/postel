@@ -69,7 +69,10 @@ A vector file SHALL declare the following fields:
 - `input` — the HTTP request the runner sends to the target. An object with `method`, `url` (path), `headers` (string map), and `body_b64` (base64-encoded raw request bytes — preserves byte-exactness across runners).
 - `secrets` — array of test secret/key references used by the vector. Each entry is `{ id, fixture }` where `fixture` names a YAML file under `compliance/vectors/_keys/`.
 - `signature_mode` — either `"static"` (the signature in the input header is pre-computed at vector-authoring time and frozen) or `"computed"` (the runner computes the signature at execution time, after resolving any time templates, using the named secret fixture).
-- `expected` — the verdict. Either `{ outcome: "accept" }` or `{ outcome: "reject", error_code: "<code>" }` where `<code>` matches the structured error vocabulary defined by the `receiver` capability spec (`SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `UNKNOWN_KEY_ID`, `RAW_BYTES_MISMATCH_DETECTED`).
+- `expected` — the verdict. One of:
+  - `{ outcome: "accept" }` — the receiver's verify path succeeds and dedup does not flag the message as duplicate. HTTP signal: `2xx` with no `X-Postel-Dedup-Result` header.
+  - `{ outcome: "reject", error_code: "<code>" }` — verify fails. `<code>` matches the structured error vocabulary defined by the `receiver` capability spec (`SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `UNKNOWN_KEY_ID`, `RAW_BYTES_MISMATCH_DETECTED`). HTTP signal: `4xx`/`5xx` with the error code in the `X-Postel-Verify-Error` response header or a JSON body `{ "error_code": "<code>" }`.
+  - `{ outcome: "duplicate" }` — verify succeeds but the dedup helper reports the message id as already seen within its TTL. HTTP signal: `2xx` with response header `X-Postel-Dedup-Result: duplicate`. Non-dedup-aware receivers MUST NOT emit this header on the first receipt; if they never emit it, they are non-conformant against `0.1.x` per the receiver capability spec's `Idempotency dedup helper` requirement.
 
 **YAML safe subset**: vector files SHALL use YAML 1.2 with scalars, sequences, and mappings only. No anchors, no aliases, no custom tags, no merge keys. Parsers run in safe mode (no arbitrary-type construction). Strings that could be misread as non-string types (timestamps, version numbers, boolean-shaped tokens like `yes`/`no`/`on`/`off`, two-letter codes) MUST be explicitly quoted — e.g., `webhook-timestamp: "1735689600"`, not `webhook-timestamp: 1735689600`. This avoids YAML's well-known type-coercion footguns (the Norway problem and friends) without sacrificing readability for the rest of the file.
 
@@ -134,6 +137,19 @@ A vector file SHALL declare the following fields:
 - **WHEN** a schema field is removed, renamed, or its semantics change incompatibly
 - **THEN** the change lands in a MAJOR release alongside every vector updated to the new shape
 - **AND** the changelog records the migration explicitly
+
+#### Scenario: Duplicate-outcome verdict has a wire-level signal
+
+- **WHEN** a vector declares `expected: { outcome: "duplicate" }`
+- **THEN** the runner SHALL classify an HTTP response as `duplicate` if and only if the status code is `2xx` and the response carries the header `X-Postel-Dedup-Result: duplicate`
+- **AND** a `2xx` without that header is classified as `accept`
+- **AND** a `4xx`/`5xx` is classified as `reject` regardless of the dedup header
+
+#### Scenario: Receiver MUST emit the dedup header on the second receipt
+
+- **WHEN** a conformant receiver processes a request whose `webhook-id` it has already accepted within the dedup TTL
+- **THEN** the receiver SHALL return `2xx` with `X-Postel-Dedup-Result: duplicate`
+- **AND** the receiver MUST NOT emit that header on the first receipt of any `webhook-id`
 
 ### Requirement: CLI surface
 
