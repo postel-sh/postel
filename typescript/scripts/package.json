@@ -1,0 +1,13 @@
+{
+  "name": "@postel-internal/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Internal scripts for the TypeScript port — reference receiver, smoke tests, compliance wiring. Not published.",
+  "scripts": {
+    "smoke:receiver": "node scripts/smoke-receiver.mjs"
+  },
+  "dependencies": {
+    "@postel/edge": "workspace:*"
+  }
+}
