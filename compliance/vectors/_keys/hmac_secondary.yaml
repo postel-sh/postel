@@ -1,0 +1,14 @@
+id: hmac_secondary
+algorithm: hmac-sha256
+key_material: whsec_VlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlY=
+description: >-
+  Third deterministic HMAC-SHA256 secret used by the multi-secret
+  rotation vectors as the verifying-secondary slot. Seed: 32 bytes of
+  0x56. for-test-only — never reference this material from any
+  production code path. The receiver under test is documented to be
+  configured with the secret array [hmac_primary (signing primary),
+  hmac_secondary (verifying secondary)]; the old-secret-accept vector
+  signs with this fixture to assert the receiver checks every entry.
+  Distinct from hmac_alt, which the wrong-key + expired-secret-reject
+  vectors use as a "foreign" key the receiver has NOT been configured
+  to accept.
