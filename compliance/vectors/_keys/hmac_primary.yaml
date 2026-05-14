@@ -1,0 +1,9 @@
+id: hmac_primary
+algorithm: hmac-sha256
+key_material: whsec_q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s=
+description: >-
+  Deterministic HMAC-SHA256 secret used by the v0.1.0 HMAC v1 vectors.
+  Seed: 32 bytes of 0xab. for-test-only — never reference this material
+  from any production code path. The compliance/vectors/_keys/ directory
+  is the test-corpus boundary; ports MUST treat anything under it as
+  external test data, not as a library API surface.
