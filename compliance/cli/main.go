@@ -12,13 +12,14 @@ type cliOpts struct {
 	format     string
 	now        time.Time
 	vectorsDir string
+	schemaDir  string
 }
 
 func parseFlags(progName string, args []string, errOut *os.File) (*cliOpts, error) {
 	fs := flag.NewFlagSet(progName, flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.Usage = func() {
-		fmt.Fprintf(errOut, `Usage: %s --target <url> [--format <text|json|tap|junit>] [--now <ISO8601>] [--vectors <dir>]
+		fmt.Fprintf(errOut, `Usage: %s --target <url> [--format <text|json|tap|junit>] [--now <ISO8601>] [--vectors <dir>] [--schema-dir <dir>]
 
 Drives the @postel/compliance suite against an HTTP receiver and reports
 per-test verdicts. The CLI surface is fixed cross-port — see
@@ -31,6 +32,7 @@ openspec/specs/compliance/spec.md "CLI surface" requirement.
 	format := fs.String("format", "text", "Output format: text|json|tap|junit")
 	nowStr := fs.String("now", "", "Baseline ISO-8601 timestamp for {{now±duration}} resolution (default: wall-clock at run start)")
 	vectorsDir := fs.String("vectors", "./vectors", "Directory containing vector YAML files (relative to current working directory)")
+	schemaDir := fs.String("schema-dir", "", "Directory containing vector.schema.json + key-fixture.schema.json (default: <vectors-dir>/../schema/)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -58,6 +60,7 @@ openspec/specs/compliance/spec.md "CLI surface" requirement.
 		format:     *format,
 		now:        now,
 		vectorsDir: *vectorsDir,
+		schemaDir:  *schemaDir,
 	}, nil
 }
 

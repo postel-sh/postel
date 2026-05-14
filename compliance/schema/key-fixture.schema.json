@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/postel-sh/postel/blob/main/compliance/schema/key-fixture.schema.json",
+  "title": "Postel Compliance Key Fixture",
+  "description": "Canonical schema for @postel/compliance test-key fixtures at compliance/vectors/_keys/*.yaml. Per the compliance capability spec's `Vector file schema` requirement: real ports SHALL NEVER reference these fixtures in production code paths — they are test-only material with documented 'for-test-only' provenance.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "algorithm", "key_material", "description"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Logical identifier for this key fixture (e.g., 'hmac_primary', 'ed25519_a'). Stable across versions; vector files reference fixtures by filename, not by id.",
+      "minLength": 1
+    },
+    "algorithm": {
+      "type": "string",
+      "description": "Signing algorithm. 'hmac-sha256' for symmetric (Standard Webhooks v1, whsec_ prefix). 'ed25519' for asymmetric (Standard Webhooks v1a, whsk_/whpk_ prefix).",
+      "enum": ["hmac-sha256", "ed25519"]
+    },
+    "key_material": {
+      "type": "string",
+      "description": "Key material in Standard Webhooks prefix form. For hmac-sha256: whsec_<base64>. For ed25519: whsk_<base64-of-seed-or-private-key>. The for-test-only marker is enforced by living under compliance/vectors/_keys/ and the description field.",
+      "pattern": "^(whsec_|whsk_)[A-Za-z0-9+/]+=*$"
+    },
+    "public_key": {
+      "type": "string",
+      "description": "Public key for asymmetric fixtures (ed25519). whpk_<base64>. Forbidden for hmac-sha256 fixtures.",
+      "pattern": "^whpk_[A-Za-z0-9+/]+=*$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Free-form description that MUST identify this material as 'for-test-only' and SHOULD note the rationale (e.g., 'deterministic HMAC secret for HMAC v1 vectors — never use in production').",
+      "minLength": 1,
+      "pattern": "for-test-only"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "algorithm": { "const": "ed25519" } }
+      },
+      "then": {
+        "required": ["public_key"]
+      },
+      "else": {
+        "not": { "required": ["public_key"] }
+      }
+    }
+  ]
+}
