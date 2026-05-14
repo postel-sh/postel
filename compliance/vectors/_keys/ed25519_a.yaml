@@ -1,0 +1,11 @@
+id: ed25519_a
+algorithm: ed25519
+key_material: whsk_zc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc0=
+public_key: whpk_/JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic=
+description: >-
+  Deterministic Ed25519 keypair used by the v0.1.0 v1a vectors. Seed: 32
+  bytes of 0xcd; public_key is the Ed25519-derived public component for
+  that seed. for-test-only — never reference this material from any
+  production code path. The compliance/vectors/_keys/ directory is the
+  test-corpus boundary; ports MUST treat anything under it as external
+  test data, not as a library API surface.
