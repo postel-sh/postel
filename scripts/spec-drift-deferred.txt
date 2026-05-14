@@ -107,14 +107,8 @@ Verify latency budgets
 # receiver / key-management / standard-webhooks-compliance — staged in
 # the @postel/edge v0.1.0 PR series. Each line moves out as the matching
 # PR lands tests.
-#   PR 4 (JWKS consumer + handler): JWKS consumer, JWKS endpoint mounter,
-#         JWKS publishes only public keys, JWKS discovery extension
 #   PR 5 (dedup helper): Idempotency dedup helper
 Idempotency dedup helper
-JWKS consumer
-JWKS endpoint mounter
-JWKS publishes only public keys
-JWKS discovery extension
 
 # replay-reconciliation — operator-facing
 Replay a single message

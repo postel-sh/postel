@@ -4,6 +4,7 @@ import type { WebhookHeaders } from "../types.js";
 export const ID_HEADER = "webhook-id";
 export const TIMESTAMP_HEADER = "webhook-timestamp";
 export const SIGNATURE_HEADER = "webhook-signature";
+export const KEY_ID_HEADER = "webhook-key-id";
 
 export function readHeader(headers: WebhookHeaders, name: string): string | undefined {
   const target = name.toLowerCase();
