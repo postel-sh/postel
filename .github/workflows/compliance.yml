@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - "compliance/cli/**"
+      - "compliance/vectors/**"
+      - "compliance/schema/**"
       - ".github/workflows/compliance.yml"
       - "mise.toml"
   push:
     branches: [main]
     paths:
       - "compliance/cli/**"
+      - "compliance/vectors/**"
+      - "compliance/schema/**"
       - ".github/workflows/compliance.yml"
       - "mise.toml"
 
