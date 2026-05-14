@@ -15,6 +15,7 @@ Postel is a **polyglot** webhooks library backed by solid, executable specs. The
 | DB schema | `specs/db-schema/0001_init.sql` |
 | Architectural decisions | `decisions/` |
 | Behavioral oracle | `@postel/compliance` (planned package; `compliance/` at repo root) |
+| Documentation site | `docs/` (Fumadocs / Next.js; standalone Node install, not part of the `@postel/*` release train) |
 | Per-language idioms | `<lang>/AGENTS.md` (e.g., `typescript/AGENTS.md`, `go/AGENTS.md`) |
 
 ## Workflow rules (non-negotiable)
@@ -87,6 +88,11 @@ openspec archive <name> -y              # archive (auto-syncs to main specs)
 mise run check:spec-drift               # verify every requirement has a test
 mise run spec:validate                  # validate all specs and changes
 mise run check:all                      # full local CI gate
+
+# Docs site (Fumadocs / Next.js)
+mise run docs:dev                       # local dev server → http://localhost:3000
+mise run docs:build                     # production build
+mise run docs:typecheck                 # tsc --noEmit on the docs site
 ```
 
 ## House conventions
