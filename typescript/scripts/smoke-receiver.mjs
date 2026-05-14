@@ -116,9 +116,9 @@ async function main() {
     {
       const second = await postSigned(signed.body, signed.headers);
       check(
-        "replay within dedup TTL returns 409 DUPLICATE",
-        second.status === 409 && second.headers.get("x-postel-verify-error") === "DUPLICATE",
-        `status=${second.status}, code=${second.headers.get("x-postel-verify-error")}`,
+        "replay within dedup TTL returns 200 + X-Postel-Dedup-Result: duplicate",
+        second.status === 200 && second.headers.get("x-postel-dedup-result") === "duplicate",
+        `status=${second.status}, dedup=${second.headers.get("x-postel-dedup-result")}`,
       );
     }
   } finally {

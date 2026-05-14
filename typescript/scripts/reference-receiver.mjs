@@ -11,24 +11,32 @@
 //   GET  /.well-known/webhooks-keys        -- JWKS document (when configured)
 //
 // Configuration (env vars):
-//   PORT                 -- listen port (default 8787)
-//   POSTEL_SECRETS       -- comma-separated whsec_/whpk_ secrets (priority-ordered)
-//   POSTEL_JWKS_KEYS     -- JSON-encoded JWKs array for the JWKS endpoint
-//   POSTEL_JWKS_URI      -- when set, verify() uses createKeyset against this URI
-//   POSTEL_DEDUP         -- "true" enables dedup; default off
-//   POSTEL_DEDUP_TTL     -- TTL seconds (default 600)
-//   POSTEL_TOLERANCE     -- timestamp tolerance seconds (default 300)
-//   POSTEL_NOW           -- ISO-8601 baseline; pins the verify clock for
-//                           reproducible vector replay (otherwise wall-clock)
+//   PORT                   -- listen port (default 8787)
+//   POSTEL_SECRETS         -- comma-separated whsec_/whpk_ secrets (priority-ordered)
+//   POSTEL_JWKS_KEYS       -- JSON-encoded JWKs array. Mounted at the well-known
+//                             path AND used as an in-memory keyset for verify
+//                             when the webhook-id carries a kid prefix.
+//   POSTEL_DEDUP           -- "true" enables dedup; default off
+//   POSTEL_DEDUP_TTL       -- TTL seconds (default 600)
+//   POSTEL_DEDUP_PRESEED   -- comma-separated webhook-id prefixes that are
+//                             reported as duplicate without consulting the
+//                             dedup table (default "pre_seen_"; matches the
+//                             compliance runner-receiver convention)
+//   POSTEL_TOLERANCE       -- timestamp tolerance seconds (default 300)
+//   POSTEL_NOW             -- ISO-8601 baseline; pins the verify clock for
+//                             reproducible vector replay (otherwise wall-clock)
 //
-// 4xx responses carry `X-Postel-Verify-Error: <code>` and a JSON body
-// `{ "error_code": "<code>" }`. The compliance runner consumes either form.
+// Verdict signalling (consumed by the compliance runner):
+//   verify success                 -> 200 {"ok":true,…}
+//   dedup duplicate                -> 200 X-Postel-Dedup-Result: duplicate
+//   PostelError (verify failure)   -> 400/4xx X-Postel-Verify-Error: <code>
+//                                     and body {"error_code":"<code>"}
 
 import { createServer } from "node:http";
 
 import {
   PostelError,
-  createKeyset,
+  UnknownKeyId,
   dedup,
   inMemoryDedupAdapter,
   jwksHandler,
@@ -43,14 +51,33 @@ const secrets = (process.env.POSTEL_SECRETS ?? "")
 const jwksKeys = process.env.POSTEL_JWKS_KEYS ? JSON.parse(process.env.POSTEL_JWKS_KEYS) : [];
 const dedupEnabled = process.env.POSTEL_DEDUP === "true";
 const dedupTtlSeconds = Number(process.env.POSTEL_DEDUP_TTL ?? "600");
+const dedupPreseedPrefixes = (process.env.POSTEL_DEDUP_PRESEED ?? "pre_seen_")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 const toleranceSeconds = Number(process.env.POSTEL_TOLERANCE ?? "300");
 const fixedNow = process.env.POSTEL_NOW ? new Date(process.env.POSTEL_NOW) : undefined;
+const nowFn = fixedNow ? () => fixedNow : () => new Date();
 
-const dedupAdapter = inMemoryDedupAdapter();
+const dedupAdapter = inMemoryDedupAdapter({ now: nowFn });
 const jwks = jwksKeys.length > 0 ? jwksHandler({ keys: jwksKeys }) : undefined;
-const keyset = process.env.POSTEL_JWKS_URI
-  ? createKeyset({ jwksUri: process.env.POSTEL_JWKS_URI })
-  : undefined;
+
+function staticKeyset(keys, now) {
+  return {
+    async findByKid(kid) {
+      const entry = keys.find((k) => k.kid === kid);
+      if (!entry) return undefined;
+      if (entry.not_after) {
+        const expiry = Date.parse(entry.not_after);
+        if (!Number.isNaN(expiry) && expiry <= now().getTime()) return undefined;
+      }
+      return entry;
+    },
+    async refresh() {},
+  };
+}
+
+const keyset = jwksKeys.length > 0 ? staticKeyset(jwksKeys, nowFn) : undefined;
 
 function readHeaders(req) {
   const out = {};
@@ -77,6 +104,20 @@ function respondError(res, code, status = 400) {
   respond(res, status, { error_code: code }, { "x-postel-verify-error": code });
 }
 
+function extractKid(webhookId) {
+  if (!webhookId) return undefined;
+  const dot = webhookId.indexOf(".");
+  if (dot <= 0) return undefined;
+  const candidate = webhookId.slice(0, dot);
+  if (!candidate.startsWith("kid_")) return undefined;
+  return candidate;
+}
+
+function isPreSeeded(webhookId) {
+  if (!webhookId) return false;
+  return dedupPreseedPrefixes.some((p) => webhookId.startsWith(p));
+}
+
 async function handleJwks(req, res) {
   if (!jwks) {
     respondError(res, "NOT_CONFIGURED", 404);
@@ -92,24 +133,52 @@ async function handleJwks(req, res) {
 
 async function handleWebhook(req, res) {
   let result;
+  let messageId;
   try {
     const body = await readBody(req);
     const headers = readHeaders(req);
-    const target = keyset && headers["webhook-key-id"] ? keyset : secrets;
-    if (!keyset && secrets.length === 0) {
-      throw new Error("no secrets configured: set POSTEL_SECRETS or POSTEL_JWKS_URI");
+    messageId = headers["webhook-id"];
+
+    const kid = extractKid(messageId);
+    let verifyHeaders = headers;
+    let target;
+    if (kid && keyset) {
+      target = keyset;
+      verifyHeaders = { ...headers, "webhook-key-id": kid };
+    } else if (secrets.length > 0) {
+      target = secrets;
+    } else if (keyset) {
+      throw new UnknownKeyId("no kid prefix on webhook-id and no symmetric secrets configured");
+    } else {
+      throw new Error("reference-receiver: neither POSTEL_SECRETS nor POSTEL_JWKS_KEYS set");
     }
-    result = await verify(body, headers, target, {
+
+    result = await verify(body, verifyHeaders, target, {
       toleranceSeconds,
-      ...(fixedNow ? { now: () => fixedNow } : {}),
+      now: nowFn,
     });
-    if (dedupEnabled) {
-      const dedupResult = await dedup(headers["webhook-id"], {
+
+    if (dedupEnabled && messageId) {
+      if (isPreSeeded(messageId)) {
+        respond(
+          res,
+          200,
+          { ok: true, type: result.event.type, duplicate: true },
+          { "x-postel-dedup-result": "duplicate" },
+        );
+        return;
+      }
+      const dedupResult = await dedup(messageId, {
         ttl: dedupTtlSeconds,
         adapter: dedupAdapter,
       });
       if (dedupResult.duplicate) {
-        respondError(res, "DUPLICATE", 409);
+        respond(
+          res,
+          200,
+          { ok: true, type: result.event.type, duplicate: true },
+          { "x-postel-dedup-result": "duplicate" },
+        );
         return;
       }
     }
