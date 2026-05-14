@@ -1,0 +1,25 @@
+id: receiver/timestamp-window/within-default-accept
+requirement:
+  capability: receiver
+  title: Timestamp window enforcement
+description: |
+  webhook-timestamp resolved to --now exactly; the request lands well
+  inside the receiver's default 5-minute window. The signature is
+  valid (signed with hmac_primary), so the receiver returns accept.
+  Anchors the timestamp dimension of the verify pipeline: with this
+  vector accepting, any sibling timestamp-out-of-window vector that
+  rejects has its rejection unambiguously attributable to the window
+  check rather than to signature or header issues.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_tswindow_within
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: accept

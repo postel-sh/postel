@@ -1,0 +1,26 @@
+id: receiver/timestamp-window/outside-default-reject
+requirement:
+  capability: receiver
+  title: Timestamp window enforcement
+description: |
+  webhook-timestamp 10 minutes in the past relative to --now; outside
+  the receiver's default 5-minute window. The signature is valid for
+  the resolved timestamp+body, so the rejection cannot be due to
+  signature mismatch — it is the window check firing, with verdict
+  TIMESTAMP_TOO_OLD. The companion vector
+  signature-v1/past-timestamp covers the same code path bundled with
+  signing-matrix concerns; this vector isolates the window check.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_tswindow_outside
+    webhook-timestamp: "{{now-10m}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: reject
+  error_code: TIMESTAMP_TOO_OLD
