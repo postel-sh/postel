@@ -1,0 +1,18 @@
+id: signature-v1a/valid
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: Ed25519 v1a request, signed with the receiver's known asymmetric key inside the timestamp window — the receiver accepts and verify returns the parsed event. Mirrors signature-v1/valid against the asymmetric scheme.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1a_valid
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: ed25519_a.yaml
+signature_mode: computed
+expected:
+  outcome: accept

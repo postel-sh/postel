@@ -1,0 +1,25 @@
+id: signature-v1a/replay-outside-window
+requirement:
+  capability: receiver
+  title: Replay-attack window enforcement
+description: |
+  Asymmetric replay-outside-window: the same webhook-id replayed after
+  the timestamp window. Mechanically a stale-timestamp Ed25519 request;
+  the receiver's timestamp window rejects with TIMESTAMP_TOO_OLD before
+  dedup is consulted, so verdict is identical to past-timestamp
+  regardless of whether the id has been seen. Mirror of
+  signature-v1/replay-outside-window for the asymmetric scheme.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1a_replay_outside
+    webhook-timestamp: "{{now-10m}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: ed25519_a.yaml
+signature_mode: computed
+expected:
+  outcome: reject
+  error_code: TIMESTAMP_TOO_OLD

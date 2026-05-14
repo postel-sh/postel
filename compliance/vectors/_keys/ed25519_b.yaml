@@ -1,0 +1,10 @@
+id: ed25519_b
+algorithm: ed25519
+key_material: whsk_EhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhI=
+public_key: whpk_IEBA42TBDyvsnB/lAKHNTCR8idZQoB7X6CyrqGeHfCE=
+description: >-
+  Second deterministic Ed25519 keypair used by signature-v1a/wrong-key
+  (sign with a key the receiver does not trust). Seed: 32 bytes of
+  0x12; public_key is the Ed25519-derived public component for that
+  seed. for-test-only — never reference this material from any
+  production code path.

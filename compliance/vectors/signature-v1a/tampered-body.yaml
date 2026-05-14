@@ -1,0 +1,25 @@
+id: signature-v1a/tampered-body
+requirement:
+  capability: receiver
+  title: Verify returns parsed event or structured error
+description: |
+  Body sent over the wire differs from the body the Ed25519 signature
+  was computed for. The receiver verifies the static signature against
+  the observed body, fails, and rejects with SIGNATURE_INVALID. Pin
+  --now to 2026-01-01T00:00:00Z in CI for reproducible verdicts
+  (signature_mode=static implies a literal timestamp). The static
+  signature value is 64 zero bytes — well-formed length, non-matching
+  content.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1a_tamper
+    webhook-timestamp: "1767225600"
+    webhook-signature: v1a,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJ0YW1wZXJlZCI6dHJ1ZX19
+secrets: []
+signature_mode: static
+expected:
+  outcome: reject
+  error_code: SIGNATURE_INVALID

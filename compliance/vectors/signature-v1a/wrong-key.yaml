@@ -1,0 +1,24 @@
+id: signature-v1a/wrong-key
+requirement:
+  capability: receiver
+  title: Verify returns parsed event or structured error
+description: |
+  Request is signed with ed25519_b — a keypair the receiver does NOT
+  trust (its configured public key is ed25519_a's whpk_). The
+  receiver verifies against ed25519_a, finds the signature does not
+  match, and rejects with SIGNATURE_INVALID. Exercises the computed-
+  signature path against a non-trusted asymmetric key fixture.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1a_wrongkey
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: foreign
+    fixture: ed25519_b.yaml
+signature_mode: computed
+expected:
+  outcome: reject
+  error_code: SIGNATURE_INVALID
