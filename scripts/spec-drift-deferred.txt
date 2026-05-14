@@ -1,0 +1,181 @@
+# scripts/spec-drift-deferred.txt
+#
+# Requirements deferred to a later release. The companion script
+# scripts/check-spec-drift.mjs exempts these from its drift check until
+# they land tests in `typescript/packages/`. The file is auditable and
+# grep-able; an entry naming a requirement that no longer exists in any
+# `openspec/specs/<cap>/spec.md` is itself a drift failure.
+#
+# Lines starting with `#` are comments. Blank lines are ignored. Each
+# remaining line is the verbatim title from a `### Requirement:` block.
+#
+# Reduction discipline: when a PR adds a test that covers a deferred
+# requirement, REMOVE the corresponding line in the same PR.
+#
+# Out-of-scope categories for the v0.1.0 TS edge receiver track:
+#   - sender / outbox / retry / fanout / replay / endpoint state machine
+#   - storage adapters and host-transaction passthrough
+#   - multi-tenancy, observability, filtering
+#   - compliance suite internals (Track A owns the runner)
+#   - distribution lifecycle policies (SemVer, deprecation, migrations)
+#   - api-surface-typescript surface beyond `@postel/edge`
+#
+# Per `openspec/specs/compliance/spec.md` v0.1.0 scope, the in-scope set
+# is ~17 receiver / key-management / standard-webhooks-compliance items.
+# Everything else is listed below.
+
+# api-surface-typescript
+Public function signatures match Standard Webhooks event shape
+Structured error classes
+No string matching on errors
+Effect-TS layer
+createPostel factory returns the library instance
+
+# compliance — runner / suite infra (Track A owns these)
+Suite identity — vendor-neutral oracle for CONTRACT-level behavior
+Two-layer architecture — vectors + runner
+Vector file schema
+CLI surface
+Test categorization by capability and sub-category
+Lockstep versioning with the `@postel/*` release train
+Structured changelog at compliance/CHANGELOG.md
+v0.1.0 initial test scope — receiver-side wire-format and signing behavior
+v0.1.0 explicit out-of-scope — sender-side behavior
+Test ↔ requirement traceability is enforced
+
+# distribution-packaging-typescript — lifecycle / policy / DB-bound
+Package map
+Core bundle budget
+Tree-shakeability
+ESM and CJS dual export, TypeScript types
+Published unminified for tooling readability
+Strict SemVer from 1.0
+Shared major version across packages
+DB schema version embedded in metadata table
+Forward-only migrations supporting two majors
+Six-month deprecation period
+Wire format spec versioning
+Spec-test traceability is enforced in CI
+
+# endpoint-management — sender-side
+Endpoint CRUD
+Endpoint deletion semantics
+Endpoint auto-disable
+Endpoint state machine with audit trail
+URL validation at create time
+Per-endpoint metadata field
+Per-endpoint signing config
+Per-endpoint custom HTTP headers
+Per-endpoint queue depth cap
+
+# filtering-transformation — sender-side
+Type filter with glob support
+Channel filter
+Predicate filter
+Transform produces body to send
+Filter and transform errors fail closed
+
+# key-management — generation / rotation / KMS / ephemeral
+Symmetric secret generation
+Asymmetric keypair generation
+Endpoint holds a priority-ordered secret array
+Rotation API with overlap window
+Encryption at rest with KMS adapter
+Ephemeral keys via auto-rotation
+
+# multi-tenancy — sender / dispatch side
+Tenancy field
+Naming convention for tenant scoping
+Tenant-scoped persistence
+Tenant-scoped row-level access in queries
+Per-tenant rate limits
+Per-tenant circuit breaker isolation
+Tenant deletion cascades
+
+# observability — sender / dispatch side
+OpenTelemetry spans on every operation
+Prometheus metrics
+Structured JSON logs with trace correlation
+Health check endpoint
+Admin HTTP handlers
+Admin authorization predicate
+Replay UI handler with dry run
+
+# receiver — perf benchmark (deferred until perf harness lands)
+Verify latency budgets
+
+# receiver / key-management / standard-webhooks-compliance — staged in
+# the @postel/edge v0.1.0 PR series. Each line moves out as the matching
+# PR lands tests.
+#   PR 3 (Hono adapter): Framework adapters preserve raw bytes
+#   PR 4 (JWKS consumer + handler): JWKS consumer, JWKS endpoint mounter,
+#         JWKS publishes only public keys, JWKS discovery extension
+#   PR 5 (dedup helper): Idempotency dedup helper
+Framework adapters preserve raw bytes
+Idempotency dedup helper
+JWKS consumer
+JWKS endpoint mounter
+JWKS publishes only public keys
+JWKS discovery extension
+
+# replay-reconciliation — operator-facing
+Replay a single message
+Replay a range
+Replay by predicate
+Replay safety contract
+Replay attempts tagged for audit
+Replay rate limiting
+Reconciliation API
+Default replay throughput
+
+# retry-policy — sender-side
+Default retry schedule with jitter
+Programmable per-endpoint retry policy
+Status-code-aware retry
+Per-endpoint and overall delivery deadlines
+Dead-letter event
+Per-endpoint circuit breaker
+At-least-once delivery guarantee
+Idempotent send by client-supplied key
+Per-message TTL
+
+# sender — sender-side
+Send is non-blocking and returns a MessageId
+Send participates in the host transaction (outbox pattern)
+Send latency budget
+Late binding at dispatch time
+Late-binding fanout
+SSRF protection on outbound delivery
+DNS rebinding protection
+TLS verification by default
+
+# standard-webhooks-compliance — non-v0.1.0 extensions / wrap
+Wraps the official signing library
+Versioning extension via webhook-version header
+IETF-alignment compatibility mode on the receiver
+Compliance test suite
+
+# storage-layer — adapter matrix / outbox
+BYO storage interface
+Adapter matrix with three categories
+Adapter mode for external job queues
+All writes accept an optional transaction parameter
+Host transaction passthrough
+Schema is a fixed set of canonical tables
+Postgres support across the adapter matrix
+SQLite support across the adapter matrix
+Optional storage capabilities
+Helpers package for adapter authors
+Workers drain the outbox safely under concurrency
+Worker lease lifecycle
+Workers run in-process by default
+Worker fairness across tenants
+Worker throughput target
+Outbox poll latency
+Graceful shutdown
+Concurrency model [PORT-SPECIFIC]
+HTTP client implementation [PORT-SPECIFIC]
+Memory and cache strategies [PORT-SPECIFIC]
+Migrations runnable from CLI and programmatic API
+Configurable retention with automatic pruning
+Attempt status enum casing
