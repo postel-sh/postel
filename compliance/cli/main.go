@@ -1,0 +1,79 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"time"
+)
+
+type cliOpts struct {
+	target     string
+	format     string
+	now        time.Time
+	vectorsDir string
+}
+
+func parseFlags(progName string, args []string, errOut *os.File) (*cliOpts, error) {
+	fs := flag.NewFlagSet(progName, flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	fs.Usage = func() {
+		fmt.Fprintf(errOut, `Usage: %s --target <url> [--format <text|json|tap|junit>] [--now <ISO8601>] [--vectors <dir>]
+
+Drives the @postel/compliance suite against an HTTP receiver and reports
+per-test verdicts. The CLI surface is fixed cross-port — see
+openspec/specs/compliance/spec.md "CLI surface" requirement.
+
+`, progName)
+		fs.PrintDefaults()
+	}
+	target := fs.String("target", "", "HTTP receiver URL the suite drives requests against (required)")
+	format := fs.String("format", "text", "Output format: text|json|tap|junit")
+	nowStr := fs.String("now", "", "Baseline ISO-8601 timestamp for {{now±duration}} resolution (default: wall-clock at run start)")
+	vectorsDir := fs.String("vectors", "./vectors", "Directory containing vector YAML files (relative to current working directory)")
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	if *target == "" {
+		fs.Usage()
+		return nil, fmt.Errorf("--target is required")
+	}
+	switch *format {
+	case "text", "json", "tap", "junit":
+	default:
+		return nil, fmt.Errorf("invalid --format %q (expected text|json|tap|junit)", *format)
+	}
+	var now time.Time
+	if *nowStr != "" {
+		parsed, err := time.Parse(time.RFC3339, *nowStr)
+		if err != nil {
+			return nil, fmt.Errorf("--now: %w", err)
+		}
+		now = parsed.UTC()
+	} else {
+		now = time.Now().UTC()
+	}
+	return &cliOpts{
+		target:     *target,
+		format:     *format,
+		now:        now,
+		vectorsDir: *vectorsDir,
+	}, nil
+}
+
+func main() {
+	opts, err := parseFlags("compliance", os.Args[1:], os.Stderr)
+	if err != nil {
+		if err.Error() == "flag: help requested" {
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(2)
+	}
+	code, err := run(opts, os.Stdout)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(2)
+	}
+	os.Exit(code)
+}
