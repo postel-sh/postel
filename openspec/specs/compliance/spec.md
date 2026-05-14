@@ -2,9 +2,9 @@
 
 ## Purpose
 
-The `@postel/compliance` test suite as a tool — its packaging (TS runner `@postel/compliance` + language-agnostic JSON vectors under `compliance/vectors/`), CLI surface, test taxonomy, v0.1.0 scope, lockstep versioning policy with the rest of the `@postel/*` release train, sender-side deferral, and changelog discipline. The behavioral oracle that gates every port's claim of conformance — what every port (TypeScript today; Go / Python / Rust tomorrow) MUST pass at the release version it ships.
+The `@postel/compliance` test suite as a tool — its architecture (language-agnostic JSON test vectors + a runner whose implementation language is open, both housed at top-level `compliance/`), CLI surface, test taxonomy, vector file schema, v0.1.0 contract set, lockstep versioning with the rest of the `@postel/*` release train, sender-side deferral, and changelog discipline. The behavioral oracle that gates every port's claim of conformance — what every port (TypeScript today; Go / Python / Rust tomorrow) MUST pass at the release version it ships.
 
-Distinct from [`standard-webhooks-compliance`](../standard-webhooks-compliance/spec.md), which owns the wire-format contract this suite enforces. Where `standard-webhooks-compliance` says *what* a conformant wire format is, this capability says *how* we know a port honors it.
+Distinct from [`standard-webhooks-compliance`](../standard-webhooks-compliance/spec.md), which owns the wire-format contract this suite enforces. Where `standard-webhooks-compliance` says *what* a conformant wire format is, this capability says *how* we know a port honors it. The suite identity `@postel/compliance` is a brand for the suite, not a claim about its implementation language or distribution channel — both of which are open implementation choices.
 ## Requirements
 ### Requirement: Suite identity — vendor-neutral oracle for CONTRACT-level behavior
 
@@ -12,9 +12,9 @@ The `@postel/compliance` suite SHALL be the executable boundary of CONTRACT (per
 
 The wire-format contract the suite enforces is owned by [`standard-webhooks-compliance`](../standard-webhooks-compliance/spec.md). This capability owns the **tool** that enforces it.
 
-#### Scenario: Run against the TS port
+#### Scenario: Run against the first-party reference port
 
-- **WHEN** CI runs `@postel/compliance` against a receiver built with `@postel/edge`
+- **WHEN** CI runs `@postel/compliance` against the reference receiver (the TS edge build today; future ports' receivers tomorrow)
 - **THEN** the suite reports 100% pass on the v0.1.0 scope
 
 #### Scenario: Run against a third-party receiver
@@ -28,20 +28,22 @@ The wire-format contract the suite enforces is owned by [`standard-webhooks-comp
 - **THEN** all CONTRACT-level scenarios execute and report results
 - **AND** no test requires access to the receiver's source code, storage, or process
 
-### Requirement: Hybrid architecture — language-agnostic vectors + per-language runner
+### Requirement: Two-layer architecture — vectors + runner
 
-The suite SHALL be split into two artifacts:
+The suite SHALL be split into two layers, both housed under the top-level `compliance/` directory:
 
-- **Test vectors**: language-agnostic JSON files under `compliance/vectors/`. Each vector encodes inputs (keys, signatures, timestamps, payloads, headers), the requirement it covers, and the expected receiver outcome (`accept` | `reject:<error-code>`).
-- **Runner**: per-language package that consumes the vectors and drives a target HTTP receiver. The TypeScript runner ships as `@postel/compliance` (published from `typescript/packages/compliance/`).
+- **Test vectors**: language-agnostic JSON files under `compliance/vectors/`. Each vector encodes inputs (keys, signatures, timestamps, payloads, headers), the requirement it covers, and the expected receiver outcome (`accept` | `reject:<error-code>`). The vector format is defined by the "Vector file schema" requirement below.
+- **Runner**: source under `compliance/<runner>/` (the directory name is the runner's chosen identifier, e.g., `compliance/cli/`). The runner reads the vectors and drives them at a target HTTP receiver. The runner's **implementation language is open** — it MAY be TypeScript, Go, Rust, Python, or any other; the choice is recorded by the change that introduces the first runner. No part of this spec assumes a particular language.
 
-Future Go / Python / Rust runners MUST consume the same `compliance/vectors/` JSON without forking the corpus. A vector's behavior is identical regardless of which runner exercises it.
+Vectors are the cross-port asset; the runner is the executable layer. If multiple runner implementations exist at any point in the project's life, they MUST produce identical verdicts on the same vector against the same target — divergence is a runner bug, not a vector ambiguity.
 
-#### Scenario: Vectors are runner-agnostic
+**Conformance**: the **vector format** (per the schema requirement) and the **target-driving semantics** are CONTRACT (cross-port). The **runner's implementation language**, **CLI command name**, **distribution channel** (npm package, container image, source build, binary release), and **internal architecture** are PORT-SPECIFIC.
 
-- **WHEN** the same JSON vector is exercised by the TS runner and by a hypothetical Go runner against the same target
-- **THEN** both runners produce the same pass/fail verdict
-- **AND** any divergence is a runner bug, not a vector ambiguity
+#### Scenario: Vectors are language-agnostic
+
+- **WHEN** the same JSON vector is exercised by any conformant runner against the same target with the same `--now` baseline
+- **THEN** the verdict is identical
+- **AND** any divergence between runners is a runner bug, not a vector ambiguity
 
 #### Scenario: Each vector names its requirement
 
@@ -49,22 +51,81 @@ Future Go / Python / Rust runners MUST consume the same `compliance/vectors/` JS
 - **THEN** the vector includes a `requirement` field naming the capability and the `### Requirement: <title>` it covers verbatim
 - **AND** removing the named requirement from the capability spec means the vector is orphaned and MUST be removed in the same change
 
-#### Scenario: Vector schema is versioned
+#### Scenario: Runner source lives at top-level compliance/
 
-- **WHEN** the vector JSON schema itself changes (field added, field removed, semantic shift)
-- **THEN** the change is recorded in `compliance/CHANGELOG.md`
-- **AND** every runner MUST handle vector-schema MINOR bumps backward-compatibly
+- **WHEN** a contributor adds the first (or any subsequent) runner implementation
+- **THEN** the source lives under `compliance/<runner-name>/`, not under any language-specific subtree (e.g., not `typescript/packages/compliance/`)
+- **AND** the choice of `<runner-name>` and implementation language is recorded in the PR that introduces it
+
+### Requirement: Vector file schema
+
+Every test vector under `compliance/vectors/` SHALL be a JSON file conforming to a shared schema. The schema itself is CONTRACT — every runner MUST agree on the format so vectors are portable across runners without translation.
+
+A vector file SHALL declare the following fields:
+
+- `id` — stable test identifier of the form `<category>/<vector-id>` (e.g., `signature-v1/tampered-body`). Matches the test path established in the "Test categorization" requirement.
+- `requirement` — the CONTRACT requirement this vector covers, as `{ capability, title }`. Both fields verbatim-match a `### Requirement: <title>` block in `openspec/specs/<capability>/spec.md`.
+- `description` — human-readable one-line summary.
+- `input` — the HTTP request the runner sends to the target. An object with `method`, `url` (path), `headers` (string map), and `body_b64` (base64-encoded raw request bytes — preserves byte-exactness across runners).
+- `secrets` — array of test secret/key references used by the vector. Each entry is `{ id, fixture }` where `fixture` names a JSON file under `compliance/vectors/_keys/`.
+- `signature_mode` — either `"static"` (the signature in the input header is pre-computed at vector-authoring time and frozen) or `"computed"` (the runner computes the signature at execution time, after resolving any time templates, using the named secret fixture).
+- `expected` — the verdict. Either `{ outcome: "accept" }` or `{ outcome: "reject", error_code: "<code>" }` where `<code>` matches the structured error vocabulary defined by the `receiver` capability spec (`SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `UNKNOWN_KEY_ID`, `RAW_BYTES_MISMATCH_DETECTED`).
+
+**Time templating**: any string field MAY contain the literal token `{{now}}`, `{{now-<duration>}}`, or `{{now+<duration>}}` (durations expressed as `<integer><s|m|h>`, e.g., `{{now-10m}}`). Runners SHALL resolve these tokens against a baseline `now` supplied via `--now <ISO8601>` (default: process wall-clock at run start). Pinning `--now` in CI makes time-sensitive vectors fully reproducible.
+
+**Signature material**: vectors with `signature_mode: "static"` carry the pre-computed signature in `input.headers["webhook-signature"]` as-is; the timestamp in `input.headers["webhook-timestamp"]` is a literal, not a template. Vectors with `signature_mode: "computed"` MAY use time templates; the runner resolves the templates, then computes the HMAC or Ed25519 signature using the referenced secret fixture, then injects the result into the outgoing request.
+
+**Test key fixtures**: a fixed set of test keys lives under `compliance/vectors/_keys/` as JSON files. Each fixture declares `{ id, algorithm, key_material }` with `algorithm` in `{ "hmac-sha256", "ed25519" }`. Real ports SHALL NEVER reference these fixtures in production code paths — they are test-only material with documented "for-test-only" provenance.
+
+**Schema evolution**: the vector file schema itself is governed by the lockstep versioning rule. Adding or modifying a schema field is a CONTRACT change recorded in `compliance/CHANGELOG.md` against the release version that ships it; breaking schema changes (removing a required field, semantic shift) gate on a MAJOR bump.
+
+#### Scenario: Vector cites a valid requirement
+
+- **WHEN** a vector's `requirement.title` does not match any `### Requirement:` block in `openspec/specs/<requirement.capability>/spec.md`
+- **THEN** the suite's CI check fails with a clear message naming the orphan vector
+
+#### Scenario: Static-signature vector is byte-stable
+
+- **WHEN** the runner executes a `signature_mode: "static"` vector twice with the same `--now`
+- **THEN** the produced HTTP request is byte-identical between runs
+
+#### Scenario: Time templates resolve against --now
+
+- **WHEN** the runner is invoked with `--now 2026-01-01T00:00:00Z` against a vector containing `{{now-5m}}`
+- **THEN** the resolved value is `2025-12-31T23:55:00Z` (ISO-8601) or the equivalent Unix-epoch seconds where the spec field calls for a Unix timestamp
+- **AND** the runner uses the resolved value when computing any `signature_mode: "computed"` signature
+
+#### Scenario: Test keys are isolated from production keys
+
+- **WHEN** a contributor inspects `compliance/vectors/_keys/`
+- **THEN** the directory contains only test fixtures with documented "for-test-only" key material
+- **AND** real ports MUST NOT reference these fixtures in production code paths
+
+#### Scenario: Schema field addition
+
+- **WHEN** a new field is added to the vector schema in a non-breaking way (existing vectors remain valid)
+- **THEN** the change is recorded in `compliance/CHANGELOG.md` under the release version that ships it
+- **AND** runners SHALL ignore fields they don't recognize (forward compatibility)
+
+#### Scenario: Schema breaking change
+
+- **WHEN** a schema field is removed, renamed, or its semantics change incompatibly
+- **THEN** the change lands in a MAJOR release alongside every vector updated to the new shape
+- **AND** the changelog records the migration explicitly
 
 ### Requirement: CLI surface
 
-The TS runner SHALL expose a CLI invocable as `npx @postel/compliance --target <url> [--format json|tap|junit]`. The CLI MUST exit non-zero if any test fails against the target.
+The runner SHALL expose a CLI accepting at minimum the following flag surface:
 
 - `--target <url>` — REQUIRED. The HTTP receiver URL the suite drives requests against.
-- `--format <json|tap|junit>` — OPTIONAL. Output format. Default is human-readable text. JSON output is machine-readable and used by port CIs.
+- `--format <json|tap|junit>` — OPTIONAL. Output format. Default is human-readable text. JSON output is machine-readable and is what port CIs and the suite's own test-discovery tooling consume.
+- `--now <ISO8601>` — OPTIONAL. Baseline timestamp for resolving `{{now±<duration>}}` templates in vectors. Default: process wall-clock at run start.
 
-Other ports MAY expose equivalent CLIs (`go run ...`, `python -m ...`, `cargo run ...`); the flag surface above is the cross-port shape. **[PORT-SPECIFIC]** applies to the invocation mechanism (`npx` vs `go run` vs `python -m`) and to language-idiomatic output formatting beyond the three required formats.
+The CLI MUST exit non-zero if any test fails against the target.
 
-**Conformance**: the **flag set + semantics + exit-code rules** are CONTRACT (cross-port). The **invocation mechanism** and **language-idiomatic extras** are PORT-SPECIFIC.
+The **invocation mechanism** is intentionally unspecified — it depends on the runner's implementation language (`./compliance --target …`, `npx @postel/compliance --target …`, `go run ./compliance --target …`, `python -m compliance --target …`, container, binary, etc.). What matters cross-port is the flag set, the exit-code semantics, and the output formats.
+
+**Conformance**: the **flag set + semantics + exit-code rules + output formats** are CONTRACT (cross-port). The **invocation mechanism**, **CLI command name**, and **language-idiomatic extras** are PORT-SPECIFIC.
 
 #### Scenario: Test failure exits non-zero
 
@@ -109,23 +170,25 @@ This path is the test's stable identifier across versions and is what changelogs
 - **THEN** only matching tests run
 - **AND** the exit code reflects only the matched tests' verdicts
 
-### Requirement: Lockstep versioning across `@postel/*` packages
+### Requirement: Lockstep versioning with the `@postel/*` release train
 
-`@postel/compliance` SHALL share `MAJOR.MINOR` with every other `@postel/*` package — the suite is one member of the shared `@postel/*` release train per [VISION.md §8](../../../VISION.md). All packages release together at each MINOR cut; PATCH releases MAY ship independently per package (bugfix discipline) but the suite version a port claims conformance against is its own MINOR.
+The compliance suite (vectors + runner) SHALL share `MAJOR.MINOR` with every `@postel/*` port package, per [VISION.md §8](../../../VISION.md)'s shared-release-train rule. The suite's distribution channel (npm package, container image, source build, binary release) is open and a PORT-SPECIFIC choice; the version coordination is CONTRACT regardless of channel.
 
-A `@postel/*` port version `X.Y.Z` claims conformance by passing `@postel/compliance@X.Y.*` end-to-end. There is no ADVISORY phase, no runway window, and no independent suite versioning: the test corpus at version `X.Y` is what every conformant port at version `X.Y` MUST satisfy. New tests land in the MINOR release where they first appear and are required from that release on — no opt-in or grace period.
+All `@postel/*` ports and the suite release together at each MINOR cut. PATCH releases MAY ship independently per artifact (bugfix discipline), but the suite version a port claims conformance against is its own MINOR.
+
+A port version `X.Y.Z` claims conformance by passing the compliance suite at version `X.Y.*` end-to-end. There is no ADVISORY phase, no runway window, and no independent suite versioning: the test corpus at version `X.Y` is what every conformant port at version `X.Y` MUST satisfy. New tests land in the MINOR release where they first appear and are required from that release on — no opt-in or grace period.
 
 Breaking modifications, test removals, and breaking structural changes follow the same MAJOR-bump rule that governs every `@postel/*` package — there is no separate suite-lifecycle vocabulary. Pre-1.0 (`0.x`) lives under the experimental-semantics regime per VISION §8: MINORs MAY break ports, and the OpenSpec change history is the canonical record of what changed.
 
 The runway-based evolution model previously sketched in [ADR 0009](../../../decisions/0009-compliance-suite-evolution.md) is **Deferred**: revisit once a second independently-maintained port (likely the Go receiver per [ADR 0005](../../../decisions/0005-polyglot-staged-rollout.md)) makes graduated adoption operationally valuable. Until then, lockstep is the simpler, sufficient model.
 
-**Conformance**: the lockstep coordination and the `X.Y` version-match rule are CONTRACT (cross-port). The CI mechanism each port uses to verify it passes (harness language, scheduling, output parsing) is PORT-SPECIFIC.
+**Conformance**: the lockstep coordination and the `X.Y` version-match rule are CONTRACT (cross-port). The CI mechanism each port uses to verify it passes (harness language, scheduling, output parsing) and the suite's distribution channel are PORT-SPECIFIC.
 
 #### Scenario: Suite and ports share `X.Y`
 
-- **WHEN** `@postel/compliance` is published at version `X.Y.0`
-- **THEN** every other `@postel/*` package released alongside it also takes version `X.Y.0`
-- **AND** each port version `X.Y.0` passes `@postel/compliance@X.Y.0` end-to-end before release
+- **WHEN** the compliance suite is released at version `X.Y.0`
+- **THEN** every `@postel/*` port package released alongside it also takes version `X.Y.0`
+- **AND** each port version `X.Y.0` passes the compliance suite at `X.Y.0` end-to-end before release
 
 #### Scenario: New tests are required at the version they ship
 
@@ -137,7 +200,7 @@ The runway-based evolution model previously sketched in [ADR 0009](../../../deci
 
 - **WHEN** a test's expected behavior changes in a way incompatible with the prior version (a port passing the old test would now fail the new)
 - **THEN** the change lands in a MAJOR release alongside the matching capability-spec update
-- **AND** every `@postel/*` package bumps MAJOR together
+- **AND** every `@postel/*` package and the suite bump MAJOR together
 
 #### Scenario: Test removal in MAJOR
 
@@ -150,6 +213,12 @@ The runway-based evolution model previously sketched in [ADR 0009](../../../deci
 - **WHEN** a `0.x` MINOR introduces a behavior-changing test under the experimental-semantics regime
 - **THEN** ports adapting to the new MINOR MAY need to ship code changes alongside the version bump
 - **AND** this is documented in the OpenSpec change that authored the test, not in a separate runway timeline
+
+#### Scenario: Distribution channel is open
+
+- **WHEN** the suite is consumed by a port's CI
+- **THEN** the consumption mechanism (npm install, container pull, binary download, repo checkout at a tagged commit) is the port's choice
+- **AND** what matters is the suite version actually exercised, not how it was obtained
 
 ### Requirement: Structured changelog at compliance/CHANGELOG.md
 
@@ -174,7 +243,29 @@ This changelog is the planning surface port maintainers consult before bumping t
 
 ### Requirement: v0.1.0 initial test scope — receiver-side wire-format and signing behavior
 
-The v0.1.0 corpus SHALL cover the following test vectors. Each vector exercises an externally-observable behavior derived from existing CONTRACT requirements in `standard-webhooks-compliance`, `receiver`, and `key-management`. The list below is exhaustive for the v0.1.0 set; vectors not listed are out-of-scope for v0.1.0 and land in subsequent MINOR (or MAJOR) releases under the lockstep model.
+The v0.1.0 corpus SHALL cover the CONTRACT requirements enumerated below. The vector list that follows the table is the implementation-level expansion (~33 vectors across 8 sub-categories); the **contracts are the authoritative scope**, the vectors are how the contracts are exercised.
+
+**v0.1.0 contract set** (11 CONTRACT requirements):
+
+| Capability | Requirement |
+|---|---|
+| `standard-webhooks-compliance` | Compliant headers, signatures, payload structure, and prefixes by default |
+| `standard-webhooks-compliance` | JWKS discovery extension |
+| `receiver` | Verify returns parsed event or structured error |
+| `receiver` | Framework adapters preserve raw bytes |
+| `receiver` | Multi-secret window |
+| `receiver` | Timestamp window enforcement |
+| `receiver` | JWKS consumer |
+| `receiver` | Replay-attack window enforcement |
+| `receiver` | Idempotency dedup helper *(HTTP-observable scenarios only; the "Redis is opt-in only" scenario is a packaging assertion, structurally untestable by the suite)* |
+| `key-management` | JWKS endpoint mounter |
+| `key-management` | JWKS publishes only public keys |
+
+**Structurally untestable through the suite** (CONTRACT but the suite is not the right gate; gated by other CI checks): `receiver` Edge bundle size budget (bundle-size CI), `receiver` Edge runtime portability (CI deploy test), `receiver` Constant-time signature comparison (timing analysis), `receiver` Verify latency budgets (perf benchmark harness), `receiver` No payload contents in logs (internal observable), `receiver` Test fixtures for signed payloads (library API surface), and all library-API key-management items (symmetric/asymmetric generation, encryption at rest, ephemeral-key auto-rotation API surface, …). These never enter the suite's scope and SHALL be flagged as such in `compliance/CHANGELOG.md` for `0.1.0`.
+
+**Deferred to later MINOR / MAJOR releases**: all sender-side capabilities (per the next requirement), `standard-webhooks-compliance` Wraps the official signing library (upstream-vector interop), `standard-webhooks-compliance` Versioning extension (`webhook-version` header), `standard-webhooks-compliance` IETF-alignment compatibility mode, `key-management` Ephemeral keys via auto-rotation full coverage, and the suite-untestable behaviors of `endpoint-management`, `multi-tenancy`, `observability`, `replay-reconciliation`, `retry-policy`, `storage-layer` worker lease, and `filtering-transformation`.
+
+**v0.1.0 vector enumeration** — the test files that implement the contract set. Vectors not listed are out-of-scope for v0.1.0 and land in subsequent MINOR (or MAJOR) releases under the lockstep model.
 
 **Wire-format header conformance** (covers `standard-webhooks-compliance` headers requirement):
 - `wire-format/headers/all-present-accept` — request with `webhook-id`, `webhook-timestamp`, `webhook-signature` is accepted.
@@ -213,10 +304,17 @@ The v0.1.0 corpus SHALL cover the following test vectors. Each vector exercises 
 **Dedup atomicity** (covers `receiver` `Idempotency dedup helper` concurrent-call scenario):
 - `receiver/dedup/first-receipt`, `receiver/dedup/duplicate-receipt`, `receiver/dedup/concurrent-atomicity` — under concurrent calls with the same id, exactly one succeeds as non-duplicate.
 
-#### Scenario: All v0.1.0 vectors enumerated
+#### Scenario: All v0.1.0 contracts and vectors enumerated
 
-- **WHEN** the CLI is invoked with `--format json` against `@postel/compliance@0.1.0`
-- **THEN** the output's test set matches the list above, no more and no less
+- **WHEN** the CLI is invoked with `--format json` and the suite is at version `0.1.x`
+- **THEN** the output's test set matches the vector enumeration above (~33 vectors), no more and no less
+- **AND** the union of the vectors' `requirement` fields equals the 11 CONTRACT requirements in the contract-set table above
+
+#### Scenario: v0.1.0 contract set matches the changelog
+
+- **WHEN** a contributor reads `compliance/CHANGELOG.md` for `0.1.0`
+- **THEN** the entry lists the same 11 CONTRACT requirements as the table in this spec, the same vector enumeration, and the same structurally-untestable + deferred lists
+- **AND** divergence between the spec and the changelog is a bug to fix before release
 
 #### Scenario: Target without dedup fails v0.1.0
 

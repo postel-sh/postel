@@ -29,8 +29,9 @@ The library SHALL be distributed as the following npm packages, grouped by purpo
 - `@postel/admin` — framework-agnostic admin HTTP handler builder.
 - `@postel/effect` — Effect-TS layer over the core API.
 - `@postel/test` — test fixtures + signature generators + mock receivers.
-- `@postel/compliance` — Standard Webhooks compliance test suite (CLI).
 - `@postel/cli` — `postel` CLI binary (migrate, sign, verify, replay, simulate).
+
+The `@postel/compliance` suite is **not part of this list**: per the `compliance` capability spec, the suite's implementation language and distribution channel are open. If a future change implements the runner as a TypeScript npm package, it will be added here at that point; until then, the suite's source lives at top-level `compliance/` and its distribution mechanism is undecided.
 
 Each package MUST have a single, documented purpose declared in its `package.json` `description` field (≤ 120 chars).
 
@@ -88,7 +89,7 @@ Packages SHALL be published unminified (the consumer's bundler is responsible fo
 
 ### Requirement: Strict SemVer from 1.0
 
-From 1.0 onward, all `@postel/*` packages SHALL follow strict SemVer: no breaking changes in minor or patch releases. **Before 1.0 (the `0.x` line), breaking changes are explicitly allowed across minor versions.** Library consumers SHOULD NOT pin to `^0.x` ranges without expecting churn; pin to a specific minor (e.g., `~0.5.0` or `0.5.x`) during the experimental phase. The OpenSpec change history is the canonical record of what changed and when. Compliance-suite-version coordination during `0.x` follows the runway model sketched in [ADR 0009](../../../decisions/0009-compliance-suite-evolution.md) (Proposed).
+From 1.0 onward, all `@postel/*` packages SHALL follow strict SemVer: no breaking changes in minor or patch releases. **Before 1.0 (the `0.x` line), breaking changes are explicitly allowed across minor versions.** Library consumers SHOULD NOT pin to `^0.x` ranges without expecting churn; pin to a specific minor (e.g., `~0.5.0` or `0.5.x`) during the experimental phase. The OpenSpec change history is the canonical record of what changed and when. Compliance-suite-version coordination follows the **lockstep** rule in [`openspec/specs/compliance/spec.md`](../compliance/spec.md): the suite and every `@postel/*` port package share `MAJOR.MINOR` and release together. The runway-based alternative sketched in [ADR 0009](../../../decisions/0009-compliance-suite-evolution.md) is Deferred until multi-port maintainer cadences warrant it.
 
 #### Scenario: Patch is non-breaking (post-1.0)
 

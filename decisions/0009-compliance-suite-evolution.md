@@ -88,8 +88,8 @@ These remain unresolved and are what real operational experience after multi-por
 - **Suite organization.** By capability? By requirement title? By category (signing, dedup, retry, fanout)?
 - **Test discovery API.** "What tests are advisory vs mandatory for `@1.5.0`?" The CLI must answer this in machine-readable JSON.
 - **Migration tests vs behavioral tests.** Some tests verify migrations between suite versions. Treat separately?
-- **Suite-as-code vs suite-as-data.** Already resolved at v0.1.0: vectors are language-agnostic JSON; runners are per-language code. The split is preserved under lockstep.
-- **Versioning of the runner separately from the test corpus.** Possibly two artifacts: `@postel/compliance-vectors@N` (the test data) and `@postel/compliance@M` (the TypeScript runner).
+- **Suite-as-code vs suite-as-data.** Already resolved at v0.1.0: vectors are language-agnostic JSON under `compliance/vectors/`; the runner is source code under `compliance/<runner>/` whose implementation language is open. The split is preserved under lockstep.
+- **Versioning of the runner separately from the test corpus.** Possibly two coordinated artifacts: a versioned vectors corpus and a versioned runner, with cross-compatible ranges. Today they're lockstep at the same version per the active policy; splitting them is an option to revisit. (Independent of runner implementation language, which is itself open.)
 - **Profile-based conformance** (e.g., "receiver profile" vs "sender profile"). Useful when ports ship asymmetrically (receiver-first). Worth considering when sender-side tests land — relevant under either model.
 
 ## How this evolves

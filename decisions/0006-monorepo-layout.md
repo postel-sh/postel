@@ -114,7 +114,7 @@ mise wins by being the only one that ALSO manages tool versions, which keeps "wh
 
 ## Open questions
 
-- ~~**`compliance/` location**: top level vs. `specs/compliance/`.~~ **Resolved 2026-05-13** via OpenSpec change `define-compliance-suite-v01-scope`: top level (`compliance/`). Reason: it's executable code that ports interact with, not just docs. The vectors corpus lives at `compliance/vectors/`; per-language runners live under their port (`typescript/packages/compliance/`, etc.).
+- ~~**`compliance/` location**: top level vs. `specs/compliance/`.~~ **Resolved 2026-05-13** via OpenSpec change `define-compliance-suite-v01-scope`: top level (`compliance/`). Reason: it's executable code that ports interact with, not just docs. Both the vectors corpus (`compliance/vectors/`) and the runner source (`compliance/<runner>/`) live there. The runner's implementation language is intentionally open — the choice is made by the change that introduces the first runner.
 - **Per-language release tagging**: do we use `ts/v1.0.0`, `go/v1.0.0` git tags (Changesets-style monorepo releasing) or a single repo-wide version? Defer until the second port ships.
 - **CI organization**: one workflow file per language vs. one `ci.yml` with parallel jobs and path filters. Defer until the second port ships.
 
