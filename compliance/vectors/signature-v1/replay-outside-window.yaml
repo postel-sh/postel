@@ -1,0 +1,27 @@
+id: signature-v1/replay-outside-window
+requirement:
+  capability: receiver
+  title: Replay-attack window enforcement
+description: |
+  Models the spec's "same webhook-id replayed after the timestamp
+  window" case. Mechanically a stale-timestamp request (webhook-
+  timestamp = {{now-10m}}); the receiver's timestamp window rejects
+  the request with TIMESTAMP_TOO_OLD BEFORE the dedup helper is
+  consulted, so the verdict is identical to past-timestamp regardless
+  of whether the receiver has previously seen the id. The dedup
+  detection of an already-seen id is exercised separately by the
+  receiver/dedup/* cluster.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1_replay_outside
+    webhook-timestamp: "{{now-10m}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: reject
+  error_code: TIMESTAMP_TOO_OLD
