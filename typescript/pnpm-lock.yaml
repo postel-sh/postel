@@ -47,7 +47,15 @@ importers:
 
   packages/fastify: {}
 
-  packages/hono: {}
+  packages/hono:
+    dependencies:
+      '@postel/edge':
+        specifier: workspace:*
+        version: link:../edge
+    devDependencies:
+      hono:
+        specifier: 4.12.18
+        version: 4.12.18
 
   packages/kysely: {}
 
@@ -682,6 +690,10 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  hono@4.12.18:
+    resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
+    engines: {node: '>=16.9.0'}
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -1392,6 +1404,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  hono@4.12.18: {}
 
   joycon@3.1.1: {}
 

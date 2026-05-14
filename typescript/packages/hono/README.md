@@ -1,10 +1,37 @@
 # @postel/hono
 
-> Hono middleware and admin handlers for the Postel receiver.
+> Hono middleware and ad-hoc helper for verifying inbound webhooks against [`@postel/edge`](../edge).
 
-This package is part of [Postel](https://github.com/postel-sh/postel), a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified by the `@postel/compliance` test suite.
+Hono is the smallest of the framework adapters and the first one Postel ships at v0.1.0 — Express, Fastify, Bun, Deno, Next.js, SvelteKit, Astro, and Nitro adapters are deferred to later releases.
 
-Status: **0.0.0** — scaffolded. No code yet. See the [distribution-packaging-typescript capability spec](../../../openspec/specs/distribution-packaging-typescript/spec.md) for the full package map and the per-package implementation specs under [`openspec/specs/`](../../../openspec/specs/).
+## Why an adapter at all
+
+Per the receiver capability spec ([Framework adapters preserve raw bytes](../../../openspec/specs/receiver/spec.md)), framework integrations exist to guarantee that the bytes `verify()` sees are byte-identical to the bytes the receiver received. A bare `app.post(…, c => c.req.json())` route would re-serialize the body and break the signature; the adapter reads the request via `c.req.arrayBuffer()` so the raw bytes stay intact across the boundary.
+
+## API
+
+```ts
+import { Hono } from "hono";
+import { honoVerify, postelHono, POSTEL_CONTEXT_KEY } from "@postel/hono";
+
+const app = new Hono();
+
+// Style 1 — explicit helper, full control over error mapping
+app.post("/webhooks", async (c) => {
+  const result = await honoVerify(c, "whsec_...");
+  return c.json({ ok: true, type: result.event.type });
+});
+
+// Style 2 — middleware; verified payload stashed on context
+app.post("/webhooks", postelHono("whsec_..."), (c) => {
+  const result = c.get(POSTEL_CONTEXT_KEY);
+  return c.json({ ok: true, type: result.event.type });
+});
+```
+
+The second argument is anything `verify()` accepts: a single `whsec_`-prefixed secret, a priority-ordered `string[]` (multi-secret rotation window), or a `Keyset` returned from `createKeyset` (JWKS-backed; lands in PR 4).
+
+The third argument is the same `VerifyOptions` shape as `@postel/edge` — `toleranceSeconds`, `now`.
 
 ## License
 
