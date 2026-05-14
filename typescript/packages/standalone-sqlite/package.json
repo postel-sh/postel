@@ -16,7 +16,7 @@
   },
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --target es2022 --clean",
+    "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
@@ -31,5 +31,16 @@
     "adapter": {
       "category": "standalone"
     }
+  },
+  "dependencies": {
+    "@postel/edge": "workspace:*"
+  },
+  "peerDependencies": {
+    "better-sqlite3": ">=11"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "20.17.10",
+    "better-sqlite3": "12.10.0"
   }
 }
