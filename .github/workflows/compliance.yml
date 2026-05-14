@@ -1,0 +1,32 @@
+name: compliance-cli
+
+on:
+  pull_request:
+    paths:
+      - "compliance/cli/**"
+      - ".github/workflows/compliance.yml"
+      - "mise.toml"
+  push:
+    branches: [main]
+    paths:
+      - "compliance/cli/**"
+      - ".github/workflows/compliance.yml"
+      - "mise.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jdx/mise-action@v2
+
+      - name: go vet
+        run: mise run compliance:vet
+
+      - name: go test
+        run: mise run compliance:test
