@@ -40,3 +40,8 @@ coverage/
 *.sqlite
 *.sqlite-journal
 *.db
+
+# Compliance runner build output
+/bin/
+compliance/cli/compliance
+compliance/cli/compliance.exe

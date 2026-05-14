@@ -11,6 +11,7 @@
 
 [tools]
 node = "20"
+go = "1.26"
 "npm:@fission-ai/openspec" = "1.3.1"
 
 [tasks."spec:validate"]
@@ -51,3 +52,21 @@ run = "pnpm test"
 description = "Build all TS packages (ESM + CJS + types) via tsup (delegates to pnpm)"
 dir = "typescript"
 run = "pnpm build"
+
+# Compliance suite (Go runner) — thin delegations into compliance/cli/.
+# Tooling rationale: decisions/0011-compliance-suite-tooling.md.
+
+[tasks."compliance:test"]
+description = "Run the compliance runner Go tests"
+dir = "compliance/cli"
+run = "go test ./..."
+
+[tasks."compliance:build"]
+description = "Build the compliance runner binary for the current platform"
+dir = "compliance/cli"
+run = "go build -o ../../bin/compliance ."
+
+[tasks."compliance:vet"]
+description = "Run go vet on the compliance runner"
+dir = "compliance/cli"
+run = "go vet ./..."
