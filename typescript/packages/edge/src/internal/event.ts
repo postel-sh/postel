@@ -18,15 +18,9 @@ export function parseEvent<TData>(bodyText: string): WebhookEvent<TData> {
   if (parsed === null || typeof parsed !== "object") {
     throw new MalformedHeader("webhook body must be a JSON object");
   }
-  const obj = parsed as { type?: unknown; timestamp?: unknown; data?: unknown };
+  const obj = parsed as { type?: unknown };
   if (typeof obj.type !== "string") {
     throw new MalformedHeader("webhook body missing string `type` field");
-  }
-  if (typeof obj.timestamp !== "string") {
-    throw new MalformedHeader("webhook body missing string `timestamp` field");
-  }
-  if (!("data" in obj)) {
-    throw new MalformedHeader("webhook body missing `data` field");
   }
   return obj as unknown as WebhookEvent<TData>;
 }

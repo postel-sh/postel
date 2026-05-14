@@ -1,0 +1,143 @@
+name: Compliance suite
+
+on:
+  pull_request:
+    paths:
+      - "typescript/**"
+      - "compliance/**"
+      - "scripts/check-edge-bundle.mjs"
+      - ".github/workflows/compliance-suite.yml"
+      - "mise.toml"
+  push:
+    branches: [main]
+    paths:
+      - "typescript/**"
+      - "compliance/**"
+      - ".github/workflows/compliance-suite.yml"
+      - "mise.toml"
+
+permissions:
+  contents: read
+
+# Fixtures + receiver wiring that line up with the v0.1.0 corpus published
+# under `compliance/vectors/`. Anchored at 2026-01-01T00:00:00Z so the static
+# `signature_mode: static` vectors replay byte-identically. Keep these env
+# blocks in sync with the per-fixture files under `compliance/vectors/_keys/`.
+env:
+  POSTEL_NOW: "2026-01-01T00:00:00Z"
+  POSTEL_TOLERANCE: "300"
+  POSTEL_DEDUP: "true"
+  POSTEL_DEDUP_PRESEED: "pre_seen_"
+  POSTEL_SECRETS: >-
+    whsec_q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s=,whsec_VlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlY=,whpk_/JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic=
+  POSTEL_JWKS_KEYS: >-
+    [{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"kid_a","x":"_JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic"},{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"kid_b","x":"IEBA42TBDyvsnB_lAKHNTCR8idZQoB7X6CyrqGeHfCE","not_after":"2025-01-01T00:00:00Z"}]
+
+jobs:
+  edge-smoke:
+    name: Reference receiver smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @postel/edge (and dependents)
+        run: pnpm --filter @postel/edge build
+
+      - name: Reference receiver smoke test
+        run: node scripts/smoke-receiver.mjs
+
+  compliance-runner:
+    name: '@postel/compliance against @postel/edge'
+    runs-on: ubuntu-latest
+    needs: edge-smoke
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect compliance runner source
+        id: detect
+        run: |
+          if [ -d compliance/cli ] && [ -f compliance/cli/go.mod ]; then
+            echo "runner_present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "runner_present=false" >> "$GITHUB_OUTPUT"
+            echo "compliance-suite: compliance/cli/ is not present in this revision."
+            echo "compliance-suite: Track A's runner has not landed yet — convergence step skipped."
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.detect.outputs.runner_present == 'true'
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.runner_present == 'true'
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - uses: actions/setup-go@v5
+        if: steps.detect.outputs.runner_present == 'true'
+        with:
+          go-version: stable
+          cache-dependency-path: compliance/cli/go.sum
+
+      - name: Install TS workspace
+        if: steps.detect.outputs.runner_present == 'true'
+        working-directory: typescript
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @postel/edge
+        if: steps.detect.outputs.runner_present == 'true'
+        working-directory: typescript
+        run: pnpm --filter @postel/edge build
+
+      - name: Build compliance runner
+        if: steps.detect.outputs.runner_present == 'true'
+        working-directory: compliance/cli
+        run: go build -o ../../compliance-runner .
+
+      - name: Start reference receiver
+        if: steps.detect.outputs.runner_present == 'true'
+        working-directory: typescript
+        env:
+          PORT: "8787"
+        run: |
+          node scripts/reference-receiver.mjs &
+          echo "RECEIVER_PID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 50); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8787/.well-known/webhooks-keys; then
+              echo "reference receiver up"
+              break
+            fi
+            sleep 0.1
+          done
+
+      - name: Run @postel/compliance suite
+        if: steps.detect.outputs.runner_present == 'true'
+        run: |
+          ./compliance-runner \
+            --target http://127.0.0.1:8787/webhooks \
+            --vectors compliance/vectors \
+            --now "$POSTEL_NOW" \
+            --format text
+
+      - name: Stop reference receiver
+        if: always() && env.RECEIVER_PID != ''
+        run: kill ${RECEIVER_PID} || true

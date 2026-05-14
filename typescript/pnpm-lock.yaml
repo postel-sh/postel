@@ -99,6 +99,12 @@ importers:
 
   packages/test: {}
 
+  scripts:
+    dependencies:
+      '@postel/edge':
+        specifier: workspace:*
+        version: link:../packages/edge
+
 packages:
 
   '@biomejs/biome@1.9.4':

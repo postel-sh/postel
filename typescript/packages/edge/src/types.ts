@@ -2,8 +2,8 @@ export type WebhookHeaders = Readonly<Record<string, string>>;
 
 export interface WebhookEvent<TData = unknown> {
   readonly type: string;
-  readonly timestamp: string;
-  readonly data: TData;
+  readonly timestamp?: string;
+  readonly data?: TData;
 }
 
 export type Secret = string;
