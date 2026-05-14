@@ -1,0 +1,18 @@
+id: wire-format/headers/all-present-accept
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: All three Standard Webhooks headers (webhook-id, webhook-timestamp, webhook-signature) present with a valid HMAC v1 signature — the receiver accepts.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_wire_all_present
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: accept

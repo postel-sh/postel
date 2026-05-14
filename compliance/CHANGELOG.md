@@ -33,16 +33,16 @@ Every test addition, modification, or removal lands here. Each entry cites:
 
 ### Vectors (~33 across 8 sub-categories)
 
-Implementation-level expansion of the contracts. Each vector lands via its own PR; each PR appends its rows here before the `0.1.0` cut.
+Implementation-level expansion of the contracts. Each vector lands via its own PR; each PR appends its rows here before the `0.1.0` cut. Vectors checked off below are committed under `compliance/vectors/` already.
 
-- `wire-format/headers/*` (5 vectors)
-- `signature-v1/*` (8 vectors — HMAC matrix)
-- `signature-v1a/*` (8 vectors — Ed25519 matrix)
-- `receiver/multi-secret/*` (2 vectors)
-- `receiver/timestamp-window/*` (2 vectors)
-- `receiver/raw-bytes/*` (2 vectors)
-- `jwks/*` (3 vectors)
-- `receiver/dedup/*` (3 vectors)
+- [x] `wire-format/headers/*` (5 vectors) — landed under `compliance/vectors/wire-format/headers/`; covers `standard-webhooks-compliance` "Compliant headers, signatures, payload structure, and prefixes by default". Files: `all-present-accept`, `missing-id-reject`, `missing-timestamp-reject`, `missing-signature-reject`, `malformed-signature-reject`.
+- [ ] `signature-v1/*` (8 vectors — HMAC matrix)
+- [ ] `signature-v1a/*` (8 vectors — Ed25519 matrix)
+- [ ] `receiver/multi-secret/*` (2 vectors)
+- [ ] `receiver/timestamp-window/*` (2 vectors)
+- [ ] `receiver/raw-bytes/*` (2 vectors)
+- [ ] `jwks/*` (3 vectors)
+- [ ] `receiver/dedup/*` (3 vectors)
 
 ### Structurally untestable through the suite (excluded permanently, gated elsewhere)
 

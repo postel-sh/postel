@@ -1,0 +1,18 @@
+id: wire-format/headers/malformed-signature-reject
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: webhook-signature header is not of the form <version>,<base64> — the receiver rejects with MALFORMED_HEADER before attempting signature verification.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_wire_malformed_sig
+    webhook-timestamp: "{{now}}"
+    webhook-signature: "this-is-not-a-valid-signature-token"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets: []
+signature_mode: static
+expected:
+  outcome: reject
+  error_code: MALFORMED_HEADER
