@@ -1,0 +1,23 @@
+id: signature-v1a/missing-signature
+requirement:
+  capability: receiver
+  title: Verify returns parsed event or structured error
+description: |
+  The webhook-signature header is well-formed as <version>,<base64>
+  but carries no v1a tuple — only a v3 scheme the receiver does not
+  understand. Receivers configured for Ed25519 v1a reject with
+  MALFORMED_HEADER without attempting verification. Mirrors
+  signature-v1/missing-signature for the asymmetric scheme.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1a_missing
+    webhook-timestamp: "1767225600"
+    webhook-signature: v3,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets: []
+signature_mode: static
+expected:
+  outcome: reject
+  error_code: MALFORMED_HEADER

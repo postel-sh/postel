@@ -1,0 +1,23 @@
+id: signature-v1a/future-timestamp
+requirement:
+  capability: receiver
+  title: Timestamp window enforcement
+description: |
+  Ed25519-signed request whose webhook-timestamp is 10 minutes in the
+  future; the default 5-minute window rejects with TIMESTAMP_TOO_OLD
+  before the signature is examined. Asymmetric mirror of
+  signature-v1/future-timestamp.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_sigv1a_future_ts
+    webhook-timestamp: "{{now+10m}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: ed25519_a.yaml
+signature_mode: computed
+expected:
+  outcome: reject
+  error_code: TIMESTAMP_TOO_OLD
