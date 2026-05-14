@@ -11,6 +11,9 @@ importers:
       '@biomejs/biome':
         specifier: 1.9.4
         version: 1.9.4
+      esbuild:
+        specifier: 0.24.2
+        version: 0.24.2
       tsup:
         specifier: 8.3.5
         version: 8.3.5(postcss@8.5.14)(typescript@5.7.2)

@@ -1,0 +1,57 @@
+name: TypeScript
+
+on:
+  pull_request:
+    paths:
+      - "typescript/**"
+      - "scripts/check-edge-bundle.mjs"
+      - ".github/workflows/typescript.yml"
+      - "mise.toml"
+  push:
+    branches: [main]
+    paths:
+      - "typescript/**"
+      - "scripts/check-edge-bundle.mjs"
+      - ".github/workflows/typescript.yml"
+      - "mise.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  ts:
+    name: Build + Bundle Size
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (Biome)
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Edge bundle-size + portability gate
+        run: node ../scripts/check-edge-bundle.mjs
