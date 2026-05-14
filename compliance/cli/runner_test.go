@@ -20,12 +20,16 @@ import (
 
 // stubReceiver is a minimal HTTP receiver that implements the runner-receiver
 // verdict convention used by the suite: 2xx = accept, 4xx with
-// X-Postel-Verify-Error header (or JSON body) = reject with that code.
+// X-Postel-Verify-Error header (or JSON body) = reject with that code,
+// 2xx + X-Postel-Dedup-Result: duplicate = the dedup helper reports the id
+// has been seen within TTL.
 type stubReceiver struct {
 	hmacSecret []byte
 	ed25519Pub ed25519.PublicKey
 	windowSecs int64
 	now        func() time.Time
+	dedup      bool
+	seenIDs    map[string]struct{}
 }
 
 func newStubReceiver(hmacSecret []byte, edPub ed25519.PublicKey) *stubReceiver {
@@ -34,6 +38,7 @@ func newStubReceiver(hmacSecret []byte, edPub ed25519.PublicKey) *stubReceiver {
 		ed25519Pub: edPub,
 		windowSecs: 300,
 		now:        func() time.Time { return time.Now().UTC() },
+		seenIDs:    map[string]struct{}{},
 	}
 }
 
@@ -84,6 +89,16 @@ func (s *stubReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if delta > s.windowSecs || delta < -s.windowSecs {
 		s.reject(w, "TIMESTAMP_TOO_OLD")
 		return
+	}
+	if s.dedup {
+		preSeeded := strings.HasPrefix(id, "pre_seen_")
+		_, seen := s.seenIDs[id]
+		if preSeeded || seen {
+			w.Header().Set(DedupResultHeader, DedupResultDuplicate)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		s.seenIDs[id] = struct{}{}
 	}
 	w.WriteHeader(http.StatusOK)
 }

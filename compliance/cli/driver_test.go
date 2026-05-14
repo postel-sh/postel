@@ -84,6 +84,37 @@ func TestClassifyResponse_RejectWithoutErrorCode(t *testing.T) {
 	}
 }
 
+func TestClassifyResponse_DuplicateFromHeader(t *testing.T) {
+	h := http.Header{}
+	h.Set(DedupResultHeader, DedupResultDuplicate)
+	r := &ResponseSummary{StatusCode: 200, Headers: h}
+	v := ClassifyResponse(r)
+	if v.Outcome != "duplicate" {
+		t.Errorf("2xx + X-Postel-Dedup-Result: duplicate should be duplicate, got %q", v.Outcome)
+	}
+	if v.ErrorCode != "" {
+		t.Errorf("duplicate verdict should have no error_code, got %q", v.ErrorCode)
+	}
+}
+
+func TestClassifyResponse_AcceptIgnoresUnsetDedupHeader(t *testing.T) {
+	r := &ResponseSummary{StatusCode: 200, Headers: http.Header{}}
+	v := ClassifyResponse(r)
+	if v.Outcome != "accept" {
+		t.Errorf("2xx with no dedup header should be accept, got %q", v.Outcome)
+	}
+}
+
+func TestClassifyResponse_AcceptIgnoresWrongDedupValue(t *testing.T) {
+	h := http.Header{}
+	h.Set(DedupResultHeader, "not-the-magic-value")
+	r := &ResponseSummary{StatusCode: 200, Headers: h}
+	v := ClassifyResponse(r)
+	if v.Outcome != "accept" {
+		t.Errorf("non-duplicate header value should still be accept, got %q", v.Outcome)
+	}
+}
+
 func TestDriveVector_SendsBodyAndHeaders(t *testing.T) {
 	var capturedBody []byte
 	var capturedHeaders http.Header

@@ -20,6 +20,15 @@ import (
 // in-body signalling.
 const VerdictErrorHeader = "X-Postel-Verify-Error"
 
+// DedupResultHeader is the response header a target receiver emits on a 2xx
+// when its dedup helper reports the message id as already seen within the
+// configured TTL. The value MUST be "duplicate". The header MUST NOT appear
+// on first receipt of any webhook-id. See the compliance capability spec's
+// "Duplicate-outcome verdict has a wire-level signal" scenario.
+const DedupResultHeader = "X-Postel-Dedup-Result"
+
+const DedupResultDuplicate = "duplicate"
+
 const defaultDriverTimeout = 10 * time.Second
 
 type ResponseSummary struct {
@@ -92,6 +101,9 @@ func buildTargetURL(target, vectorURL string) (string, error) {
 
 func ClassifyResponse(r *ResponseSummary) ObservedVerdict {
 	if r.StatusCode >= 200 && r.StatusCode < 300 {
+		if r.Headers.Get(DedupResultHeader) == DedupResultDuplicate {
+			return ObservedVerdict{Outcome: "duplicate"}
+		}
 		return ObservedVerdict{Outcome: "accept"}
 	}
 	code := r.Headers.Get(VerdictErrorHeader)

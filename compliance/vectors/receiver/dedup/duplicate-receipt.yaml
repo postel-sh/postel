@@ -1,0 +1,32 @@
+id: receiver/dedup/duplicate-receipt
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: |
+  Receipt of a pre-seeded webhook-id that the receiver-under-test
+  considers already-seen. The dedup helper reports the id as already
+  seen within its TTL; the receiver returns HTTP 2xx with response
+  header X-Postel-Dedup-Result: duplicate, and the runner classifies
+  the verdict as duplicate.
+
+  Receiver-under-test prerequisite: the compliance test build of the
+  receiver MUST pre-seed dedup for any webhook-id starting with
+  `pre_seen_`. This is a runner ↔ receiver test convention — the
+  prefix is reserved for compliance test setup and not used by real
+  delivery traffic. A receiver that does NOT implement dedup will
+  return plain 2xx (no header) and this vector fails with
+  observed=accept vs expected=duplicate, surfacing the missing-dedup
+  bug.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: pre_seen_dedup_basic
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: duplicate
