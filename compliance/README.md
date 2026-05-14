@@ -13,7 +13,7 @@ The `@postel/compliance` suite is the **behavioral oracle** for Postel: the exec
 ```
 compliance/
 ├── README.md       <-- you are here
-├── CHANGELOG.md    <-- structured changelog of test additions / lifecycle transitions / removals
+├── CHANGELOG.md    <-- structured changelog of test additions / modifications / removals per release
 └── vectors/        <-- (added when the first vectors land) language-agnostic test data, organized by capability / sub-category
 ```
 
@@ -27,11 +27,15 @@ python/postel_compliance/          <-- future Python runner
 
 All runners consume `compliance/vectors/` without forking the corpus.
 
-## Versioning & runway
+## Versioning — lockstep with the `@postel/*` release train
 
-The suite follows SemVer. Tests land **ADVISORY** in a MINOR release (opt-in via `--advisory`), become **MANDATORY** in a subsequent MINOR after a documented runway window, may be **DEPRECATED** in a later MINOR, and are removed only in a MAJOR. Breaking modifications of MANDATORY tests gate on MAJOR. Ports MUST pin against a specific MINOR (`@postel/compliance@~0.1.0`).
+`@postel/compliance` shares `MAJOR.MINOR` with every other `@postel/*` package. A port version `X.Y.Z` claims conformance by passing `@postel/compliance@X.Y.*` end-to-end before release. There is no opt-in tier and no graduated runway — every test in the suite at version `X.Y` is required for any `@postel/*` port that ships at `X.Y`.
 
-The full policy, with testable scenarios, is in [`openspec/specs/compliance/spec.md`](../openspec/specs/compliance/spec.md). The motivating ADR is [decisions/0009](../decisions/0009-compliance-suite-evolution.md).
+Breaking modifications, test removals, and breaking structural changes follow the same MAJOR-bump rule that governs every `@postel/*` package. Pre-1.0 (`0.x`) lives under the experimental-semantics regime per [VISION.md §8](../VISION.md): MINORs MAY ship behavior-changing tests, and ports adapt alongside the version bump.
+
+The runway-based evolution model previously sketched in [ADR 0009](../decisions/0009-compliance-suite-evolution.md) is **Deferred**: revisit once a second independently-maintained port lands. Until then, lockstep is the simpler operational model.
+
+The full versioning rule, with testable scenarios, is in [`openspec/specs/compliance/spec.md`](../openspec/specs/compliance/spec.md).
 
 ## v0.1.0 scope
 
@@ -46,9 +50,9 @@ v0.1.0 ships receiver-side conformance only:
 - JWKS basics: `kid` lookup, rotation respecting `not_after`, public-key-only enforcement.
 - Dedup atomicity (concurrent calls).
 
-Sender-side tests (retry, replay, lease, fanout, outbox semantics, endpoint state machine) are **explicitly out of v0.1.0**. They require sender code to drive against, which doesn't exist yet. Deferred to subsequent MINOR / MAJOR releases.
+Sender-side tests (retry, replay, lease, fanout, outbox semantics, endpoint state machine) are **explicitly out of v0.1.0**. They require sender code to drive against, which doesn't exist yet. Deferred to subsequent MINOR / MAJOR releases under the lockstep model.
 
-The exhaustive enumeration of v0.1.0 mandatory vectors is in the capability spec.
+The exhaustive enumeration of v0.1.0 vectors is in the capability spec.
 
 ## CLI
 
@@ -56,13 +60,11 @@ Once the TS runner ships, the CLI shape is:
 
 ```bash
 npx @postel/compliance --target https://your-receiver.example.com/webhooks \
-                       [--format json|tap|junit] \
-                       [--advisory]
+                       [--format json|tap|junit]
 ```
 
 - `--target` — REQUIRED. The receiver URL.
-- `--format` — OPTIONAL. Default is human-readable text. JSON output is consumed by port CIs to plan ADVISORY → MANDATORY adoption.
-- `--advisory` — OPTIONAL. Opt into running ADVISORY tests; their results don't affect exit code.
+- `--format` — OPTIONAL. Default is human-readable text. JSON is consumed by port CIs and is the source of truth for "what tests does this suite version run."
 
 Per the capability spec, the **flag set + semantics** are CONTRACT (cross-port); the **invocation mechanism** (`npx` vs `go run` vs `python -m`) is PORT-SPECIFIC.
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The `@postel/compliance` test suite as a tool — its packaging (TS runner `@postel/compliance` + language-agnostic JSON vectors under `compliance/vectors/`), CLI surface, test taxonomy, v0.1.0 mandatory scope, runway-based versioning policy (SemVer + ADVISORY → MANDATORY → DEPRECATED → removed), sender-side deferral, and changelog discipline. The behavioral oracle that gates every port's claim of conformance — what every port (TypeScript today; Go / Python / Rust tomorrow) MUST pass to be Postel-conformant.
+The `@postel/compliance` test suite as a tool — its packaging (TS runner `@postel/compliance` + language-agnostic JSON vectors under `compliance/vectors/`), CLI surface, test taxonomy, v0.1.0 scope, lockstep versioning policy with the rest of the `@postel/*` release train, sender-side deferral, and changelog discipline. The behavioral oracle that gates every port's claim of conformance — what every port (TypeScript today; Go / Python / Rust tomorrow) MUST pass at the release version it ships.
 
 Distinct from [`standard-webhooks-compliance`](../standard-webhooks-compliance/spec.md), which owns the wire-format contract this suite enforces. Where `standard-webhooks-compliance` says *what* a conformant wire format is, this capability says *how* we know a port honors it.
 ## Requirements
@@ -15,7 +15,7 @@ The wire-format contract the suite enforces is owned by [`standard-webhooks-comp
 #### Scenario: Run against the TS port
 
 - **WHEN** CI runs `@postel/compliance` against a receiver built with `@postel/edge`
-- **THEN** the suite reports 100% pass on the v0.1.0 mandatory scope
+- **THEN** the suite reports 100% pass on the v0.1.0 scope
 
 #### Scenario: Run against a third-party receiver
 
@@ -57,27 +57,20 @@ Future Go / Python / Rust runners MUST consume the same `compliance/vectors/` JS
 
 ### Requirement: CLI surface
 
-The TS runner SHALL expose a CLI invocable as `npx @postel/compliance --target <url> [--format json|tap|junit] [--advisory]`. The CLI MUST exit non-zero if any MANDATORY test fails against the target.
+The TS runner SHALL expose a CLI invocable as `npx @postel/compliance --target <url> [--format json|tap|junit]`. The CLI MUST exit non-zero if any test fails against the target.
 
 - `--target <url>` — REQUIRED. The HTTP receiver URL the suite drives requests against.
-- `--format <json|tap|junit>` — OPTIONAL. Output format. Default is human-readable text. JSON output is machine-readable and used by port CIs to plan adoption.
-- `--advisory` — OPTIONAL. Opt into ADVISORY tests (see runway policy). Default-off; ADVISORY tests do NOT affect exit code.
+- `--format <json|tap|junit>` — OPTIONAL. Output format. Default is human-readable text. JSON output is machine-readable and used by port CIs.
 
 Other ports MAY expose equivalent CLIs (`go run ...`, `python -m ...`, `cargo run ...`); the flag surface above is the cross-port shape. **[PORT-SPECIFIC]** applies to the invocation mechanism (`npx` vs `go run` vs `python -m`) and to language-idiomatic output formatting beyond the three required formats.
 
 **Conformance**: the **flag set + semantics + exit-code rules** are CONTRACT (cross-port). The **invocation mechanism** and **language-idiomatic extras** are PORT-SPECIFIC.
 
-#### Scenario: Mandatory failure exits non-zero
+#### Scenario: Test failure exits non-zero
 
-- **WHEN** a MANDATORY test fails against the target
+- **WHEN** any test in the suite fails against the target
 - **THEN** the CLI exits with a non-zero status code
 - **AND** the failing test's name, category, and the requirement it covers appear in the output
-
-#### Scenario: Advisory failure does not affect exit code
-
-- **WHEN** `--advisory` is passed and an ADVISORY test fails (but all MANDATORY tests pass)
-- **THEN** the CLI exits zero
-- **AND** the ADVISORY failure is reported in the output
 
 #### Scenario: JSON output is machine-readable
 
@@ -116,91 +109,72 @@ This path is the test's stable identifier across versions and is what changelogs
 - **THEN** only matching tests run
 - **AND** the exit code reflects only the matched tests' verdicts
 
-### Requirement: Versioning policy — SemVer with runway-based MINOR transitions
+### Requirement: Lockstep versioning across `@postel/*` packages
 
-`@postel/compliance` (the TS runner) and the `compliance/vectors/` corpus SHALL follow strict SemVer (`MAJOR.MINOR.PATCH`). The TS runner package version is the authoritative suite version; the vectors corpus version is published alongside in the runner's metadata.
+`@postel/compliance` SHALL share `MAJOR.MINOR` with every other `@postel/*` package — the suite is one member of the shared `@postel/*` release train per [VISION.md §8](../../../VISION.md). All packages release together at each MINOR cut; PATCH releases MAY ship independently per package (bugfix discipline) but the suite version a port claims conformance against is its own MINOR.
 
-A test's lifecycle stage is one of:
+A `@postel/*` port version `X.Y.Z` claims conformance by passing `@postel/compliance@X.Y.*` end-to-end. There is no ADVISORY phase, no runway window, and no independent suite versioning: the test corpus at version `X.Y` is what every conformant port at version `X.Y` MUST satisfy. New tests land in the MINOR release where they first appear and are required from that release on — no opt-in or grace period.
 
-- **ADVISORY**: present in a MINOR release but opt-in (`--advisory`). Default-off; not counted in mandatory pass/fail.
-- **MANDATORY**: default-on. Failing the test means failing the suite at that version.
-- **DEPRECATED**: still runs, but the result no longer counts toward "must-pass." Scheduled for removal in a subsequent MAJOR.
+Breaking modifications, test removals, and breaking structural changes follow the same MAJOR-bump rule that governs every `@postel/*` package — there is no separate suite-lifecycle vocabulary. Pre-1.0 (`0.x`) lives under the experimental-semantics regime per VISION §8: MINORs MAY break ports, and the OpenSpec change history is the canonical record of what changed.
 
-Transitions between stages are constrained:
+The runway-based evolution model previously sketched in [ADR 0009](../../../decisions/0009-compliance-suite-evolution.md) is **Deferred**: revisit once a second independently-maintained port (likely the Go receiver per [ADR 0005](../../../decisions/0005-polyglot-staged-rollout.md)) makes graduated adoption operationally valuable. Until then, lockstep is the simpler, sufficient model.
 
-- **ADDITION**: a new test lands ADVISORY in a MINOR release.
-- **MANDATORY promotion**: an ADVISORY test becomes MANDATORY no sooner than the next MINOR release after a documented runway window. The runway window is recorded in `compliance/CHANGELOG.md` and SHALL be at least **6 weeks** pre-1.0 (longer post-1.0 — exact post-1.0 cadence will be revisited when the second port lands).
-- **DEPRECATION**: a MANDATORY test becomes DEPRECATED in a MINOR release. It is removed no sooner than the next MAJOR after a documented runway window of at least **6 months** pre-1.0.
-- **MAJOR bump**: required for any of — DEPRECATED test removal, breaking modification of a MANDATORY test (where the new behavior is incompatible with the old), structural change (test path renames, output-format changes, vector-schema breaking changes).
-- **Additive modification** of a MANDATORY test (new behavior is a strict superset of old; passing new implies passing old): follows the ADDITION → ADVISORY → MANDATORY runway, same as a fresh ADDITION.
+**Conformance**: the lockstep coordination and the `X.Y` version-match rule are CONTRACT (cross-port). The CI mechanism each port uses to verify it passes (harness language, scheduling, output parsing) is PORT-SPECIFIC.
 
-#### Scenario: New test ADVISORY in MINOR, MANDATORY in subsequent MINOR
+#### Scenario: Suite and ports share `X.Y`
 
-- **WHEN** a contributor adds a test that covers a newly-introduced CONTRACT requirement
-- **THEN** the test ships ADVISORY in the next MINOR release (`0.N.0`)
-- **AND** it ships MANDATORY no sooner than `0.(N+1).0`, after at least the runway window has elapsed
+- **WHEN** `@postel/compliance` is published at version `X.Y.0`
+- **THEN** every other `@postel/*` package released alongside it also takes version `X.Y.0`
+- **AND** each port version `X.Y.0` passes `@postel/compliance@X.Y.0` end-to-end before release
 
-#### Scenario: Mandatory promotion runway recorded
+#### Scenario: New tests are required at the version they ship
 
-- **WHEN** an ADVISORY test is scheduled for MANDATORY promotion
-- **THEN** `compliance/CHANGELOG.md` records the introduction date, target MANDATORY version, and the runway duration
-- **AND** the CLI exposes this information via `--format json` so port CIs can plan their bump
+- **WHEN** a new test vector lands in the suite as part of MINOR `X.Y`
+- **THEN** every port releasing at version `X.Y.0` (or later within that MINOR) MUST pass the new test
+- **AND** there is no opt-in, default-off, or grace-period mode for the test
 
 #### Scenario: Breaking modification gates on MAJOR
 
-- **WHEN** a MANDATORY test's expected behavior changes in a way incompatible with the old behavior (a receiver passing the old test would now fail the new)
-- **THEN** the change MUST land in a MAJOR release
-- **AND** the old test is removed in the same MAJOR
-- **AND** the corresponding capability requirement is updated in the same OpenSpec change
+- **WHEN** a test's expected behavior changes in a way incompatible with the prior version (a port passing the old test would now fail the new)
+- **THEN** the change lands in a MAJOR release alongside the matching capability-spec update
+- **AND** every `@postel/*` package bumps MAJOR together
 
-#### Scenario: Deprecation runway
+#### Scenario: Test removal in MAJOR
 
-- **WHEN** a MANDATORY test is marked DEPRECATED
-- **THEN** it still executes when the suite runs (so port maintainers can see the impact)
-- **AND** its result does NOT count toward MANDATORY pass/fail
-- **AND** it is removed no sooner than the next MAJOR, after at least the documented removal runway
+- **WHEN** a test is removed from the corpus
+- **THEN** the removal lands in a MAJOR release
+- **AND** the corresponding CONTRACT requirement in the capability spec becomes PORT-SPECIFIC or is removed in the same change
 
-### Requirement: Port pinning against a specific MINOR
+#### Scenario: Pre-1.0 breakage is allowed in MINORs
 
-Every port claiming conformance SHALL pin its suite dependency to a specific MINOR (`@postel/compliance@~0.1.0`, not `^0.x`). Bumping the pin SHALL be an explicit PR that cites the changelog delta between the old and new MINOR. A port version's compliance claim is "passes `@postel/compliance@<pinned-version>` MANDATORY scope."
-
-This pinning rule is itself part of the CONTRACT: it's what gives the runway policy operational meaning. A port that doesn't pin loses the protection of the runway window.
-
-#### Scenario: Pin is explicit
-
-- **WHEN** a port's package manifest declares a `@postel/compliance` dependency
-- **THEN** the version specifier targets a specific MINOR (e.g., `~0.1.0`, `~1.5.0`), not an open MINOR range (`^0.x`, `^1`)
-
-#### Scenario: Pin bump references changelog
-
-- **WHEN** a port bumps its `@postel/compliance` pin from `~0.N.0` to `~0.(N+1).0`
-- **THEN** the PR description names the tests that moved from ADVISORY → MANDATORY in `0.(N+1).0`
-- **AND** the PR demonstrates the port passes the new MANDATORY set
+- **WHEN** a `0.x` MINOR introduces a behavior-changing test under the experimental-semantics regime
+- **THEN** ports adapting to the new MINOR MAY need to ship code changes alongside the version bump
+- **AND** this is documented in the OpenSpec change that authored the test, not in a separate runway timeline
 
 ### Requirement: Structured changelog at compliance/CHANGELOG.md
 
-The suite SHALL maintain a structured Keep-a-Changelog-style log at `compliance/CHANGELOG.md`. Every test addition, lifecycle transition (ADVISORY → MANDATORY → DEPRECATED → removed), modification, and removal SHALL appear as an entry citing:
+The suite SHALL maintain a structured Keep-a-Changelog-style log at `compliance/CHANGELOG.md`. Every test addition, modification, or removal SHALL appear as an entry citing:
 
 - The OpenSpec change that motivated it.
 - The capability + `### Requirement: <title>` it covers.
-- The current lifecycle stage and the version that stage took effect.
-- The runway timeline (introduced date, MANDATORY date, deprecated date, removal date — whichever apply).
+- The release version (`X.Y.Z`) in which the addition / modification / removal lands.
 
-This changelog is the primary planning surface for port maintainers. The CLI's `--format json` output SHALL expose the same data in a machine-readable form scoped to the suite version being run.
+This changelog is the planning surface port maintainers consult before bumping their version. The CLI's `--format json` output SHALL expose the per-test metadata (capability, requirement, vector path) for the suite version being run.
 
 #### Scenario: Test addition recorded
 
 - **WHEN** a new vector lands in the suite
-- **THEN** `compliance/CHANGELOG.md` gains an entry under the version being prepared, naming the OpenSpec change, the capability + requirement, and the ADVISORY-since version
+- **THEN** `compliance/CHANGELOG.md` gains an entry under the version being prepared, naming the OpenSpec change, the capability + requirement, and the release version
 
-#### Scenario: Lifecycle transition recorded
+#### Scenario: Modification or removal recorded
 
-- **WHEN** a test is promoted ADVISORY → MANDATORY, marked DEPRECATED, or removed
-- **THEN** the existing changelog entry is updated (or a new dated entry is added) reflecting the transition, the version, and any newly-relevant dates
+- **WHEN** a test is modified (breaking) or removed
+- **THEN** the changelog records the modification or removal under the MAJOR version that ships it
+- **AND** the entry cites the OpenSpec change and the capability requirement that changed accordingly
 
-### Requirement: v0.1.0 initial mandatory scope — receiver-side wire-format and signing behavior
+### Requirement: v0.1.0 initial test scope — receiver-side wire-format and signing behavior
 
-The v0.1.0 MANDATORY scope SHALL cover the following test vectors. Each vector exercises an externally-observable behavior derived from existing CONTRACT requirements in `standard-webhooks-compliance`, `receiver`, and `key-management`. The list below is exhaustive for the v0.1.0 MANDATORY set; vectors not listed are out-of-scope for v0.1.0.
+The v0.1.0 corpus SHALL cover the following test vectors. Each vector exercises an externally-observable behavior derived from existing CONTRACT requirements in `standard-webhooks-compliance`, `receiver`, and `key-management`. The list below is exhaustive for the v0.1.0 set; vectors not listed are out-of-scope for v0.1.0 and land in subsequent MINOR (or MAJOR) releases under the lockstep model.
 
 **Wire-format header conformance** (covers `standard-webhooks-compliance` headers requirement):
 - `wire-format/headers/all-present-accept` — request with `webhook-id`, `webhook-timestamp`, `webhook-signature` is accepted.
@@ -214,7 +188,7 @@ The v0.1.0 MANDATORY scope SHALL cover the following test vectors. Each vector e
 - `signature-v1/wrong-key` — signed with key A, target verifies against key B → `SIGNATURE_INVALID`.
 - `signature-v1/future-timestamp` — `webhook-timestamp` more than the window in the future → `TIMESTAMP_TOO_OLD` (or equivalent out-of-window code).
 - `signature-v1/past-timestamp` — `webhook-timestamp` more than the window in the past → `TIMESTAMP_TOO_OLD`.
-- `signature-v1/replay-within-window` — same `webhook-id` replayed within the dedup TTL → second is rejected as duplicate (requires the target to implement dedup; receivers without dedup mark this ADVISORY at v0.1.0).
+- `signature-v1/replay-within-window` — same `webhook-id` replayed within the dedup TTL → second is rejected as duplicate. (Per the `receiver` capability spec, dedup is a CONTRACT requirement; a target without dedup is not v0.1.0-conformant.)
 - `signature-v1/replay-outside-window` — same `webhook-id` replayed after the timestamp window → rejected by the window before dedup is consulted.
 
 **Signature v1a Ed25519** (covers the asymmetric scheme):
@@ -239,20 +213,20 @@ The v0.1.0 MANDATORY scope SHALL cover the following test vectors. Each vector e
 **Dedup atomicity** (covers `receiver` `Idempotency dedup helper` concurrent-call scenario):
 - `receiver/dedup/first-receipt`, `receiver/dedup/duplicate-receipt`, `receiver/dedup/concurrent-atomicity` — under concurrent calls with the same id, exactly one succeeds as non-duplicate.
 
-#### Scenario: All v0.1.0 MANDATORY vectors enumerated
+#### Scenario: All v0.1.0 vectors enumerated
 
-- **WHEN** the CLI is invoked with `--format json` against `@postel/compliance@~0.1.0`
-- **THEN** the output's MANDATORY test set matches the list above, no more and no less
+- **WHEN** the CLI is invoked with `--format json` against `@postel/compliance@0.1.0`
+- **THEN** the output's test set matches the list above, no more and no less
 
-#### Scenario: Receiver-without-dedup grace
+#### Scenario: Target without dedup fails v0.1.0
 
 - **WHEN** the target receiver does not implement dedup
-- **THEN** the `signature-v1/replay-within-window` and `receiver/dedup/*` vectors are reported as ADVISORY-fail rather than MANDATORY-fail at v0.1.0
-- **AND** the CLI exit code is unaffected by these specific ADVISORY failures
+- **THEN** the `signature-v1/replay-within-window` and `receiver/dedup/*` vectors fail
+- **AND** the CLI exits non-zero (dedup is a CONTRACT requirement in `receiver`; without it the target is not v0.1.0-conformant)
 
 ### Requirement: v0.1.0 explicit out-of-scope — sender-side behavior
 
-Sender-side behavioral tests SHALL NOT ship in the v0.1.0 MANDATORY scope. Specifically out-of-scope:
+Sender-side behavioral tests SHALL NOT ship in the v0.1.0 corpus. Specifically out-of-scope:
 
 - **Retry policy** — attempt sequencing, backoff schedule, dead-letter transitions, auto-disable.
 - **Replay** — `replay-reconciliation` operator-facing semantics (range replay, replay-safety contract).
@@ -271,7 +245,7 @@ These tests SHALL land in subsequent MINOR (or MAJOR) releases as sender code la
 
 #### Scenario: v0.1.0 has no sender vectors
 
-- **WHEN** the v0.1.0 MANDATORY scope is enumerated
+- **WHEN** the v0.1.0 corpus is enumerated
 - **THEN** no vector under `sender/*`, `retry-policy/*`, `replay-reconciliation/*`, `storage-layer/worker-lease/*`, `endpoint-management/state-machine/*`, or `filtering-transformation/*` appears
 
 #### Scenario: Out-of-scope is documented in the changelog
@@ -282,7 +256,7 @@ These tests SHALL land in subsequent MINOR (or MAJOR) releases as sender code la
 
 ### Requirement: Test ↔ requirement traceability is enforced
 
-Every MANDATORY and ADVISORY test SHALL map to exactly one CONTRACT requirement in a capability spec (`openspec/specs/<capability>/spec.md`). The mapping SHALL be machine-checkable: a CI check SHALL fail if a test cites a requirement that does not exist, or if a CONTRACT requirement targeted by v0.1.0 has no covering test once tests land.
+Every test in the suite SHALL map to exactly one CONTRACT requirement in a capability spec (`openspec/specs/<capability>/spec.md`). The mapping SHALL be machine-checkable: a CI check SHALL fail if a test cites a requirement that does not exist, or if a CONTRACT requirement targeted by v0.1.0 has no covering test once tests land.
 
 The forward direction (every test maps to a requirement) is enforced by the vector's `requirement` field plus a CI check.
 The backward direction (every v0.1.0-scope CONTRACT requirement is covered) is enforced by the existing [scripts/check-spec-drift.mjs](../../../scripts/check-spec-drift.mjs) once test files exist.
