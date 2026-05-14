@@ -1,0 +1,28 @@
+id: jwks/kid-lookup
+requirement:
+  capability: receiver
+  title: JWKS consumer
+description: |
+  Asymmetric request whose webhook-id encodes a key identifier the
+  receiver's JWKS publishes. The receiver resolves the kid → public-
+  key lookup against its cached JWKS document, finds ed25519_a's
+  public component, verifies the signature, and accepts.
+
+  Receiver-under-test prerequisite: the receiver mounts a JWKS handler
+  whose document carries one entry with `kid: kid_a` and the public-
+  key bytes from ed25519_a.yaml. The webhook-id is structured so the
+  receiver can extract `kid_a` from it (convention is receiver-
+  specific; the v0.1.0 corpus uses `kid_<name>.msg_<random>`).
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: kid_a.msg_jwks_kidlookup
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: kid_a
+    fixture: ed25519_a.yaml
+signature_mode: computed
+expected:
+  outcome: accept

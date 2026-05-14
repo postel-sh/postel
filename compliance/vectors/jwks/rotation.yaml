@@ -1,0 +1,30 @@
+id: jwks/rotation
+requirement:
+  capability: receiver
+  title: JWKS consumer
+description: |
+  Asymmetric request whose webhook-id encodes a key identifier that
+  ONCE was in the receiver's JWKS but has rotated out (the entry has a
+  `not_after` timestamp in the past). The receiver attempts kid →
+  public-key lookup, sees the kid is no longer valid for signing, and
+  rejects with UNKNOWN_KEY_ID — the structured-error vocabulary entry
+  for this case (receiver capability spec's verify-error vocabulary).
+
+  Receiver-under-test prerequisite: JWKS document contains `kid_b`
+  with `not_after` in the past relative to --now. Conformant
+  receivers refuse to verify against expired entries even if the
+  public-key bytes are still present.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: kid_b.msg_jwks_rotated
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: kid_b
+    fixture: ed25519_b.yaml
+signature_mode: computed
+expected:
+  outcome: reject
+  error_code: UNKNOWN_KEY_ID
