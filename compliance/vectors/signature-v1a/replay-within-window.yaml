@@ -1,0 +1,25 @@
+id: signature-v1a/replay-within-window
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: |
+  Asymmetric mirror of signature-v1/replay-within-window. Ed25519
+  v1a request whose webhook-id is pre-seeded in the receiver's dedup
+  table (`pre_seen_*` convention). Signature verifies; dedup
+  reports duplicate; receiver returns 2xx + X-Postel-Dedup-Result:
+  duplicate. Verdict: duplicate.
+
+  Completes the v0.1.0 signature-v1a cluster.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: pre_seen_replay_v1a
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: ed25519_a.yaml
+signature_mode: computed
+expected:
+  outcome: duplicate

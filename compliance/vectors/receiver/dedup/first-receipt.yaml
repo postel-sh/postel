@@ -1,0 +1,25 @@
+id: receiver/dedup/first-receipt
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: |
+  First receipt of a fresh webhook-id (not in the receiver's dedup
+  table). The dedup helper records the id and the receiver returns
+  HTTP 2xx with no X-Postel-Dedup-Result header → accept verdict.
+  Anchors the dedup pipeline: a receiver that DOESN'T implement
+  dedup also returns 2xx without the header on a fresh id, so this
+  vector cannot distinguish them on its own — pair it with
+  duplicate-receipt, which uses a pre-seeded id.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_dedup_fresh
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: accept

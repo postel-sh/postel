@@ -98,8 +98,8 @@
       "properties": {
         "outcome": {
           "type": "string",
-          "description": "'accept' = target should HTTP 2xx. 'reject' = target should HTTP 4xx with the structured error_code in the X-Postel-Verify-Error header or JSON body.",
-          "enum": ["accept", "reject"]
+          "description": "'accept' = target HTTP 2xx with no dedup header. 'reject' = target HTTP 4xx/5xx with the structured error_code in the X-Postel-Verify-Error header or JSON body. 'duplicate' = target HTTP 2xx with response header X-Postel-Dedup-Result: duplicate (verify succeeded but dedup helper reports the message id as already seen).",
+          "enum": ["accept", "reject", "duplicate"]
         },
         "error_code": {
           "type": "string",
@@ -117,6 +117,14 @@
         {
           "if": {
             "properties": { "outcome": { "const": "accept" } }
+          },
+          "then": {
+            "not": { "required": ["error_code"] }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "duplicate" } }
           },
           "then": {
             "not": { "required": ["error_code"] }

@@ -1,0 +1,28 @@
+id: signature-v1/replay-within-window
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: |
+  HMAC v1 request whose webhook-id is pre-seeded in the receiver's
+  dedup table (the runner-receiver convention reserves `pre_seen_*`
+  ids for this purpose). Timestamp is within the receiver's default
+  5-minute window; signature verifies; dedup then reports the id as
+  already seen and the receiver returns HTTP 2xx with response
+  header X-Postel-Dedup-Result: duplicate. Verdict: duplicate.
+
+  Completes the v0.1.0 signature-v1 cluster; the sibling
+  signature-v1/replay-outside-window covers the case where the
+  timestamp window rejects before dedup is consulted.
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: pre_seen_replay_v1
+    webhook-timestamp: "{{now}}"
+  body_b64: eyJ0eXBlIjoidGVzdC5oZWxsbyIsInRpbWVzdGFtcCI6IjIwMjYtMDEtMDFUMDA6MDA6MDBaIiwiZGF0YSI6eyJoZWxsbyI6IndvcmxkIn19
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+signature_mode: computed
+expected:
+  outcome: duplicate
