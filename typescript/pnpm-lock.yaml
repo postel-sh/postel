@@ -29,45 +29,45 @@ importers:
 
   packages/admin: {}
 
-  packages/bun: {}
-
   packages/cli: {}
 
-  packages/compliance: {}
-
   packages/core: {}
-
-  packages/drizzle: {}
 
   packages/edge: {}
 
   packages/effect: {}
 
-  packages/express: {}
+  packages/frameworks/bun: {}
 
-  packages/fastify: {}
+  packages/frameworks/express: {}
 
-  packages/hono:
+  packages/frameworks/fastify: {}
+
+  packages/frameworks/hono:
     dependencies:
       '@postel/edge':
         specifier: workspace:*
-        version: link:../edge
+        version: link:../../edge
     devDependencies:
       hono:
         specifier: 4.12.18
         version: 4.12.18
 
-  packages/kysely: {}
+  packages/frameworks/nextjs: {}
 
-  packages/nextjs: {}
+  packages/storage/drizzle: {}
 
-  packages/prisma: {}
+  packages/storage/helpers: {}
 
-  packages/standalone-pg:
+  packages/storage/kysely: {}
+
+  packages/storage/prisma: {}
+
+  packages/storage/standalone-pg:
     dependencies:
       '@postel/edge':
         specifier: workspace:*
-        version: link:../edge
+        version: link:../../edge
     devDependencies:
       '@types/node':
         specifier: 20.17.10
@@ -79,11 +79,11 @@ importers:
         specifier: 8.20.0
         version: 8.20.0
 
-  packages/standalone-sqlite:
+  packages/storage/standalone-sqlite:
     dependencies:
       '@postel/edge':
         specifier: workspace:*
-        version: link:../edge
+        version: link:../../edge
     devDependencies:
       '@types/better-sqlite3':
         specifier: 7.6.13
@@ -94,8 +94,6 @@ importers:
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
-
-  packages/storage-helpers: {}
 
   packages/test: {}
 
