@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { codeToHtml } from "shiki";
 
 const installCode = `pnpm add @postel/edge`;
 
 const snippets = [
   {
     lang: "TypeScript",
+    shikiLang: "typescript",
     code: `import { verify, SignatureInvalid } from "@postel/edge";
 
 export async function POST(req: Request) {
@@ -24,6 +26,7 @@ export async function POST(req: Request) {
   },
   {
     lang: "Go",
+    shikiLang: "go",
     planned: true,
     code: `import postel "github.com/postel-sh/postel-go"
 
@@ -47,6 +50,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
   },
   {
     lang: "Python",
+    shikiLang: "python",
     planned: true,
     code: `from postel import verify, SignatureInvalid
 
@@ -64,6 +68,7 @@ def handle_webhook():
   },
   {
     lang: "Rust",
+    shikiLang: "rust",
     planned: true,
     code: `use axum::{body::Bytes, http::{HeaderMap, StatusCode}, response::IntoResponse};
 use postel::{verify, PostelError};
@@ -83,7 +88,7 @@ async fn handle_webhook(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
     }
 }`,
   },
-] as const;
+];
 
 interface Card {
   readonly eyebrow: string;
@@ -109,7 +114,17 @@ const cards: ReadonlyArray<Card> = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const highlighted = await Promise.all(
+    snippets.map(async (s) => ({
+      ...s,
+      html: await codeToHtml(s.code, {
+        lang: s.shikiLang,
+        themes: { dark: "github-dark-default", light: "github-light-default" },
+      }),
+    })),
+  );
+
   return (
     <main className="flex flex-1 flex-col">
       <section className="border-fd-border relative border-b px-6 pt-20 pb-16 text-center sm:pt-28 sm:pb-24">
@@ -167,35 +182,19 @@ export default function HomePage() {
           and friends.
         </p>
         <Tabs items={["TypeScript", "Go", "Python", "Rust"]}>
-          <Tab value="TypeScript">
-            <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
-              <code className="font-mono">{snippets[0].code}</code>
-            </pre>
-          </Tab>
-          <Tab value="Go">
-            <p className="text-fd-muted-foreground mb-3 text-xs">
-              Planned — this API reflects the target design. The package is not published yet.
-            </p>
-            <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
-              <code className="font-mono">{snippets[1].code}</code>
-            </pre>
-          </Tab>
-          <Tab value="Python">
-            <p className="text-fd-muted-foreground mb-3 text-xs">
-              Planned — this API reflects the target design. The package is not published yet.
-            </p>
-            <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
-              <code className="font-mono">{snippets[2].code}</code>
-            </pre>
-          </Tab>
-          <Tab value="Rust">
-            <p className="text-fd-muted-foreground mb-3 text-xs">
-              Planned — this API reflects the target design. The package is not published yet.
-            </p>
-            <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
-              <code className="font-mono">{snippets[3].code}</code>
-            </pre>
-          </Tab>
+          {highlighted.map((s) => (
+            <Tab key={s.lang} value={s.lang}>
+              {"planned" in s && s.planned && (
+                <p className="text-fd-muted-foreground mb-3 text-xs">
+                  Planned — this API reflects the target design. The package is not published yet.
+                </p>
+              )}
+              <div
+                className="[&_pre]:border-fd-border [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:p-4 [&_pre]:text-sm [&_pre]:leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: s.html }}
+              />
+            </Tab>
+          ))}
         </Tabs>
       </section>
 

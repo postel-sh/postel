@@ -184,6 +184,8 @@ async fn handle_webhook(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
 
 You need a signed request to verify. The library ships a fixture helper for this:
 
+<Tabs items={["TypeScript", "Go", "Python", "Rust"]} groupId="lang">
+<Tab value="TypeScript">
 ```ts
 import { signFixture } from "@postel/edge";
 
@@ -204,6 +206,67 @@ console.log(res.status); // 200
 ```
 
 `signFixture` exists so tests don't need to stand up a real producer. It is **not** for production signing — that's the sender's job, which lands in v0.2.0.
+</Tab>
+<Tab value="Go">
+> **Planned** — the API below reflects the target design for the Go port.
+
+```go
+secret := "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5"
+fixture, _ := postel.SignFixture(postel.FixtureOpts{
+    Secret:  secret,
+    Payload: map[string]any{"type": "order.created", "data": map[string]any{"id": "ord_123"}},
+})
+
+req, _ := http.NewRequest("POST", "http://localhost:8080/webhooks", bytes.NewReader(fixture.Body))
+for k, v := range fixture.Headers {
+    req.Header.Set(k, v)
+}
+
+resp, _ := http.DefaultClient.Do(req)
+fmt.Println(resp.StatusCode) // 200
+```
+</Tab>
+<Tab value="Python">
+> **Planned** — the API below reflects the target design for the Python port.
+
+```python
+from postel import sign_fixture
+
+secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5"
+fixture = sign_fixture(
+    secret=secret,
+    payload={"type": "order.created", "data": {"id": "ord_123"}},
+)
+
+resp = requests.post(
+    "http://localhost:5000/webhooks",
+    headers=fixture.headers,
+    data=fixture.body,
+)
+print(resp.status_code)  # 200
+```
+</Tab>
+<Tab value="Rust">
+> **Planned** — the API below reflects the target design for the Rust port.
+
+```rust
+let secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5";
+let fixture = postel::sign_fixture(SignFixtureOpts {
+    secret,
+    payload: serde_json::json!({"type": "order.created", "data": {"id": "ord_123"}}),
+})?;
+
+let client = reqwest::Client::new();
+let resp = client
+    .post("http://localhost:3000/webhooks")
+    .headers(fixture.headers)
+    .body(fixture.body)
+    .send()
+    .await?;
+println!("{}", resp.status()); // 200
+```
+</Tab>
+</Tabs>
 
 ## 4. Pick a framework adapter
 
