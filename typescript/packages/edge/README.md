@@ -30,6 +30,12 @@ import {
 
 All entry points throw `Not implemented in the v0.1.0 skeleton` at runtime until the implementation PRs land. Types are stable from this PR forward; consumers can wire imports against them now.
 
+## Note for maintainers — `jwksHandler` placement
+
+`jwksHandler` publishes the producer's public keys; it's a producer/sender-side primitive, not a receiver concern. It currently ships from `@postel/edge` because (a) it's ~25 lines with no DB dependency and fits the edge budget trivially, and (b) `@postel/core` doesn't exist yet as of v0.1.0 — there's nowhere else to put it.
+
+**When `@postel/core` lands with the sender (v0.2.0+), the canonical home for `jwksHandler` is `@postel/core`.** Move the implementation there. Whether to keep a re-export from `@postel/edge` (for edge-runtime producers that want to publish JWKS without pulling the full core) is a follow-up package-boundary decision worth making explicitly at that point — don't carry the current placement forward by default.
+
 ## License
 
 MIT
