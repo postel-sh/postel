@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 
 const installCode = `pnpm add @postel/edge`;
 
-const verifyCode = `import { verify, SignatureInvalid } from "@postel/edge";
+const snippets = [
+  {
+    lang: "TypeScript",
+    code: `import { verify, SignatureInvalid } from "@postel/edge";
 
 export async function POST(req: Request) {
   const body = new Uint8Array(await req.arrayBuffer());
@@ -16,7 +20,70 @@ export async function POST(req: Request) {
     if (err instanceof SignatureInvalid) return new Response("bad signature", { status: 401 });
     throw err;
   }
-}`;
+}`,
+  },
+  {
+    lang: "Go",
+    planned: true,
+    code: `import postel "github.com/postel-sh/postel-go"
+
+func handleWebhook(w http.ResponseWriter, r *http.Request) {
+    body, _ := io.ReadAll(r.Body)
+
+    event, err := postel.Verify(body, r.Header, os.Getenv("WEBHOOK_SECRET"))
+    if err != nil {
+        var sigErr *postel.SignatureInvalid
+        if errors.As(err, &sigErr) {
+            http.Error(w, "bad signature", http.StatusUnauthorized)
+            return
+        }
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    log.Printf("received: %s", event.Type)
+    w.WriteHeader(http.StatusOK)
+}`,
+  },
+  {
+    lang: "Python",
+    planned: true,
+    code: `from postel import verify, SignatureInvalid
+
+@app.post("/webhooks")
+def handle_webhook():
+    body = request.get_data()
+    headers = dict(request.headers)
+
+    try:
+        event = verify(body, headers, os.environ["WEBHOOK_SECRET"])
+        print(f"received: {event.type}")
+        return "ok", 200
+    except SignatureInvalid:
+        abort(401, "bad signature")`,
+  },
+  {
+    lang: "Rust",
+    planned: true,
+    code: `use axum::{body::Bytes, http::{HeaderMap, StatusCode}, response::IntoResponse};
+use postel::{verify, PostelError};
+
+async fn handle_webhook(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
+    let secret = std::env::var("WEBHOOK_SECRET").unwrap();
+
+    match verify(&body, &headers, &secret).await {
+        Ok(event) => {
+            println!("received: {}", event.r#type);
+            (StatusCode::OK, "ok")
+        }
+        Err(PostelError::SignatureInvalid(_)) => {
+            (StatusCode::UNAUTHORIZED, "bad signature")
+        }
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "error"),
+    }
+}`,
+  },
+] as const;
 
 interface Card {
   readonly eyebrow: string;
@@ -99,9 +166,37 @@ export default function HomePage() {
           <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">MalformedHeader</code>,{" "}
           and friends.
         </p>
-        <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
-          <code className="font-mono">{verifyCode}</code>
-        </pre>
+        <Tabs items={["TypeScript", "Go", "Python", "Rust"]}>
+          <Tab value="TypeScript">
+            <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
+              <code className="font-mono">{snippets[0].code}</code>
+            </pre>
+          </Tab>
+          <Tab value="Go">
+            <p className="text-fd-muted-foreground mb-3 text-xs">
+              Planned — this API reflects the target design. The package is not published yet.
+            </p>
+            <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
+              <code className="font-mono">{snippets[1].code}</code>
+            </pre>
+          </Tab>
+          <Tab value="Python">
+            <p className="text-fd-muted-foreground mb-3 text-xs">
+              Planned — this API reflects the target design. The package is not published yet.
+            </p>
+            <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
+              <code className="font-mono">{snippets[2].code}</code>
+            </pre>
+          </Tab>
+          <Tab value="Rust">
+            <p className="text-fd-muted-foreground mb-3 text-xs">
+              Planned — this API reflects the target design. The package is not published yet.
+            </p>
+            <pre className="border-fd-border bg-fd-card overflow-x-auto rounded-lg border p-4 text-sm leading-relaxed">
+              <code className="font-mono">{snippets[3].code}</code>
+            </pre>
+          </Tab>
+        </Tabs>
       </section>
 
       <section className="border-fd-border border-t bg-fd-muted/20 px-6 py-20 sm:py-24">
