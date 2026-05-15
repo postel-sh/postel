@@ -74,3 +74,22 @@ run = "go build -o ../../bin/compliance ."
 description = "Run go vet on the compliance runner"
 dir = "compliance/cli"
 run = "go vet ./..."
+
+# Documentation site (Fumadocs / Next.js) — thin delegations into docs/.
+# Standalone Node install at docs/, not part of the typescript/ workspace
+# (cross-cutting like compliance/, per decisions/0006-monorepo-layout.md).
+
+[tasks."docs:dev"]
+description = "Run the docs site locally at http://localhost:3000"
+dir = "docs"
+run = "pnpm dev"
+
+[tasks."docs:build"]
+description = "Production build of the docs site"
+dir = "docs"
+run = "pnpm build"
+
+[tasks."docs:typecheck"]
+description = "Typecheck the docs site"
+dir = "docs"
+run = "pnpm typecheck"

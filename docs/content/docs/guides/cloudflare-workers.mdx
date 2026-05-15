@@ -1,0 +1,196 @@
+---
+title: Cloudflare Workers
+description: Verify webhooks at the edge. End-to-end walkthrough — wrangler init, secrets, verify pipeline, observability.
+---
+
+Cloudflare Workers is the reference runtime for `@postel/edge`. This guide deploys a working webhook receiver from a blank project to production.
+
+## Prerequisites
+
+- Node 20+ (for `wrangler`).
+- A Cloudflare account.
+- A shared secret from your producer in the form `whsec_<base64>`.
+
+## 1. Scaffold the Worker
+
+```bash
+pnpm create cloudflare@latest postel-webhook-receiver
+cd postel-webhook-receiver
+pnpm add @postel/edge
+```
+
+When `create-cloudflare` asks, pick **"Hello World" worker** (the most minimal template). Decline TypeScript scaffolding if you want; the code here works in either.
+
+## 2. Wire the receiver
+
+Replace `src/index.ts` with:
+
+```ts title="src/index.ts"
+import {
+  verify,
+  SignatureInvalid,
+  TimestampTooOld,
+  MalformedHeader,
+} from "@postel/edge";
+
+export interface Env {
+  WEBHOOK_SECRET: string;
+}
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    if (req.method !== "POST") {
+      return new Response("method not allowed", { status: 405 });
+    }
+
+    const body = new Uint8Array(await req.arrayBuffer());
+    const headers = Object.fromEntries(req.headers);
+
+    try {
+      const { event } = await verify(body, headers, env.WEBHOOK_SECRET);
+      console.log("received", { type: event.type });
+      // Do the work here. Idempotent writes only — see the dedup section below.
+      return new Response("ok", { status: 200 });
+    } catch (err) {
+      if (err instanceof SignatureInvalid) {
+        return new Response("bad signature", { status: 401 });
+      }
+      if (err instanceof TimestampTooOld) {
+        return new Response("timestamp out of window", { status: 401 });
+      }
+      if (err instanceof MalformedHeader) {
+        return new Response("malformed headers", { status: 400 });
+      }
+      console.error("verify failed", err);
+      return new Response("internal error", { status: 500 });
+    }
+  },
+};
+```
+
+A few notes:
+
+- `req.arrayBuffer()` is the [raw-bytes](/docs/concepts/raw-bytes) entry point. Never call `req.json()` first — it consumes the body and the signature won't match.
+- `verify` is awaitable. The total time on Workers free-tier is typically ≤ 2 ms for HMAC v1.
+- The error branches return the appropriate 4xx. Producers retrying on 5xx will hammer your endpoint; 4xx tells them to stop.
+
+## 3. Configure the secret
+
+Never check the webhook secret into source. Use a Worker secret:
+
+```bash
+wrangler secret put WEBHOOK_SECRET
+# (paste the whsec_... value when prompted)
+```
+
+This stores the secret encrypted at rest. The `Env` interface above gives you type-safe access.
+
+If you're rotating, you can store multiple — see [Key rotation](/docs/concepts/key-rotation).
+
+```bash
+wrangler secret put WEBHOOK_SECRET_PREVIOUS
+```
+
+And in the Worker:
+
+```ts
+const { event, matchedSecretIndex } = await verify(body, headers, [
+  env.WEBHOOK_SECRET,
+  env.WEBHOOK_SECRET_PREVIOUS,
+]);
+```
+
+## 4. Local dev
+
+```bash
+pnpm wrangler dev
+```
+
+The Worker boots on `http://localhost:8787`. To exercise the verify path locally, generate a signed fixture in a separate script:
+
+```ts title="scripts/send-fixture.ts"
+import { signFixture } from "@postel/edge";
+
+const fixture = await signFixture({
+  secret: process.env.WEBHOOK_SECRET!,
+  payload: { type: "order.created", data: { id: "ord_test_1" } },
+});
+
+const res = await fetch("http://localhost:8787", {
+  method: "POST",
+  headers: fixture.headers,
+  body: fixture.body,
+});
+
+console.log(res.status, await res.text());
+```
+
+```bash
+WEBHOOK_SECRET=whsec_... pnpm tsx scripts/send-fixture.ts
+# → 200 ok
+```
+
+## 5. Deploy
+
+```bash
+pnpm wrangler deploy
+```
+
+Wrangler returns a `<name>.<account>.workers.dev` URL. Point your producer at it. The Worker is now live, globally distributed, on Cloudflare's edge — no servers to manage.
+
+## 6. Observability
+
+Two minimums.
+
+**Live logs:**
+
+```bash
+pnpm wrangler tail
+```
+
+Streams every `console.log` from production in real time. Useful when debugging a producer that's not making it through your verify pipeline.
+
+**Workers Analytics Engine** (optional, free tier-friendly): emit a counter for each receipt type and each error branch. Postel doesn't ship this by default; the few lines of glue look like:
+
+```ts
+const start = Date.now();
+try {
+  const { event } = await verify(body, headers, env.WEBHOOK_SECRET);
+  env.ANALYTICS.writeDataPoint({
+    blobs: [event.type, "ok"],
+    doubles: [Date.now() - start],
+  });
+  return new Response("ok");
+} catch (err) {
+  env.ANALYTICS.writeDataPoint({
+    blobs: ["", err.constructor.name],
+    doubles: [Date.now() - start],
+  });
+  // ...
+}
+```
+
+You now have a dashboard of (latency, event-type, error-class) tuples to alert on.
+
+## 7. Adding dedup
+
+Workers are stateless per request, so `inMemoryDedupAdapter` from `@postel/edge` won't carry state across requests reliably. Two production-grade options:
+
+- **Cloudflare Durable Objects** — write a tiny Durable Object that wraps the dedup table. Each receipt routes by `webhook-id`, the DO holds the lock atomically.
+- **An HTTP-callable Postgres** — Neon serverless driver, Cloudflare Hyperdrive, Supabase. Pair with the `DedupAdapter` interface; Postel's `dedup` helper works against any implementation.
+
+Implementations of both land in `@postel/edge` follow-on packages. Until then, the dedup helper interface is stable — write a 20-line adapter and you're done.
+
+## 8. Custom domain
+
+```bash
+wrangler domains add webhooks.example.com
+```
+
+(Or via the dashboard.) Your producer points at `https://webhooks.example.com/<endpoint>`. The receiver is the same — no code change.
+
+## Next steps
+
+- [Idempotency](/docs/concepts/idempotency) — once you have a real DB attached, set up dedup.
+- [Key rotation](/docs/concepts/key-rotation) — the secret in `wrangler secret put` is just the start.
+- [API reference](/docs/api/edge) — every export, every type.

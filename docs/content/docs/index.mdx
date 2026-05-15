@@ -1,0 +1,21 @@
+---
+title: Welcome
+description: Postel is a polyglot webhooks library backed by executable specs. Standard Webhooks-compliant. Library, not a service.
+---
+
+Postel is a **library, not a service.** It runs inside the host application against the host application's database — Postgres or SQLite — and ships in multiple languages over time. The TypeScript implementation ships first; Go, Python, and Rust follow.
+
+> Svix is for when webhooks are your **product**.
+> Postel is for when webhooks are a **feature** of your product.
+
+## Where to start
+
+- **New to Postel?** Read [Get started](/docs/get-started) — install the receiver, verify your first signed request in under a minute.
+- **Evaluating the library?** Read [Why Postel](/docs/why) — the positioning, the tradeoffs, and the design rationale.
+- **Already integrating?** Jump to the [Concepts](/docs/concepts) (idempotency, key rotation, raw bytes, edge runtimes) or the [API reference](/docs/api).
+
+## Status
+
+Pre-alpha. `@postel/edge` (receiver-side) is what ships today: `verify`, JWKS consumer, dedup helper, multi-secret rotation, raw-bytes-preserving framework adapters. Sender, outbox, retries, fanout, replay land in v0.2.0. Polyglot ports follow.
+
+We document the spec ahead of the implementation. Pages covering unimplemented capabilities are explicit about it — assume nothing ships until the [API reference](/docs/api) lists it.

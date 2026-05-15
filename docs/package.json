@@ -1,0 +1,38 @@
+{
+  "name": "@postel/docs-site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Postel documentation site (Fumadocs / Next.js). Cross-cutting project artifact; not part of the @postel/* release train.",
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "fumadocs-mdx",
+    "prebuild": "node scripts/build-api-reference.mjs",
+    "predev": "node scripts/build-api-reference.mjs",
+    "typedoc": "typedoc"
+  },
+  "dependencies": {
+    "fumadocs-core": "^16.8.11",
+    "fumadocs-mdx": "^15.0.4",
+    "fumadocs-ui": "^16.8.11",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/mdx": "^2.0.13",
+    "@types/node": "^25.8.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "postcss": "^8.5.14",
+    "shiki": "^4.0.2",
+    "tailwindcss": "^4.3.0",
+    "typedoc": "^0.28.19",
+    "typedoc-plugin-markdown": "^4.11.0",
+    "typescript": "5.7.2"
+  }
+}

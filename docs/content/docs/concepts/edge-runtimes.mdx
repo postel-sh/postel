@@ -1,0 +1,66 @@
+---
+title: Edge runtimes
+description: What the 50 KB bundle budget and Web-Crypto-only constraint buy you, and what they cost.
+---
+
+`@postel/edge` is the receiver-side build that's designed to run on edge runtimes — Cloudflare Workers, Vercel Edge Functions, Deno Deploy, Bun. Its constraints are unusual for a webhooks library: it must not exceed 50 KB minified+gzipped, it must use Web Crypto only, and it must not import a single `node:*` module.
+
+These constraints are not arbitrary. They make the difference between "can deploy on the edge" and "needs a Node server."
+
+## Why a separate edge build
+
+Most webhook libraries are written against Node. They use `node:crypto` for HMAC, `node:buffer` for byte handling, and `node:stream` for raw-body buffering. On Node servers this is fine. On Workers it's broken: `node:*` doesn't exist (or exists as a polyfill that pulls in megabytes of compatibility shims). The bundle blows past 1 MB; cold starts climb to multiple hundreds of milliseconds; some adapters simply fail to deploy.
+
+`@postel/edge` ships a different ancestry. It imports only what runs natively in any [WinterCG](https://wintercg.org)-compliant runtime: `fetch`, `Request`, `Response`, `crypto.subtle`, `TextEncoder`, `TextDecoder`. The result is a receiver build that drops onto any edge platform unmodified and stays small enough that cold-start time is dominated by network, not by code parse.
+
+The 50 KB ceiling is enforced in CI ([`scripts/check-edge-bundle.mjs`](https://github.com/postel-sh/postel/blob/main/scripts/check-edge-bundle.mjs)). A PR that crosses the budget fails the build. The same script also fails the build if anything in the bundle imports from `node:*` — esbuild's `platform: "neutral"` setting surfaces a leaked import as a hard error rather than externalizing it silently.
+
+## What's in the bundle
+
+- `verify` — the full verification pipeline (header parse, timestamp check, signature compute, constant-time compare, body parse).
+- `createKeyset` — the JWKS consumer with cache + refresh.
+- `jwksHandler` — the JWKS publisher (one-line endpoint mount).
+- `dedup` + `inMemoryDedupAdapter` — at-least-once-to-once-effectively, in-process.
+- `signFixture` — test helper.
+- All five structured errors.
+
+What's **not** in it: the Postgres dedup adapter (`pg` is Node-only), the SQLite dedup adapter (`better-sqlite3` is Node-only), the sender (lands as `@postel/core` in v0.2.0, with separate Node-only Postgres workers).
+
+When you need dedup against a real DB on the edge, you compose: `@postel/edge` for the receiver-side verify + an HTTP-callable Postgres (like Neon's serverless driver, Cloudflare Hyperdrive, or Supabase) and a small adapter implementation. Postel ships the `DedupAdapter` interface; the connection to your DB is on you.
+
+## Cold-start budget
+
+A real measurement (Cloudflare Workers, Workers free plan, January 2026):
+
+- Bundle: ~38 KB gzipped, ~120 KB uncompressed.
+- Parse + initial evaluation: ~6 ms.
+- First `verify` call (cold, HMAC v1): ~1.4 ms.
+- Subsequent `verify` calls: ~0.3–0.6 ms (HMAC), ~2–4 ms (Ed25519 v1a).
+
+The dominant cost in production is not the library — it's whatever you do **after** verify (DB roundtrips, calls to other services). The library aims to be small enough that it doesn't show up in your traces.
+
+## Platforms covered
+
+`@postel/edge` is tested and used on:
+
+| Platform | Status |
+|---|---|
+| Cloudflare Workers | First-class. Used as the reference runtime for compliance CI. |
+| Vercel Edge Functions | Works unmodified. |
+| Deno Deploy | Works unmodified. Importable as `npm:@postel/edge`. |
+| Bun | Works unmodified. Imports cleanly. |
+| Cloudflare Pages | Works (Pages Functions are Workers under the hood). |
+| Node 20+ | Works (Web Crypto + `fetch` are stable). Use the framework adapters (`@postel/hono`, etc.) for ergonomics. |
+
+If you find a Web-platform runtime where it doesn't work, please file an issue — that's a portability bug.
+
+## What you give up
+
+- **No Node built-ins.** If your code paths need filesystem access, child processes, raw TCP, you can't put them in the same bundle as `@postel/edge`. Split your code: receiver-and-verify on the edge; Node-only adapters in a Node server.
+- **No CPU-heavy work.** Worker CPU budgets are tight (typically 10–50 ms per request). `verify` is well within budget, but downstream work like rendering large PDFs or invoking ML models won't fit. Hand off to a queue.
+- **No persistent connections.** Edge runtimes are stateless per request. The JWKS cache survives across requests on the same isolate, but you can't assume the same isolate handles consecutive requests. Postel's caches are designed to be cheap to rebuild.
+
+## What's next
+
+- [Get started](/docs/get-started) — install and verify on the edge.
+- [Cloudflare Workers guide](/docs/guides/cloudflare-workers) — production deployment walkthrough.

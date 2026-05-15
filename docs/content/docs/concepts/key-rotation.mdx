@@ -1,0 +1,96 @@
+---
+title: Key rotation
+description: Multi-secret overlap windows, JWKS publication, and rotating a leaked secret without a flag day.
+---
+
+Webhook secrets leak. Sometimes from a misconfigured log, sometimes from an exposed env var, sometimes from a former employee's laptop. The window between "we should rotate this" and "the rotation is done" is the most operationally painful part of any webhook integration if the library doesn't help.
+
+Postel handles rotation two ways, depending on whether your producers and receivers share a secret directly (HMAC) or coordinate through public keys (Ed25519 + JWKS).
+
+## The multi-secret overlap window
+
+`verify` accepts an array of secrets. During rotation, configure the receiver with both old and new — producers can sign with either, and the receiver accepts both for the duration of the overlap window.
+
+```ts
+const secrets = [
+  process.env.WEBHOOK_SECRET_CURRENT,  // the new secret
+  process.env.WEBHOOK_SECRET_PREVIOUS, // grace-window secret
+];
+
+const { event, matchedSecretIndex } = await verify(body, headers, secrets);
+
+if (matchedSecretIndex > 0) {
+  metrics.increment("postel.verify.legacy_secret_hit", { index: matchedSecretIndex });
+}
+```
+
+`matchedSecretIndex` tells you which one matched. You watch the metric: when legacy-secret hits drop to zero across all your producers, you remove the entry and finalize rotation.
+
+### A safe rotation playbook
+
+1. **Issue the new secret.** Add it to your secrets store. Configure the receiver with `[NEW, OLD]`. Deploy.
+2. **Roll the producer.** Update producers one at a time to sign with the new secret. The receiver continues to accept the old one for the duration of the rollout.
+3. **Watch for legacy hits.** Once `matchedSecretIndex > 0` stops firing for some agreed-upon window (typically 7–30 days, matching your SLA on producer rollouts), the old secret is no longer in use.
+4. **Remove the old secret.** Reconfigure the receiver with `[NEW]`. Revoke `OLD` from the secrets store. Done.
+
+No flag day. No coordinated deploys. No requests dropped during the cutover.
+
+### Why an array, not a "primary + fallback"
+
+The `Secret | ReadonlyArray<Secret>` shape is deliberate. Postel makes no distinction between "primary" and "fallback" — both are valid at any moment. A producer that signed with the third entry in the array is just as accepted as one that signed with the first. The order matters only for which secret matched, which the caller observes via `matchedSecretIndex`.
+
+This shape generalizes beyond rotation: a multi-tenant receiver can configure per-tenant secrets and pass the matching tenant's array.
+
+## JWKS — asymmetric rotation without secret sharing
+
+For Ed25519 signing (`v1a`), receivers verify with a public key — they never hold signing material. The producer publishes its public keys at a JWKS endpoint (`/.well-known/webhooks-keys`); the receiver fetches and caches them.
+
+```ts
+import { verify, createKeyset } from "@postel/edge";
+
+const keyset = createKeyset({
+  jwksUri: "https://producer.example.com/.well-known/webhooks-keys",
+  refreshEvery: 60 * 60,  // refetch every hour
+  cacheTtl: 24 * 60 * 60, // keep keys cached for 24h
+});
+
+// keyset is a stable instance; reuse it across requests.
+export async function POST(req: Request) {
+  const body = new Uint8Array(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers);
+
+  const { event } = await verify(body, headers, keyset);
+  // ...
+}
+```
+
+`createKeyset` returns a cached, auto-refreshing keyset. The receiver looks up the public key by `kid` (extracted from the `webhook-id` header), so rotation is just "add a new key to the JWKS, mark the old one's `not_after`, and the receiver picks it up on the next refresh."
+
+### Publishing a JWKS
+
+If you're on the **producing** side, mounting a JWKS endpoint is one line:
+
+```ts
+import { jwksHandler } from "@postel/edge";
+
+app.get("/.well-known/webhooks-keys", jwksHandler({ keys: PUBLIC_JWKS }));
+```
+
+`PUBLIC_JWKS` is your set of public keys in the standard JWKS shape — only public key material, never private. The handler validates this constraint; if you pass a key with `d` (the Ed25519 private scalar), it refuses to serve it.
+
+### When to choose JWKS over multi-secret
+
+- **You operate the producer and the receiver.** Use HMAC + multi-secret. Simpler, faster, no extra endpoint to monitor.
+- **You operate the producer; third parties receive.** Use JWKS. Receivers verify without ever holding signing material — leaks at the receiver don't compromise future signatures.
+- **You operate the receiver; third parties produce.** The third party chooses. Postel verifies both.
+
+## Ephemeral keys
+
+JWKS unlocks **ephemeral signing keys**: the producer rotates a new keypair every N hours, publishes the public half, drops the old private key. Receivers pick up rotations automatically as long as they refetch the JWKS. The compromise window for any leaked private key shrinks from "until manual rotation" to "until the next auto-rotation."
+
+Postel ships the consumer side of this today (the `createKeyset` API above). The producer-side auto-rotation lands with the v0.2.0 sender release.
+
+## What's next
+
+- [Idempotency](/docs/concepts/idempotency) — handling at-least-once delivery.
+- [Edge runtimes](/docs/concepts/edge-runtimes) — what JWKS caching looks like at the edge.
