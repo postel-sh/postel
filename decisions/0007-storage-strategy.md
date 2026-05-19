@@ -37,7 +37,7 @@ A host running Drizzle does this:
 import { postelDrizzle } from '@postel/drizzle';
 import { db } from './db';
 
-const postel = createPostel({ adapter: postelDrizzle(db) });
+const postel = Postel({ adapter: postelDrizzle(db) });
 
 // Outbox insert participates in the host's transaction — for free:
 await db.transaction(async (tx) => {
