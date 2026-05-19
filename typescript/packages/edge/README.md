@@ -32,9 +32,11 @@ All entry points throw `Not implemented in the v0.1.0 skeleton` at runtime until
 
 ## Note for maintainers — `jwksHandler` placement
 
-`jwksHandler` publishes the producer's public keys; it's a producer/sender-side primitive, not a receiver concern. It currently ships from `@postel/edge` because (a) it's ~25 lines with no DB dependency and fits the edge budget trivially, and (b) `@postel/core` doesn't exist yet as of v0.1.0 — there's nowhere else to put it.
+`jwksHandler` publishes the producer's public keys; it's a producer/sender-side primitive, not a receiver concern. It currently ships from `@postel/edge` because (a) it's ~25 lines with no DB dependency and fits the edge budget trivially, and (b) `@postel/edge` was the first concrete package and historically the only home for it.
 
-**When `@postel/core` lands with the sender (v0.2.0+), the canonical home for `jwksHandler` is `@postel/core`.** Move the implementation there. Whether to keep a re-export from `@postel/edge` (for edge-runtime producers that want to publish JWKS without pulling the full core) is a follow-up package-boundary decision worth making explicitly at that point — don't carry the current placement forward by default.
+As of v0.1.0 it is also reachable from `@postel/core` via `Postel({}).jwksHandler(...)` — the canonical adopter-facing import path for producers on Node. The implementation source still lives here (per the `edge` package's no-runtime-deps invariant); `@postel/core` inlines the symbol at build time.
+
+**Open question, deferred to v0.2.0+:** whether to *remove* the `jwksHandler` export from `@postel/edge` so producers must reach for `@postel/core`. The argument for removal is "producer-side primitives belong with the sender." The argument against is "edge-runtime producers (Cloudflare Workers, etc.) want JWKS publishing without pulling the full core." Decide explicitly when the sender lands and the producer-side primitives consolidate — don't carry the current dual placement forward by default.
 
 ## License
 
