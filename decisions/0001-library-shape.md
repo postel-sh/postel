@@ -23,7 +23,7 @@ Postel is a **library only**. It runs inside the host application, against the h
 
 Concretely:
 
-- **No global state, no implicit boot sequence.** The host calls `createPostel({ db, ... })` to get an instance.
+- **No global state, no implicit boot sequence.** The host calls `Postel({ db, ... })` to get an instance.
 - **Workers run in-process by default.** A separate worker process pointing at the same DB is supported but optional.
 - **No Redis, RabbitMQ, Kafka, or any message broker.** Persistence and worker coordination use the host's existing relational database (Postgres or SQLite) directly.
   - Outbox is a SQL table, drained by workers using `FOR UPDATE SKIP LOCKED` (Postgres) or `BEGIN IMMEDIATE` (SQLite).
