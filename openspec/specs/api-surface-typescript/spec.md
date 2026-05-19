@@ -2,15 +2,15 @@
 
 ## Purpose
 
-The TypeScript-port public API surface — the `createPostel` factory, typed event-shape generics, structured `PostelError` class hierarchy, Effect-TS adapter, and the convention that every write accepts an optional transaction handle (host-transaction passthrough). One port among the planned polyglot set per [ADR 0005](../../../decisions/0005-polyglot-staged-rollout.md); future language ports follow the same compliance contract under their own `api-surface-<lang>` capabilities.
+The TypeScript-port public API surface — the `Postel` factory, typed event-shape generics, structured `PostelError` class hierarchy, Effect-TS adapter, and the convention that every write accepts an optional transaction handle (host-transaction passthrough). One port among the planned polyglot set per [ADR 0005](../../../decisions/0005-polyglot-staged-rollout.md); future language ports follow the same compliance contract under their own `api-surface-<lang>` capabilities.
 ## Requirements
-### Requirement: createPostel factory returns the library instance
+### Requirement: Postel factory returns the library instance
 
-The TypeScript port SHALL expose `createPostel({ db, ...opts })` returning a fully-typed instance carrying `send`, `verify`, `start`, `endpoints`, `keys`, `tenants`, `replay`, `reconcile`, `dedup`, `jwksHandler`, `health`, and `on`. This capability spec describes the TypeScript port — one of several first-class language ports per [ADR 0005 — Polyglot staged rollout](../../../decisions/0005-polyglot-staged-rollout.md). Other ports' API surfaces are defined under their own `api-surface-<lang>` capabilities and conform to the same compliance contract.
+The TypeScript port SHALL expose `Postel({ db, ...opts })` returning a fully-typed instance carrying `send`, `verify`, `start`, `endpoints`, `keys`, `tenants`, `replay`, `reconcile`, `dedup`, `jwksHandler`, `health`, and `on`. The factory identifier is the PascalCase `Postel` — a callable function, not a class; adopters do not use `new`. This capability spec describes the TypeScript port — one of several first-class language ports per [ADR 0005 — Polyglot staged rollout](../../../decisions/0005-polyglot-staged-rollout.md). Other ports' API surfaces are defined under their own `api-surface-<lang>` capabilities and conform to the same compliance contract.
 
 #### Scenario: Type inference
 
-- **WHEN** a TypeScript caller writes `const postel = createPostel({ db })`
+- **WHEN** a TypeScript caller writes `const postel = Postel({ db })`
 - **THEN** the result's methods are fully typed without explicit type parameters
 
 ### Requirement: Public function signatures match Standard Webhooks event shape

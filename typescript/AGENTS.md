@@ -78,7 +78,7 @@ Every adapter is a thin shim over the host's existing DB client. Every write ope
 import { postelDrizzle } from "@postel/drizzle";
 import { db } from "./db";
 
-const postel = createPostel({ adapter: postelDrizzle(db) });
+const postel = Postel({ adapter: postelDrizzle(db) });
 
 await db.transaction(async (tx) => {
   await tx.insert(orders).values({ /* ... */ });

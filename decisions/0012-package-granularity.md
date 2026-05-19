@@ -12,7 +12,7 @@ This question wasn't argued out in a prior ADR — the unified shape was implici
 
 ## Decision
 
-`@postel/core` stays unified: one npm package containing both sender and receiver code paths, sharing a single `createPostel` factory, a single `PostelError` hierarchy, and the Standard Webhooks codec used by both directions. We do **not** ship `@postel/sender` and `@postel/receiver` as separate npm packages.
+`@postel/core` stays unified: one npm package containing both sender and receiver code paths, sharing a single `Postel` factory, a single `PostelError` hierarchy, and the Standard Webhooks codec used by both directions. We do **not** ship `@postel/sender` and `@postel/receiver` as separate npm packages.
 
 The size-budget case that would otherwise motivate a split — "I want only the receiver and a tiny bundle on an edge runtime" — is already addressed by `@postel/edge` (≤ 50 KB, receiver + JWKS consumer, runtime-target carve-out). The Node-only "I want only the receiver" case is addressed by tree-shaking: per the dist-packaging spec's "verify is standalone" scenario, `import { verify } from '@postel/core'` excludes the worker, dispatcher, and DB adapters from the consumer's bundle. The remaining cost of installing `@postel/core` for a receive-only Node consumer is `node_modules` disk space, not bundle size.
 
@@ -20,7 +20,7 @@ The size-budget case that would otherwise motivate a split — "I want only the 
 
 The strongest arguments against splitting:
 
-1. **The factory is unified.** [api-surface-typescript](../openspec/specs/api-surface-typescript/spec.md) requires `createPostel({ db, ...opts })` to return one instance carrying both `send` and `verify` (plus `start`, `endpoints`, `keys`, `dedup`, `jwksHandler`, …). Splitting at the package level would force either two factories (`createSender` + `createReceiver`, breaking the "one Postel instance" mental model) or a third "umbrella" package that depends on both — multiplying package count without simplifying the consumer surface.
+1. **The factory is unified.** [api-surface-typescript](../openspec/specs/api-surface-typescript/spec.md) requires `Postel({ db, ...opts })` to return one instance carrying both `send` and `verify` (plus `start`, `endpoints`, `keys`, `dedup`, `jwksHandler`, …). Splitting at the package level would force either two factories (`Sender` + `Receiver`, breaking the "one Postel instance" mental model) or a third "umbrella" package that depends on both — multiplying package count without simplifying the consumer surface.
 
 2. **The error hierarchy spans both directions.** [`PostelError` and its subclasses](../openspec/specs/api-surface-typescript/spec.md) include both receiver errors (`SignatureInvalid`, `TimestampTooOld`, `MalformedHeader`, `UnknownKeyId`, `RawBytesMismatchDetected`) and sender errors (`SsrfBlocked`, `EndpointValidation`, `IdempotencyKeyConflict`, `EndpointDisabled`). The Standard Webhooks event shape (`{ type, timestamp, data, channels?, version? }`) is identical at both ends. Splitting requires either a `@postel/shared` package both depend on (more packages to coordinate) or duplication of the type/error code in each package (drift risk in the contract-level surface that [ADR 0008](0008-conformance-levels.md) explicitly nominates as CONTRACT).
 
@@ -52,7 +52,7 @@ The other arguments for splitting — symmetry with Go's `receiver/` + `sender/`
 
 ### `@postel/sender` + `@postel/receiver` as separate npm packages
 
-Rejected for the six reasons above. Would let v0.1.0 ship a "receiver" package whose name matches its role, but at the permanent cost of duplicated codec/types/errors or a third coordinating package, plus loss of the unified `createPostel` factory.
+Rejected for the six reasons above. Would let v0.1.0 ship a "receiver" package whose name matches its role, but at the permanent cost of duplicated codec/types/errors or a third coordinating package, plus loss of the unified `Postel` factory.
 
 ### Three-package shape: `@postel/sender` + `@postel/receiver` + `@postel/shared`
 
