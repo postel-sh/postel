@@ -1,7 +1,4 @@
 import {
-  dedup,
-  jwksHandler,
-  verify,
   type DedupOptions,
   type DedupResult,
   type JwksHandlerOptions,
@@ -9,6 +6,9 @@ import {
   type VerifyOptions,
   type VerifyResult,
   type WebhookHeaders,
+  dedup,
+  jwksHandler,
+  verify,
 } from "@postel/edge";
 
 export interface PostelOptions {
