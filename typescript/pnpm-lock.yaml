@@ -31,7 +31,11 @@ importers:
 
   packages/cli: {}
 
-  packages/core: {}
+  packages/core:
+    dependencies:
+      '@postel/edge':
+        specifier: workspace:*
+        version: link:../edge
 
   packages/edge: {}
 

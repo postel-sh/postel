@@ -4,7 +4,104 @@
 
 This package is part of [Postel](https://github.com/postel-sh/postel), a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified by the `@postel/compliance` test suite.
 
-Status: **0.0.0** — scaffolded. No code yet. See the [distribution-packaging-typescript capability spec](../../../openspec/specs/distribution-packaging-typescript/spec.md) for the full package map and the per-package implementation specs under [`openspec/specs/`](../../../openspec/specs/).
+## Status
+
+**0.0.0** — receiver runtime works through the new factory; sender runtime lands in v0.2.0+. Calling any `postel.outbound.*` method throws `NotImplementedError` until then. Types are complete on both sides so adopters can wire up against the eventual shape today.
+
+Under the hood, the receiver delegates to [`@postel/edge`](../edge/README.md) — same Web-Crypto code, inlined at build time, so installing `@postel/core` does not transitively install `@postel/edge`.
+
+## Shape
+
+```ts
+import {
+  Postel,
+  Secret,
+  PublicKey,
+  Keyset,
+  InMemoryDedup,
+  HmacV1,
+  ExponentialBackoff,
+  InProcess,
+  AwsKms,
+} from "@postel/core";
+
+const postel = Postel({
+  observability: { logger, otel },
+
+  // Sender — types ship today, runtime in v0.2.0+
+  outbound: {
+    storage: postelDrizzle(db),      // implements Storage
+    signing: HmacV1(),                // org-wide default; overridable per endpoint
+    retryPolicy: ExponentialBackoff(),
+    workers: InProcess({ concurrency: 4 }),
+    kms: AwsKms({ keyId: "arn:aws:kms:..." }),
+    http: { tls: { verify: true }, requestTimeout: "30s" },
+  },
+
+  // Receiver — fully functional
+  inbound: {
+    github: { verify: Secret(process.env.GH_SECRET!), dedup: InMemoryDedup() },
+    stripe: { verify: Keyset({ jwksUri: "https://api.stripe.com/.well-known/jwks.json" }) },
+    api:    { verify: [Secret(LEGACY_HMAC), Keyset({ jwksUri: NEW_JWKS })] },
+  },
+});
+
+// Verify (today):
+const { event, matchedVerifierIndex } = await postel.inbound.github.verify(body, headers);
+
+// Dedup (today):
+await postel.inbound.github.dedup(event.id, { ttl: "1h" });
+
+// Send (v0.2.0+ — throws NotImplementedError until then):
+await postel.outbound.send({ type: "order.created", data: order }, { tx });
+
+// Lifecycle (always available):
+await postel.start();
+const health = await postel.health();
+await postel.stop();
+```
+
+## Configuration model
+
+**Two independent sub-namespaces, both optional.** `postel.outbound` and `postel.inbound` only exist on the returned instance type if you configured them. Edge-only consumers configure just `inbound`; outbound-only consumers configure just `outbound`. Conditional types enforce this at compile time.
+
+```ts
+const inboundOnly = Postel({ inbound: { github: { verify: Secret(s) } } });
+// @ts-expect-error — outbound was not configured
+inboundOnly.outbound;
+```
+
+**Strategy pattern for composable plug-points.** Verifiers, signing schemes, retry policies, worker backends, and KMS providers are all factory functions returning tagged config objects. Same shape across the API:
+
+| Slot | Factories |
+|---|---|
+| `inbound.<source>.verify` | `Secret(s)`, `PublicKey(pk)`, `Keyset({ jwksUri })` — or an array for multi-verifier composition |
+| `inbound.<source>.dedup` | `InMemoryDedup()`, `DrizzleDedup(db)`, `PostgresDedup(db)`, `RedisDedup(redis)`, ... |
+| `outbound.signing` | `HmacV1()`, `Ed25519V1a()` |
+| `outbound.retryPolicy` | `ExponentialBackoff({})`, `LinearBackoff({})`, `Custom({})` |
+| `outbound.workers` | `InProcess({})`, `BullMQ(queue)`, `PgBoss(boss)`, `External(adapter)` |
+| `outbound.kms` | `AwsKms({})`, `GcpKms({})`, `Vault({})`, `PlaintextKms()` |
+
+**Multi-verifier composition** supports both HMAC rotation windows and cross-scheme (HMAC → Ed25519/JWKS) migration:
+
+```ts
+inbound: {
+  vendor: { verify: [Secret(NEW_HMAC), Secret(OLD_HMAC)] },              // rotation
+  api:    { verify: [Secret(LEGACY_HMAC), Keyset({ jwksUri: NEW })] },   // scheme migration
+}
+```
+
+First match wins; `verify` returns `matchedVerifierIndex` so adopters can monitor migration progress.
+
+**Per-endpoint overrides for outbound defaults.** `signing`, `retryPolicy`, `circuitBreaker`, `autoDisable`, and `http` are configured org-wide on `outbound.*` and overridable on each `endpoints.create({...})` call. Resolution: per-endpoint > org default > library default.
+
+## What's not in this package
+
+- Framework adapters (Express, Hono, Fastify, Next.js, Bun, …) — separate packages.
+- Storage adapters (Drizzle, Prisma, Kysely, standalone-pg, standalone-sqlite, raw-pg, …) — separate packages.
+- KMS adapter implementations — wired via the `AwsKms`, `GcpKms`, `Vault` strategy factories; runtime lands with sender in v0.2.0+.
+- Edge-runtime carve-out — that's [`@postel/edge`](../edge/README.md) (≤ 50 KB, Web Crypto only, named-export surface).
+- Effect-TS layer — deferred past 1.0 until a real Effect adopter drives the layer shape.
 
 ## License
 
