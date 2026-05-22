@@ -8,7 +8,7 @@ This package is part of [Postel](https://github.com/postel-sh/postel), a polyglo
 
 **0.0.0** — receiver runtime works through the new factory; sender runtime lands in v0.2.0+. Calling any `postel.outbound.*` method throws `NotImplementedError` until then. Types are complete on both sides so adopters can wire up against the eventual shape today.
 
-Under the hood, the receiver delegates to [`@postel/edge`](../edge/README.md) — same Web-Crypto code, inlined at build time, so installing `@postel/core` does not transitively install `@postel/edge`.
+Under the hood, the receiver delegates to [`@postel/edge`](../edge/README.md) — same Web-Crypto code, inlined into the published `@postel/core` artifact at build time so the JavaScript runtime cost is one bundle. `@postel/edge` is also a declared dependency (and therefore installed transitively into `node_modules`) because the published `.d.ts` re-exports its public types; that lets adopters reach `WebhookEvent`, `Keyset`, etc. directly from `@postel/core` without TypeScript having to walk to a separate package for the symbols.
 
 ## Shape
 

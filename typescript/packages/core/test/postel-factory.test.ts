@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { DedupAdapter, DedupRecordOptions } from "../src/index.js";
 import {
   Ed25519V1a,
   ExponentialBackoff,
@@ -7,6 +8,7 @@ import {
   InMemoryDedup,
   InProcess,
   Keyset,
+  MalformedHeader,
   NotImplementedError,
   Postel,
   PublicKey,
@@ -258,6 +260,46 @@ describe("Inbound dedup wiring", () => {
     });
     const result = await postel.inbound.github.dedup("msg_explicit_ttl", { ttl: "5m" });
     expect(result.duplicate).toBe(false);
+  });
+
+  it("dedup threads tx through to the adapter so it can participate in host transactions", async () => {
+    let captured: { messageId?: string; ttlSeconds?: number; options?: DedupRecordOptions } = {};
+    const capturingAdapter: DedupAdapter = {
+      async record(messageId, ttlSeconds, options) {
+        captured = { messageId, ttlSeconds, options };
+        return { duplicate: false };
+      },
+    };
+    const postel = Postel({
+      inbound: {
+        github: { verify: Secret(TEST_SECRET_A), dedup: capturingAdapter, dedupTtl: "1h" },
+      },
+    });
+    const fakeTx = { mock: true };
+    await postel.inbound.github.dedup("msg_tx_thread", { tx: fakeTx });
+    expect(captured.messageId).toBe("msg_tx_thread");
+    expect(captured.ttlSeconds).toBe(3600);
+    expect(captured.options?.tx).toBe(fakeTx);
+  });
+
+  it("dedup throws MalformedHeader for an invalid ttl string", async () => {
+    const postel = Postel({
+      inbound: {
+        github: { verify: Secret(TEST_SECRET_A), dedup: InMemoryDedup() },
+      },
+    });
+    await expect(
+      postel.inbound.github.dedup("msg_bad_ttl", { ttl: "garbage" }),
+    ).rejects.toBeInstanceOf(MalformedHeader);
+  });
+
+  it("dedup throws MalformedHeader when ttl is missing entirely", async () => {
+    const postel = Postel({
+      inbound: {
+        github: { verify: Secret(TEST_SECRET_A), dedup: InMemoryDedup() },
+      },
+    });
+    await expect(postel.inbound.github.dedup("msg_no_ttl")).rejects.toBeInstanceOf(MalformedHeader);
   });
 });
 

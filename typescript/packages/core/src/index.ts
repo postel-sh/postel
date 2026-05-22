@@ -90,10 +90,12 @@ export type { PostelErrorCode } from "@postel/edge";
 
 export { createKeyset } from "@postel/edge";
 export { signFixture } from "@postel/edge";
+export { ttlToSeconds } from "@postel/edge";
 
 export type {
   DedupAdapter,
   DedupOptions,
+  DedupRecordOptions,
   DedupResult,
   InMemoryDedupOptions,
   Jwk,

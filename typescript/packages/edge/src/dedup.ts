@@ -1,5 +1,10 @@
 import { ttlToSeconds } from "./internal/ttl.js";
-import type { DedupAdapter, DedupOptions, DedupResult } from "./types.js";
+import type {
+  DedupAdapter,
+  DedupOptions,
+  DedupRecordOptions,
+  DedupResult,
+} from "./types.js";
 
 export function dedup(messageId: string, options: DedupOptions): Promise<DedupResult> {
   const ttlSeconds = ttlToSeconds(options.ttl);
@@ -19,7 +24,11 @@ export function inMemoryDedupAdapter(options?: InMemoryDedupOptions): DedupAdapt
   const now = options?.now ?? (() => new Date());
 
   return {
-    async record(messageId: string, ttlSeconds: number): Promise<DedupResult> {
+    async record(
+      messageId: string,
+      ttlSeconds: number,
+      _recordOptions?: DedupRecordOptions,
+    ): Promise<DedupResult> {
       const currentMs = now().getTime();
       const existing = store.get(messageId);
       if (existing && existing.expiresAt > currentMs) {

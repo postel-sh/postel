@@ -60,8 +60,16 @@ export interface DedupResult {
   readonly duplicate: boolean;
 }
 
+export interface DedupRecordOptions {
+  readonly tx?: unknown;
+}
+
 export interface DedupAdapter {
-  readonly record: (messageId: string, ttlSeconds: number) => Promise<DedupResult>;
+  readonly record: (
+    messageId: string,
+    ttlSeconds: number,
+    options?: DedupRecordOptions,
+  ) => Promise<DedupResult>;
 }
 
 export interface SignFixtureOptions<TData = unknown> {

@@ -9,12 +9,14 @@ export {
 export type { PostelErrorCode } from "./errors.js";
 export { dedup, inMemoryDedupAdapter } from "./dedup.js";
 export type { InMemoryDedupOptions } from "./dedup.js";
+export { ttlToSeconds } from "./internal/ttl.js";
 export { jwksHandler } from "./jwks-handler.js";
 export { createKeyset } from "./keyset.js";
 export { signFixture } from "./sign-fixture.js";
 export type {
   DedupAdapter,
   DedupOptions,
+  DedupRecordOptions,
   DedupResult,
   Jwk,
   Jwks,

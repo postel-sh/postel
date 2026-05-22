@@ -4,6 +4,7 @@ import {
   TimestampTooOld,
   UnknownKeyId,
   verify as edgeVerify,
+  ttlToSeconds,
 } from "@postel/edge";
 import type {
   DedupAdapter,
@@ -114,32 +115,6 @@ async function verifySource<TData>(
   throw err;
 }
 
-function ttlToSecondsApprox(ttl: number | string): number {
-  if (typeof ttl === "number") return ttl;
-  return parseDurationToSeconds(ttl);
-}
-
-function parseDurationToSeconds(value: string): number {
-  const match = value.trim().match(/^(\d+(?:\.\d+)?)(ms|s|m|h|d)$/i);
-  if (!match) throw new Error(`unrecognized duration: ${value}`);
-  const n = Number(match[1]);
-  const unit = (match[2] as string).toLowerCase();
-  switch (unit) {
-    case "ms":
-      return n / 1000;
-    case "s":
-      return n;
-    case "m":
-      return n * 60;
-    case "h":
-      return n * 60 * 60;
-    case "d":
-      return n * 60 * 60 * 24;
-    default:
-      throw new Error(`unrecognized duration unit: ${unit}`);
-  }
-}
-
 function buildSourceApi(key: string, source: InboundSource): Record<string, unknown> {
   const verifyMethod = {
     async verify(rawBody: ArrayBuffer | Uint8Array | string, headers: WebhookHeaders) {
@@ -156,11 +131,11 @@ function buildSourceApi(key: string, source: InboundSource): Record<string, unkn
     async dedup(messageId: string, options?: InboundDedupOptions) {
       const ttl = options?.ttl ?? defaultTtl;
       if (ttl === undefined) {
-        throw new Error(
+        throw new MalformedHeader(
           `inbound source "${key}" dedup() called without ttl; provide one at the call site or via dedupTtl in config`,
         );
       }
-      return dedupAdapter.record(messageId, ttlToSecondsApprox(ttl));
+      return dedupAdapter.record(messageId, ttlToSeconds(ttl), { tx: options?.tx });
     },
   };
 }
