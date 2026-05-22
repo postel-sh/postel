@@ -25,11 +25,9 @@
 # Everything else is listed below.
 
 # api-surface-typescript
-Public function signatures match Standard Webhooks event shape
 Structured error classes
 No string matching on errors
 Effect-TS layer
-Postel factory returns the library instance
 
 # compliance — runner / suite infra (Track A owns these)
 Suite identity — vendor-neutral oracle for CONTRACT-level behavior
