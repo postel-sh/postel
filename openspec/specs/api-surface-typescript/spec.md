@@ -42,7 +42,7 @@ The TS API SHALL accept and produce events shaped as `{ type, timestamp?, data?,
 
 ### Requirement: Structured error classes
 
-Every public failure mode SHALL throw a typed error class derived from `PostelError`. Each subclass MUST have:
+Every public failure mode representing a **webhook-protocol or wire-format outcome** SHALL throw a typed error class derived from `PostelError`. Each `PostelError` subclass MUST have:
 
 - A **PascalCase class name** (TypeScript-idiomatic).
 - A stable **`code` property** in SCREAMING_SNAKE_CASE that matches the corresponding error code documented in `receiver` (so the codes are consumable from contexts that don't have access to the class hierarchy — e.g., admin handler JSON payloads, cross-port port API audits, log correlation).
@@ -62,11 +62,10 @@ The canonical class ↔ code mapping is:
 | `MigrationRequired` | `MIGRATION_REQUIRED` |
 | `EndpointValidation` | `ENDPOINT_VALIDATION` |
 | `SsrfBlocked` | `SSRF_BLOCKED` |
-| `NotImplementedError` | `NOT_IMPLEMENTED` |
 
 Adding a new error class MUST add both names atomically. The `receiver` capability's error-code list and this table are synchronized — drift between the two is treated as a bug.
 
-`NOT_IMPLEMENTED` is an **implementation-state** code rather than a webhook-protocol code: it is thrown when a typed method exists on the public surface but the runtime for that method has not yet landed in the current port version (e.g., `postel.outbound.send` in `@postel/core` v0.x before the sender runtime ships). Ports SHALL throw `NotImplementedError` rather than a generic `Error` so consumers can discriminate uniformly across all public failure modes.
+**Implementation-state errors are intentionally outside the `PostelError` hierarchy.** Errors that describe library state rather than webhook semantics — e.g., `NotImplementedError`, thrown when a port version exposes a typed method whose runtime has not yet shipped — describe a *different category* of failure than webhook-protocol outcomes. Adopters who write the natural pattern `if (err instanceof PostelError) return 4xx` are translating webhook-protocol failures into HTTP responses; that pattern MUST NOT accidentally catch implementation-state errors and convert them into HTTP 4xx, because library-state failures are programming/version errors that should bubble as 5xx (or fail-fast in development). Implementation-state errors SHALL therefore extend the platform `Error` class directly and SHALL carry a stable `code` property (e.g., `code: 'NOT_IMPLEMENTED'`) for adopters who explicitly want to discriminate them, but they SHALL NOT extend `PostelError` and their codes SHALL NOT appear in the `PostelErrorCode` union.
 
 #### Scenario: instanceof discrimination
 
@@ -84,11 +83,15 @@ Adding a new error class MUST add both names atomically. The `receiver` capabili
 - **THEN** the error carries the same SCREAMING_SNAKE code (`'SIGNATURE_INVALID'`)
 - **AND** consumers can match on `code` across language boundaries via JSON payloads
 
-#### Scenario: NotImplementedError participates in the PostelError hierarchy
+#### Scenario: Implementation-state errors are not PostelError
 
 - **WHEN** a consumer calls a typed method whose runtime has not yet landed in the current port version (e.g., `postel.outbound.send(...)` in `@postel/core` v0.x)
-- **THEN** the call throws a `NotImplementedError` that is `instanceof PostelError`
-- **AND** `err.code === 'NOT_IMPLEMENTED'`
+- **THEN** the call throws a `NotImplementedError`
+- **AND** `err instanceof NotImplementedError` is true
+- **AND** `err instanceof Error` is true
+- **AND** `err instanceof PostelError` is **false**
+- **AND** `err.code === 'NOT_IMPLEMENTED'` for explicit discrimination
+- **AND** the typical adopter catch pattern `if (err instanceof PostelError) return 4xx` does NOT match, so the error bubbles as a programming/version issue rather than being misclassified as a webhook-protocol failure
 
 ### Requirement: No string matching on errors
 

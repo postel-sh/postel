@@ -8,6 +8,8 @@ This package is part of [Postel](https://github.com/postel-sh/postel), a polyglo
 
 **0.0.0** — receiver runtime works through the new factory; sender runtime lands in v0.2.0+. Calling any `postel.outbound.*` method throws `NotImplementedError` until then. Types are complete on both sides so adopters can wire up against the eventual shape today.
 
+`NotImplementedError` is **intentionally outside** the `PostelError` hierarchy — it describes library state ("this method's runtime hasn't shipped in your installed version"), not webhook semantics. Adopters who write `if (err instanceof PostelError) return 4xx` will *not* catch it, which is correct: a `NotImplementedError` is a programming/version error and should bubble as a 5xx (or fail-fast in development). It still carries a stable `code: "NOT_IMPLEMENTED"` for adopters who explicitly want to discriminate it.
+
 Under the hood, the receiver delegates to [`@postel/edge`](../edge/README.md) — same Web-Crypto code, inlined into the published `@postel/core` artifact at build time so the JavaScript runtime cost is one bundle. `@postel/edge` is also a declared dependency (and therefore installed transitively into `node_modules`) because the published `.d.ts` re-exports its public types; that lets adopters reach `WebhookEvent`, `Keyset`, etc. directly from `@postel/core` without TypeScript having to walk to a separate package for the symbols.
 
 ## Shape

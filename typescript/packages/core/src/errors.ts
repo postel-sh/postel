@@ -1,6 +1,5 @@
-import { PostelError } from "@postel/edge";
-
-export class NotImplementedError extends PostelError {
+export class NotImplementedError extends Error {
+  override readonly name = "NotImplementedError" as const;
   readonly code = "NOT_IMPLEMENTED" as const;
   constructor(symbol: string) {
     super(

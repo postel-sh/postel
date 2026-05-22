@@ -400,15 +400,16 @@ describe("Strategy factories", () => {
   });
 });
 
-describe("NotImplementedError participates in the PostelError hierarchy", () => {
-  it("NotImplementedError extends PostelError and carries code 'NOT_IMPLEMENTED'", async () => {
+describe("NotImplementedError is intentionally outside the PostelError hierarchy", () => {
+  it("NotImplementedError extends Error directly (not PostelError) and carries code 'NOT_IMPLEMENTED'", async () => {
     const postel = Postel({ outbound: { storage: {} } });
     try {
       await postel.outbound.send({ type: "x" });
       throw new Error("send should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(NotImplementedError);
-      expect(err).toBeInstanceOf(PostelError);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(PostelError);
       expect((err as NotImplementedError).code).toBe("NOT_IMPLEMENTED");
     }
   });
