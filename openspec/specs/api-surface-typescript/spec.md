@@ -28,12 +28,17 @@ The factory identifier is the PascalCase `Postel` — a callable function, not a
 
 ### Requirement: Public function signatures match Standard Webhooks event shape
 
-The TS API SHALL accept and produce events shaped as `{ type, timestamp, data, channels?, version? }`. Type definitions MUST flow through to consumers without `any`.
+The TS API SHALL accept and produce events shaped as `{ type, timestamp?, data?, channels?, version? }`. Only `type` is required; `timestamp`, `data`, `channels`, and `version` are optional. Standard Webhooks carries the canonical message timestamp on the `webhook-timestamp` HTTP header — an event body MAY include a `timestamp` field as a host-side convention but is not required to. `data` is optional for events with no payload (e.g., a `user.deleted` event where the receiver identifies the user from headers or message id alone). Type definitions MUST flow through to consumers without `any`.
 
 #### Scenario: Strongly-typed event
 
 - **WHEN** a consumer calls `postel.outbound.send<OrderCreated>({ type: 'order.created', data: {...} })`
 - **THEN** TypeScript infers the `data` shape from the `OrderCreated` generic
+
+#### Scenario: Event with only the required `type` field
+
+- **WHEN** a consumer calls `postel.outbound.send({ type: 'user.deleted' })` with no `data`, `timestamp`, `channels`, or `version`
+- **THEN** the call is well-typed and accepted; no field beyond `type` is mandated by the library's public types
 
 ### Requirement: Structured error classes
 
@@ -57,8 +62,11 @@ The canonical class ↔ code mapping is:
 | `MigrationRequired` | `MIGRATION_REQUIRED` |
 | `EndpointValidation` | `ENDPOINT_VALIDATION` |
 | `SsrfBlocked` | `SSRF_BLOCKED` |
+| `NotImplementedError` | `NOT_IMPLEMENTED` |
 
 Adding a new error class MUST add both names atomically. The `receiver` capability's error-code list and this table are synchronized — drift between the two is treated as a bug.
+
+`NOT_IMPLEMENTED` is an **implementation-state** code rather than a webhook-protocol code: it is thrown when a typed method exists on the public surface but the runtime for that method has not yet landed in the current port version (e.g., `postel.outbound.send` in `@postel/core` v0.x before the sender runtime ships). Ports SHALL throw `NotImplementedError` rather than a generic `Error` so consumers can discriminate uniformly across all public failure modes.
 
 #### Scenario: instanceof discrimination
 
@@ -75,6 +83,12 @@ Adding a new error class MUST add both names atomically. The `receiver` capabili
 - **WHEN** the equivalent Go / Python / Rust port produces an error for the same failure mode
 - **THEN** the error carries the same SCREAMING_SNAKE code (`'SIGNATURE_INVALID'`)
 - **AND** consumers can match on `code` across language boundaries via JSON payloads
+
+#### Scenario: NotImplementedError participates in the PostelError hierarchy
+
+- **WHEN** a consumer calls a typed method whose runtime has not yet landed in the current port version (e.g., `postel.outbound.send(...)` in `@postel/core` v0.x)
+- **THEN** the call throws a `NotImplementedError` that is `instanceof PostelError`
+- **AND** `err.code === 'NOT_IMPLEMENTED'`
 
 ### Requirement: No string matching on errors
 

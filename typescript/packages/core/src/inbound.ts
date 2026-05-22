@@ -99,28 +99,32 @@ async function verifySource<TData>(
     }
   }
 
-  const err =
-    lastError instanceof Error
-      ? lastError
-      : new SignatureInvalid(`no verifier matched (tried ${verifiers.length})`);
+  const cause = lastError instanceof Error ? lastError : undefined;
+  const err = new SignatureInvalid(
+    `no verifier matched (tried ${verifiers.length})`,
+    cause ? { cause } : undefined,
+  );
   source.onFailure?.(err, headers);
   throw err;
 }
 
-function buildSourceApi(key: string, source: InboundSource): Record<string, unknown> {
+function buildSourceApi<S extends InboundSource>(key: string, source: S): InboundSourceApi<S> {
   const verifyMethod = {
-    async verify(rawBody: ArrayBuffer | Uint8Array | string, headers: WebhookHeaders) {
-      return verifySource(source, rawBody, headers);
+    async verify<TData = unknown>(
+      rawBody: ArrayBuffer | Uint8Array | string,
+      headers: WebhookHeaders,
+    ): Promise<ComposedVerifyResult<TData>> {
+      return verifySource<TData>(source, rawBody, headers);
     },
   };
   if (!source.dedup) {
-    return verifyMethod;
+    return verifyMethod as InboundSourceApi<S>;
   }
   const dedupAdapter = source.dedup;
   const defaultTtl = source.dedupTtl;
   return {
     ...verifyMethod,
-    async dedup(messageId: string, options?: InboundDedupOptions) {
+    async dedup(messageId: string, options?: InboundDedupOptions): Promise<DedupResult> {
       const ttl = options?.ttl ?? defaultTtl;
       if (ttl === undefined) {
         throw new MalformedHeader(
@@ -130,14 +134,15 @@ function buildSourceApi(key: string, source: InboundSource): Record<string, unkn
       const recordOpts = options?.tx !== undefined ? { tx: options.tx } : undefined;
       return dedupAdapter.record(messageId, ttlToSeconds(ttl), recordOpts);
     },
-  };
+  } as InboundSourceApi<S>;
 }
 
 export function buildInboundApi<S extends Record<string, InboundSource>>(
   sources: S,
 ): InboundApi<S> {
-  const entries = Object.entries(sources).map(
-    ([key, source]) => [key, buildSourceApi(key, source)] as const,
-  );
-  return Object.fromEntries(entries) as InboundApi<S>;
+  const result = {} as { [K in keyof S]: InboundSourceApi<S[K]> };
+  for (const key of Object.keys(sources) as Array<keyof S>) {
+    result[key] = buildSourceApi(String(key), sources[key]);
+  }
+  return result;
 }

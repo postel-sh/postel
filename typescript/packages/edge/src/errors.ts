@@ -3,7 +3,8 @@ export type PostelErrorCode =
   | "TIMESTAMP_TOO_OLD"
   | "MALFORMED_HEADER"
   | "UNKNOWN_KEY_ID"
-  | "RAW_BYTES_MISMATCH_DETECTED";
+  | "RAW_BYTES_MISMATCH_DETECTED"
+  | "NOT_IMPLEMENTED";
 
 export abstract class PostelError extends Error {
   abstract readonly code: PostelErrorCode;

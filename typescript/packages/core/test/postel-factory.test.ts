@@ -11,6 +11,7 @@ import {
   MalformedHeader,
   NotImplementedError,
   Postel,
+  PostelError,
   PublicKey,
   Secret,
   SignatureInvalid,
@@ -151,6 +152,40 @@ describe("Verifier strategy composition", () => {
     await expect(
       postel.inbound.vendor.verify(fixture.body, fixture.headers),
     ).rejects.toBeInstanceOf(SignatureInvalid);
+  });
+
+  it("No-match always surfaces SignatureInvalid, with the last verifier's error attached as cause", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_A,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    // Headers have webhook-key-id but the JWKS uri won't resolve — Keyset verifier
+    // throws an error (UnknownKeyId or fetch error). The wire is HMAC-signed so
+    // the Secret(TEST_SECRET_B) also won't match. The contract requires the loop
+    // to surface SignatureInvalid for "no verifier matched", with the last
+    // verifier's error preserved on `cause` for diagnostics.
+    const headersWithKid = { ...fixture.headers, "webhook-key-id": "unknown-kid" } as Record<
+      string,
+      string
+    >;
+    const postel = Postel({
+      inbound: {
+        vendor: {
+          verify: [Secret(TEST_SECRET_B), Keyset({ jwksUri: "https://example.invalid/jwks" })],
+          tolerance: 600,
+          now: () => FIXED_NOW,
+        },
+      },
+    });
+    try {
+      await postel.inbound.vendor.verify(fixture.body, headersWithKid);
+      throw new Error("verify should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SignatureInvalid);
+      expect((err as SignatureInvalid).code).toBe("SIGNATURE_INVALID");
+      expect((err as SignatureInvalid).cause).toBeDefined();
+    }
   });
 
   it("Cross-scheme migration: array can mix Secret and Keyset shapes (type-level)", () => {
@@ -362,5 +397,19 @@ describe("Strategy factories", () => {
     expect(Ed25519V1a().kind).toBe("ed25519-v1a");
     expect(ExponentialBackoff().kind).toBe("exponential");
     expect(InProcess().kind).toBe("in-process");
+  });
+});
+
+describe("NotImplementedError participates in the PostelError hierarchy", () => {
+  it("NotImplementedError extends PostelError and carries code 'NOT_IMPLEMENTED'", async () => {
+    const postel = Postel({ outbound: { storage: {} } });
+    try {
+      await postel.outbound.send({ type: "x" });
+      throw new Error("send should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(NotImplementedError);
+      expect(err).toBeInstanceOf(PostelError);
+      expect((err as NotImplementedError).code).toBe("NOT_IMPLEMENTED");
+    }
   });
 });
