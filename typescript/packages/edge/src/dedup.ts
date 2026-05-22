@@ -1,10 +1,5 @@
 import { ttlToSeconds } from "./internal/ttl.js";
-import type {
-  DedupAdapter,
-  DedupOptions,
-  DedupRecordOptions,
-  DedupResult,
-} from "./types.js";
+import type { DedupAdapter, DedupOptions, DedupRecordOptions, DedupResult } from "./types.js";
 
 export function dedup(messageId: string, options: DedupOptions): Promise<DedupResult> {
   const ttlSeconds = ttlToSeconds(options.ttl);
