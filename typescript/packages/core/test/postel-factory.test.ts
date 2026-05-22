@@ -167,6 +167,29 @@ describe("Verifier strategy composition", () => {
     expect(typeof postel.inbound.api.verify).toBe("function");
   });
 
+  it("[Keyset, Secret] falls through to Secret when an HMAC request lacks webhook-key-id", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_A,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const postel = Postel({
+      inbound: {
+        api: {
+          verify: [
+            Keyset({ jwksUri: "https://example.test/.well-known/jwks.json" }),
+            Secret(TEST_SECRET_A),
+          ],
+          tolerance: 600,
+          now: () => FIXED_NOW,
+        },
+      },
+    });
+    const result = await postel.inbound.api.verify(fixture.body, fixture.headers);
+    expect(result.matchedVerifierIndex).toBe(1);
+    expect(result.event.type).toBe("order.created");
+  });
+
   it("PublicKey verifier factory produces a tagged Verifier object", () => {
     const v = PublicKey("whpk_demo");
     expect(v.kind).toBe("public-key");
@@ -282,6 +305,23 @@ describe("Inbound dedup wiring", () => {
     expect(captured.options?.tx).toBe(fakeTx);
   });
 
+  it("dedup passes undefined options when no tx is provided (not { tx: undefined })", async () => {
+    let captured: { options?: DedupRecordOptions } = {};
+    const capturingAdapter: DedupAdapter = {
+      async record(_messageId, _ttlSeconds, options) {
+        captured = { options };
+        return { duplicate: false };
+      },
+    };
+    const postel = Postel({
+      inbound: {
+        github: { verify: Secret(TEST_SECRET_A), dedup: capturingAdapter, dedupTtl: "1h" },
+      },
+    });
+    await postel.inbound.github.dedup("msg_no_tx");
+    expect(captured.options).toBeUndefined();
+  });
+
   it("dedup throws MalformedHeader for an invalid ttl string", async () => {
     const postel = Postel({
       inbound: {
@@ -300,6 +340,17 @@ describe("Inbound dedup wiring", () => {
       },
     });
     await expect(postel.inbound.github.dedup("msg_no_ttl")).rejects.toBeInstanceOf(MalformedHeader);
+  });
+
+  it("dedup() is absent from the type when dedup is explicitly set to undefined", () => {
+    const postel = Postel({
+      inbound: {
+        github: { verify: Secret(TEST_SECRET_A), dedup: undefined },
+      },
+    });
+    expect(typeof postel.inbound.github.verify).toBe("function");
+    // @ts-expect-error — dedup: undefined is not a DedupAdapter; method must not exist on the type
+    postel.inbound.github.dedup;
   });
 });
 

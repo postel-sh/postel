@@ -2,7 +2,6 @@ import {
   MalformedHeader,
   SignatureInvalid,
   TimestampTooOld,
-  UnknownKeyId,
   verify as edgeVerify,
   ttlToSeconds,
 } from "@postel/edge";
@@ -45,7 +44,7 @@ export type InboundSourceApi<S extends InboundSource> = {
     rawBody: ArrayBuffer | Uint8Array | string,
     headers: WebhookHeaders,
   ): Promise<ComposedVerifyResult<TData>>;
-} & ("dedup" extends keyof S
+} & (S extends { readonly dedup: DedupAdapter }
   ? { dedup(messageId: string, options?: InboundDedupOptions): Promise<DedupResult> }
   : object);
 
@@ -69,10 +68,6 @@ async function attempt<TData>(
   return edgeVerify<TData>(rawBody, headers, secretOrKeyset, options);
 }
 
-function isRetryableAcrossVerifiers(err: unknown): boolean {
-  return err instanceof SignatureInvalid || err instanceof UnknownKeyId;
-}
-
 async function verifySource<TData>(
   source: InboundSource,
   rawBody: ArrayBuffer | Uint8Array | string,
@@ -87,7 +82,7 @@ async function verifySource<TData>(
     ...(source.now ? { now: source.now } : {}),
   };
 
-  let lastNonRetryable: unknown;
+  let lastError: unknown;
   for (let i = 0; i < verifiers.length; i++) {
     const v = verifiers[i] as Verifier;
     try {
@@ -96,20 +91,17 @@ async function verifySource<TData>(
       source.onSuccess?.(result.event, composed);
       return composed;
     } catch (err) {
-      if (err instanceof MalformedHeader || err instanceof TimestampTooOld) {
-        lastNonRetryable = err;
-        break;
+      if (err instanceof TimestampTooOld) {
+        source.onFailure?.(err, headers);
+        throw err;
       }
-      if (!isRetryableAcrossVerifiers(err)) {
-        lastNonRetryable = err;
-        break;
-      }
+      lastError = err;
     }
   }
 
   const err =
-    lastNonRetryable instanceof Error
-      ? lastNonRetryable
+    lastError instanceof Error
+      ? lastError
       : new SignatureInvalid(`no verifier matched (tried ${verifiers.length})`);
   source.onFailure?.(err, headers);
   throw err;
@@ -135,7 +127,8 @@ function buildSourceApi(key: string, source: InboundSource): Record<string, unkn
           `inbound source "${key}" dedup() called without ttl; provide one at the call site or via dedupTtl in config`,
         );
       }
-      return dedupAdapter.record(messageId, ttlToSeconds(ttl), { tx: options?.tx });
+      const recordOpts = options?.tx !== undefined ? { tx: options.tx } : undefined;
+      return dedupAdapter.record(messageId, ttlToSeconds(ttl), recordOpts);
     },
   };
 }
