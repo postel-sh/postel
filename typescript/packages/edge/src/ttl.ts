@@ -1,4 +1,4 @@
-import { MalformedHeader } from "../errors.js";
+import { MalformedHeader } from "./errors.js";
 
 const SUFFIXES: Record<string, number> = { s: 1, m: 60, h: 60 * 60, d: 24 * 60 * 60 };
 const TTL_RE = /^(\d+)\s*([smhd])$/u;

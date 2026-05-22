@@ -21,11 +21,9 @@ import type { Verifier } from "./strategies/verify.js";
 export interface InboundSource {
   readonly verify: Verifier | ReadonlyArray<Verifier>;
   readonly dedup?: DedupAdapter;
-  readonly dedupKey?: (event: WebhookEvent) => string;
   readonly dedupTtl?: number | string;
   readonly tolerance?: number;
   readonly now?: () => Date;
-  readonly tenantId?: string | ((headers: WebhookHeaders) => string);
   readonly onSuccess?: (event: WebhookEvent, result: ComposedVerifyResult) => void;
   readonly onFailure?: (error: Error, headers: WebhookHeaders) => void;
 }

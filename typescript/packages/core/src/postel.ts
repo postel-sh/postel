@@ -28,11 +28,11 @@ export interface PostelConfig<
   readonly inbound?: TInbound;
 }
 
-export type WithOutbound<C> = C extends { outbound: OutboundConfig }
+export type WithOutbound<C> = C extends { readonly outbound: OutboundConfig }
   ? { outbound: OutboundApi }
   : object;
 
-export type WithInbound<C> = C extends { inbound: infer I }
+export type WithInbound<C> = C extends { readonly inbound: infer I }
   ? I extends Record<string, InboundSource>
     ? { inbound: InboundApi<I> }
     : object
