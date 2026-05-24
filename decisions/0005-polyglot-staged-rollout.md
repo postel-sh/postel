@@ -15,7 +15,7 @@ That positioning is wrong for the project we are actually building. A library wh
 
 ## Decision
 
-Postel is a **polyglot** webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow as first-class ports, not unsupported community efforts. Every port conforms to the same wire format, DB schema, and capability behaviors, verified by `@postel/compliance`.
+Postel is a **polyglot** library for sending and receiving webhooks reliably and securely. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow as first-class ports, not unsupported community efforts. Every port conforms to the same wire format, DB schema, and capability behaviors, verified by `@postel/compliance`.
 
 ### The port roadmap
 
@@ -46,7 +46,7 @@ Order is not contractual; it is the current best estimate of where adoption is h
 
 ## Consequences
 
-- §1.2 of `VISION.md` reads "polyglot webhooks library backed by solid, executable specs; TypeScript ships first; Go, Python, Rust follow."
+- §1.2 of `VISION.md` reads "polyglot library for sending and receiving webhooks reliably and securely; TypeScript ships first; Go, Python, Rust follow."
 - §3.2's "out of scope" list no longer includes maintained ports.
 - The OpenSpec `postel` schema requires a `language-impact.md` artifact on every change so the polyglot dimension is structurally enforced.
 - The compliance test suite (`@postel/compliance`) is the contract every port must satisfy. Without it, "polyglot" is hand-waving; with it, "polyglot" is verifiable.

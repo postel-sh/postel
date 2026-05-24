@@ -25,7 +25,7 @@ Concretely:
 
 - **No global state, no implicit boot sequence.** The host calls `Postel({ db, ... })` to get an instance.
 - **Workers run in-process by default.** A separate worker process pointing at the same DB is supported but optional.
-- **No Redis, RabbitMQ, Kafka, or any message broker.** Persistence and worker coordination use the host's existing relational database (Postgres or SQLite) directly.
+- **No Redis, RabbitMQ, Kafka, or any message broker.** Persistence and worker coordination use the host's existing relational database (Postgres, MySQL, SQLite, …) directly.
   - Outbox is a SQL table, drained by workers using `FOR UPDATE SKIP LOCKED` (Postgres) or `BEGIN IMMEDIATE` (SQLite).
   - Low-latency dispatch on Postgres uses `LISTEN`/`NOTIFY`; SQLite polls.
   - Optional adapters for BullMQ, pg-boss, and similar host-supplied queues exist for hosts that already run one; none is a required dependency.

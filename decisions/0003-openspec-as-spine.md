@@ -6,7 +6,7 @@
 
 ## Context
 
-Postel is positioned as a polyglot webhooks library backed by solid, executable specs. Multiple language implementations over time — TypeScript first, then Go, Python, and Rust — all conforming to the same wire format, DB schema, and capability behaviors. This requires:
+Postel is positioned as a polyglot library for sending and receiving webhooks reliably and securely. Multiple language implementations over time — TypeScript first, then Go, Python, and Rust — all conforming to the same wire format, DB schema, and capability behaviors. This requires:
 
 1. A **change process** that resembles an RFC: every change to the spec is reviewable as a discrete artifact with a proposal, requirements, and tasks.
 2. **Canonical specs** organized by capability, not by document, so contributors and port authors can read "what does the receiver do?" without paging through 12 sections.

@@ -14,7 +14,7 @@ The library SHALL be distributed as the following npm packages, grouped by purpo
 **Storage adapters (Tier 1 — must ship for 1.0, per [ADR 0007](../../../decisions/0007-storage-strategy.md)):**
 - `@postel/standalone-pg` — Postel owns the Postgres pool; zero-config drop-in.
 - `@postel/standalone-sqlite` — same for SQLite.
-- `@postel/drizzle` — host hands Postel a Drizzle instance (Postgres or SQLite).
+- `@postel/drizzle` — host hands Postel a Drizzle instance (any dialect Drizzle supports — Postgres, MySQL, SQLite, …).
 - `@postel/prisma` — host hands Postel a `PrismaClient`.
 - `@postel/kysely` — host hands Postel a `Kysely<DB>`.
 - `@postel/storage-helpers` — zero-DB-dependency helpers package every adapter (first-party or third-party) imports for timestamp normalization, retry-policy JSON serialization, idempotency-key formatting, capability flags, and message/attempt row encode/decode.

@@ -1,9 +1,9 @@
 ---
 title: Welcome
-description: Postel is a polyglot webhooks library backed by executable specs. Standard Webhooks-compliant. Library, not a service.
+description: Postel is a polyglot library for sending and receiving webhooks reliably and securely. Standard Webhooks-compliant. Library, not a service.
 ---
 
-Postel is a **library, not a service.** It runs inside the host application against the host application's database — Postgres or SQLite — and ships in multiple languages over time. The TypeScript implementation ships first; Go, Python, and Rust follow.
+Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. It runs inside the host application against the host application's existing relational database (Postgres, MySQL, SQLite, …), and ships in multiple languages over time. The TypeScript implementation ships first; Go, Python, and Rust follow.
 
 > Svix is for when webhooks are your **product**.
 > Postel is for when webhooks are a **feature** of your product.

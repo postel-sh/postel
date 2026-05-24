@@ -17,7 +17,8 @@ and this project (from 1.0 onward) adheres to [Semantic Versioning](https://semv
 
 ### Changed
 
-- **BREAKING (positioning)**: Postel is no longer described as a "TypeScript-first" library. The new positioning: "Postel is a polyglot webhooks library backed by solid, executable specs. TypeScript ships first; Go, Python, and Rust follow." See [`decisions/0005-polyglot-staged-rollout.md`](decisions/0005-polyglot-staged-rollout.md).
+- **BREAKING (positioning)**: Postel is no longer described as "backed by solid, executable specs". The new positioning leads with what the library does and why it's needed: "Postel is a polyglot library for sending and receiving webhooks reliably and securely. Sending one is easy; doing it reliably and securely — across retries, replay, signature verification, key rotation, idempotency, and raw-bytes preservation — is not. That's where Postel helps. TypeScript ships first; Go, Python, and Rust follow." The compliance test suite and per-capability spec workflow are unchanged — they're the *mechanism*, not the *positioning*.
+- **BREAKING (positioning)**: Postel is no longer described as a "TypeScript-first" library. The polyglot rollout (TypeScript first; Go, Python, and Rust follow as first-class ports) is unchanged. See [`decisions/0005-polyglot-staged-rollout.md`](decisions/0005-polyglot-staged-rollout.md).
 
 ### Removed
 

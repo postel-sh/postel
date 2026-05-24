@@ -66,7 +66,7 @@ export async function GET() {
               letterSpacing: "0.01em",
             }}
           >
-            Polyglot · Standard Webhooks · Sender + receiver · Edge-native
+            Reliable & secure · Standard Webhooks · Sender + receiver · Polyglot
           </div>
         </div>
 

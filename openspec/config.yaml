@@ -1,7 +1,11 @@
 schema: postel
 
 context: |
-  Postel is a polyglot webhooks library backed by solid, executable specs.
+  Postel is a polyglot library for sending and receiving webhooks reliably
+  and securely. Sending and receiving webhooks is easy; doing so reliably
+  and securely - across retries, replay, signature verification, key
+  rotation, idempotency, and raw-bytes preservation - is not. That's where
+  Postel helps.
 
   - The TypeScript implementation (this repo) ships first.
   - Go, Python, and Rust follow as first-class ports; each port is added via
