@@ -4,7 +4,7 @@ import {
   type VerifyResult,
   type WebhookHeaders,
   verify,
-} from "@postel/edge";
+} from "@postel/core";
 import type { Context, MiddlewareHandler } from "hono";
 
 export type HonoVerifyOptions = VerifyOptions;

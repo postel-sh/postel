@@ -5,7 +5,6 @@ on:
     paths:
       - "typescript/**"
       - "compliance/**"
-      - "scripts/check-edge-bundle.mjs"
       - ".github/workflows/compliance-suite.yml"
       - "mise.toml"
   push:
@@ -34,7 +33,7 @@ env:
     [{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"kid_a","x":"_JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic"},{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"kid_b","x":"IEBA42TBDyvsnB_lAKHNTCR8idZQoB7X6CyrqGeHfCE","not_after":"2025-01-01T00:00:00Z"}]
 
 jobs:
-  edge-smoke:
+  receiver-smoke:
     name: Reference receiver smoke
     runs-on: ubuntu-latest
     defaults:
@@ -56,16 +55,16 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build @postel/edge (and dependents)
-        run: pnpm --filter @postel/edge build
+      - name: Build @postel/core (and dependents)
+        run: pnpm --filter @postel/core build
 
       - name: Reference receiver smoke test
         run: node scripts/smoke-receiver.mjs
 
   compliance-runner:
-    name: '@postel/compliance against @postel/edge'
+    name: '@postel/compliance against @postel/core'
     runs-on: ubuntu-latest
-    needs: edge-smoke
+    needs: receiver-smoke
     steps:
       - uses: actions/checkout@v4
 
@@ -103,10 +102,10 @@ jobs:
         working-directory: typescript
         run: pnpm install --frozen-lockfile
 
-      - name: Build @postel/edge
+      - name: Build @postel/core
         if: steps.detect.outputs.runner_present == 'true'
         working-directory: typescript
-        run: pnpm --filter @postel/edge build
+        run: pnpm --filter @postel/core build
 
       - name: Build compliance runner
         if: steps.detect.outputs.runner_present == 'true'

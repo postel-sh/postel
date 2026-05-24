@@ -1,4 +1,4 @@
-import { dedup } from "@postel/edge";
+import { dedup } from "@postel/core";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

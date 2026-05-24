@@ -1,4 +1,4 @@
-import type { DedupAdapter, DedupResult } from "@postel/edge";
+import type { DedupAdapter, DedupResult } from "@postel/core";
 
 export interface PgClient {
   query<R extends { rowCount?: number | null }>(text: string, values: unknown[]): Promise<R>;

@@ -4,14 +4,12 @@ on:
   pull_request:
     paths:
       - "typescript/**"
-      - "scripts/check-edge-bundle.mjs"
       - ".github/workflows/typescript.yml"
       - "mise.toml"
   push:
     branches: [main]
     paths:
       - "typescript/**"
-      - "scripts/check-edge-bundle.mjs"
       - ".github/workflows/typescript.yml"
       - "mise.toml"
 
@@ -20,7 +18,7 @@ permissions:
 
 jobs:
   ts:
-    name: Build + Bundle Size
+    name: Build & Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -52,6 +50,3 @@ jobs:
 
       - name: Test
         run: pnpm test
-
-      - name: Edge bundle-size + portability gate
-        run: node ../scripts/check-edge-bundle.mjs

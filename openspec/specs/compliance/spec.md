@@ -14,7 +14,7 @@ The wire-format contract the suite enforces is owned by [`standard-webhooks-comp
 
 #### Scenario: Run against the first-party reference port
 
-- **WHEN** CI runs `@postel/compliance` against the reference receiver (the TS edge build today; future ports' receivers tomorrow)
+- **WHEN** CI runs `@postel/compliance` against the reference receiver (the TS `@postel/core` build today; future ports' receivers tomorrow)
 - **THEN** the suite reports 100% pass on the v0.1.0 scope
 
 #### Scenario: Run against a third-party receiver
@@ -299,7 +299,7 @@ The v0.1.0 corpus SHALL cover the CONTRACT requirements enumerated below. The ve
 | `key-management` | JWKS endpoint mounter |
 | `key-management` | JWKS publishes only public keys |
 
-**Structurally untestable through the suite** (CONTRACT but the suite is not the right gate; gated by other CI checks): `receiver` Edge bundle size budget (bundle-size CI), `receiver` Edge runtime portability (CI deploy test), `receiver` Constant-time signature comparison (timing analysis), `receiver` Verify latency budgets (perf benchmark harness), `receiver` No payload contents in logs (internal observable), `receiver` Test fixtures for signed payloads (library API surface), and all library-API key-management items (symmetric/asymmetric generation, encryption at rest, ephemeral-key auto-rotation API surface, …). These never enter the suite's scope and SHALL be flagged as such in `compliance/CHANGELOG.md` for `0.1.0`.
+**Structurally untestable through the suite** (CONTRACT but the suite is not the right gate; gated by other CI checks): `receiver` Constant-time signature comparison (timing analysis), `receiver` Verify latency budgets (perf benchmark harness), `receiver` No payload contents in logs (internal observable), `receiver` Test fixtures for signed payloads (library API surface), and all library-API key-management items (symmetric/asymmetric generation, encryption at rest, ephemeral-key auto-rotation API surface, …). These never enter the suite's scope and SHALL be flagged as such in `compliance/CHANGELOG.md` for `0.1.0`.
 
 **Deferred to later MINOR / MAJOR releases**: all sender-side capabilities (per the next requirement), `standard-webhooks-compliance` Wraps the official signing library (upstream-vector interop), `standard-webhooks-compliance` Versioning extension (`webhook-version` header), `standard-webhooks-compliance` IETF-alignment compatibility mode, `key-management` Ephemeral keys via auto-rotation full coverage, and the suite-untestable behaviors of `endpoint-management`, `multi-tenancy`, `observability`, `replay-reconciliation`, `retry-policy`, `storage-layer` worker lease, and `filtering-transformation`.
 
@@ -375,7 +375,7 @@ These behaviors are CONTRACT requirements in their respective capability specs, 
 
 1. The receiver-side surface is what a third-party "claims Standard Webhooks compliance" can plausibly mean today.
 2. There is no Postel sender code yet to write sender-side tests against.
-3. Receiver-first matches [VISION.md §7](../../../VISION.md) success criterion #1 (Cloudflare Workers ≤ 50 KB) and the polyglot rollout starting with the Go *receiver* per [ADR 0005](../../../decisions/0005-polyglot-staged-rollout.md).
+3. Receiver-first matches the polyglot rollout starting with the Go *receiver* per [ADR 0005](../../../decisions/0005-polyglot-staged-rollout.md).
 
 These tests SHALL land in subsequent MINOR (or MAJOR) releases as sender code lands and the architecture for "drive a target sender" is designed. The current change does NOT prescribe that architecture.
 

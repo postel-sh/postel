@@ -31,13 +31,7 @@ importers:
 
   packages/cli: {}
 
-  packages/core:
-    dependencies:
-      '@postel/edge':
-        specifier: workspace:*
-        version: link:../edge
-
-  packages/edge: {}
+  packages/core: {}
 
   packages/effect: {}
 
@@ -49,9 +43,9 @@ importers:
 
   packages/frameworks/hono:
     dependencies:
-      '@postel/edge':
+      '@postel/core':
         specifier: workspace:*
-        version: link:../../edge
+        version: link:../../core
     devDependencies:
       hono:
         specifier: 4.12.18
@@ -69,9 +63,9 @@ importers:
 
   packages/storage/standalone-pg:
     dependencies:
-      '@postel/edge':
+      '@postel/core':
         specifier: workspace:*
-        version: link:../../edge
+        version: link:../../core
     devDependencies:
       '@types/node':
         specifier: 20.17.10
@@ -85,9 +79,9 @@ importers:
 
   packages/storage/standalone-sqlite:
     dependencies:
-      '@postel/edge':
+      '@postel/core':
         specifier: workspace:*
-        version: link:../../edge
+        version: link:../../core
     devDependencies:
       '@types/better-sqlite3':
         specifier: 7.6.13
@@ -103,9 +97,9 @@ importers:
 
   scripts:
     dependencies:
-      '@postel/edge':
+      '@postel/core':
         specifier: workspace:*
-        version: link:../packages/edge
+        version: link:../packages/core
 
 packages:
 

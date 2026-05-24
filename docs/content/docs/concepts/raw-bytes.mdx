@@ -36,7 +36,7 @@ app.post("/webhooks", async (req, res) => {
 Every framework adapter Postel ships preserves the raw request body and passes it into `postel.inbound.<source>.verify` byte-for-byte. The contract:
 
 - **Express, Fastify, Koa, Hono, Elysia** — middleware buffers the raw `req` stream before any JSON parser sees it. The buffered bytes are what `verify` operates on.
-- **Bun.serve, Deno.serve, Cloudflare Workers, Vercel Edge, Next.js Route Handlers, SvelteKit, Astro, Nitro** — the `Request` object already exposes the raw bytes via `await req.arrayBuffer()` before any `.json()` call. Adapters use that.
+- **Bun.serve, Deno.serve, Next.js Route Handlers, SvelteKit, Astro, Nitro** — the `Request` object already exposes the raw bytes via `await req.arrayBuffer()` before any `.json()` call. Adapters use that.
 
 If you're calling `verify` directly (no framework adapter), the rule is:
 
@@ -76,4 +76,3 @@ The same rule applies in reverse on the sender. The signed-content string is bui
 ## What's next
 
 - [Signing and verification](/docs/concepts/signing-and-verification) — the full verify pipeline.
-- [Edge runtimes](/docs/concepts/edge-runtimes) — `req.arrayBuffer()` on the edge.

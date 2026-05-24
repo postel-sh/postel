@@ -60,7 +60,7 @@ Implementation-level: ~33 vectors across 8 sub-categories — wire-format header
 
 **Sender-side tests** (retry, replay, lease, fanout, outbox semantics, endpoint state machine) are **explicitly out of v0.1.0**. They require sender code to drive against, which doesn't exist yet. Deferred to subsequent MINOR / MAJOR releases under the lockstep model.
 
-**Suite-untestable** (CONTRACT but gated by other CI checks, never enter the suite): bundle-size budget, edge-runtime portability, constant-time signature comparison, latency budgets, payload-logging defaults, library-API surfaces (key generation, encryption-at-rest), test fixtures.
+**Suite-untestable** (CONTRACT but gated by other CI checks, never enter the suite): constant-time signature comparison, latency budgets, payload-logging defaults, library-API surfaces (key generation, encryption-at-rest), test fixtures.
 
 The exhaustive enumerations live in [`openspec/specs/compliance/spec.md`](../openspec/specs/compliance/spec.md).
 

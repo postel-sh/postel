@@ -9,8 +9,7 @@ The reference pages below are generated from the package source via TypeDoc — 
 
 | Package | What it does |
 |---|---|
-| **[`@postel/core`](/docs/api/core)** | Unified TypeScript entry point. The `Postel({ inbound, outbound })` factory, the `Verifier` strategies (`Secret`, `PublicKey`, `Keyset`), the dedup helpers, the structured error hierarchy. Receiver runtime works today through `postel.inbound.<source>.verify`; sender runtime lands in v0.2.0+ (`postel.outbound.*` throws `NotImplementedError` until then). See [ADR 0012](https://github.com/postel-sh/postel/blob/main/decisions/0012-package-granularity.md) for why this stays one package. |
-| **[`@postel/edge`](/docs/api/edge)** | Receiver-side build for edge runtimes. Named-export surface: `verify`, `createKeyset`, `jwksHandler`, `dedup`, `inMemoryDedupAdapter`, `signFixture`, structured errors. ≤ 50 KB minified+gzipped, Web Crypto only. Use this when bundle budget matters; use `@postel/core` everywhere else. |
+| **[`@postel/core`](/docs/api/core)** | The TypeScript entry point. The `Postel({ inbound, outbound })` factory, the `Verifier` strategies (`Secret`, `PublicKey`, `Keyset`), the dedup helpers, the structured error hierarchy, plus the underlying primitives (`verify`, `createKeyset`, `jwksHandler`, `dedup`, `inMemoryDedupAdapter`, `signFixture`). Receiver runtime works today through `postel.inbound.<source>.verify`; sender runtime lands in v0.2.0+ (`postel.outbound.*` throws `NotImplementedError` until then). |
 | **`@postel/hono`** | Hono adapter — raw-bytes preserving middleware that exposes the configured `Postel` instance on `c.get("postel")`. |
 | **`@postel/standalone-pg`** | Postgres dedup adapter, standalone (no workspace-wide install). Plug into `inbound.<source>.dedup` at factory time. |
 | **`@postel/standalone-sqlite`** | SQLite dedup adapter, standalone. Same shape as the Postgres adapter. |

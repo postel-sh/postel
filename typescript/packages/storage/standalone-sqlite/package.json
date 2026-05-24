@@ -33,7 +33,7 @@
     }
   },
   "dependencies": {
-    "@postel/edge": "workspace:*"
+    "@postel/core": "workspace:*"
   },
   "peerDependencies": {
     "better-sqlite3": ">=11"

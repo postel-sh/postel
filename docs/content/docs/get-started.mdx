@@ -1,9 +1,9 @@
 ---
 title: Get started
-description: Install @postel/core and verify a signed webhook in under a minute. Works in Node, Bun, Deno, and on the edge.
+description: Install @postel/core and verify a signed webhook in under a minute. Works in Node, Bun, and Deno.
 ---
 
-This page gets you from zero to a verified webhook on your laptop. `@postel/core` is the unified TypeScript entry point — the `Postel({...})` factory exposes a receiver today and a sender in v0.2.0+. If you need the ≤ 50 KB edge-runtime carve-out, swap `@postel/core` for [`@postel/edge`](/docs/concepts/edge-runtimes) — same wire format, smaller bundle, named-export surface.
+This page gets you from zero to a verified webhook on your laptop. `@postel/core` is the unified TypeScript entry point — the `Postel({...})` factory exposes a receiver today and a sender in v0.2.0+.
 
 > The Go, Python, and Rust snippets throughout this page reflect the target API designs — those ports are planned, packages not yet published.
 
@@ -36,7 +36,7 @@ cargo add postel
 </Tab>
 </Tabs>
 
-`@postel/core` has zero runtime dependencies beyond `@postel/edge` (the shared Web-Crypto verifier). Tree-shaking keeps the sender code paths out of receiver-only builds. If your runtime is Cloudflare Workers, Vercel Edge, Deno Deploy, or Bun and you care about cold-start bundle size, install [`@postel/edge`](/docs/concepts/edge-runtimes) instead.
+`@postel/core` has zero runtime dependencies. Tree-shaking keeps the sender code paths out of receiver-only builds.
 
 ## 2. Verify a webhook
 
@@ -183,7 +183,7 @@ A few things worth noticing:
 - **`inbound` is keyed by source name.** Configure `github`, `stripe`, `internal-api`, … and route requests to the matching source. Each source is independently typed.
 - **`outbound` is not configured here.** With only `inbound` in the config, `postel.outbound` does not exist on the instance type — TypeScript refuses to reference it.
 
-The route handler above works unmodified on Cloudflare Workers, Vercel Edge, Next.js, Bun, and Deno. See [Cloudflare Workers](/docs/guides/cloudflare-workers) for a complete deployment walkthrough.
+The route handler above works unmodified on Next.js, Bun, and Deno.
 </Tab>
 </LangNotes>
 
@@ -281,4 +281,3 @@ The factory snippet above is framework-agnostic — it works anywhere you can ha
 - [Concepts → Signing and verification](/docs/concepts/signing-and-verification) — how the pipeline works under the hood.
 - [Concepts → Key rotation](/docs/concepts/key-rotation) — multi-secret windows and JWKS.
 - [Concepts → Idempotency](/docs/concepts/idempotency) — at-least-once delivery + the dedup helper.
-- [Guides → Cloudflare Workers](/docs/guides/cloudflare-workers) — production deployment.

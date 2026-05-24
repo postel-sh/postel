@@ -9,8 +9,7 @@ The TypeScript port's distribution contract: published package set, bundle-size 
 The library SHALL be distributed as the following npm packages, grouped by purpose:
 
 **Core:**
-- `@postel/core` — sender + receiver + types + errors.
-- `@postel/edge` — receiver + JWKS consumer scoped to edge runtimes (≤ 50 KB minified+gzipped).
+- `@postel/core` — sender + receiver + types + errors. The receiver-side verify / dedup / JWKS-consumer surface ships here directly; there is no separate edge-runtime carve-out package.
 
 **Storage adapters (Tier 1 — must ship for 1.0, per [ADR 0007](../../../decisions/0007-storage-strategy.md)):**
 - `@postel/standalone-pg` — Postel owns the Postgres pool; zero-config drop-in.
@@ -35,11 +34,6 @@ The `@postel/compliance` suite is **not part of this list**: per the `compliance
 
 Each package MUST have a single, documented purpose declared in its `package.json` `description` field (≤ 120 chars).
 
-#### Scenario: Importing edge does not pull core
-
-- **WHEN** a Cloudflare Worker imports only `@postel/edge`
-- **THEN** the bundle does not include sender, worker, or DB code
-
 #### Scenario: Importing a storage adapter does not pull other adapters
 
 - **WHEN** a host installs only `@postel/drizzle`
@@ -49,7 +43,6 @@ Each package MUST have a single, documented purpose declared in its `package.jso
 
 - **WHEN** a consumer installs `@postel/storage-helpers`
 - **THEN** no Postgres / SQLite / other DB client is pulled in transitively
-- **AND** the package is importable from edge runtimes if needed
 
 ### Requirement: Core bundle budget
 

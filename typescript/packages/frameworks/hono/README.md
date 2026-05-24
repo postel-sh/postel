@@ -1,6 +1,6 @@
 # @postel/hono
 
-> Hono middleware and ad-hoc helper for verifying inbound webhooks against [`@postel/edge`](../../edge).
+> Hono middleware and ad-hoc helper for verifying inbound webhooks against [`@postel/core`](../../core).
 
 Hono is the smallest of the framework adapters and the first one Postel ships at v0.1.0 — Express, Fastify, Bun, Deno, Next.js, SvelteKit, Astro, and Nitro adapters are deferred to later releases.
 
@@ -31,7 +31,7 @@ app.post("/webhooks", postelHono("whsec_..."), (c) => {
 
 The second argument is anything `verify()` accepts: a single `whsec_`-prefixed secret, a priority-ordered `string[]` (multi-secret rotation window), or a `Keyset` returned from `createKeyset` (JWKS-backed; lands in PR 4).
 
-The third argument is the same `VerifyOptions` shape as `@postel/edge` — `toleranceSeconds`, `now`.
+The third argument is the same `VerifyOptions` shape as `@postel/core` — `toleranceSeconds`, `now`.
 
 ## License
 

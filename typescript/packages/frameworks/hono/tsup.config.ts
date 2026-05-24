@@ -8,6 +8,6 @@ export default defineConfig({
   clean: true,
   target: "es2022",
   platform: "neutral",
-  external: ["hono", "@postel/edge"],
+  external: ["hono", "@postel/core"],
   treeshake: true,
 });

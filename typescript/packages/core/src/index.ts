@@ -40,7 +40,45 @@ export type {
   SetRateLimitOptions,
 } from "./outbound.js";
 
-export { NotImplementedError } from "./errors.js";
+export {
+  MalformedHeader,
+  NotImplementedError,
+  PostelError,
+  RawBytesMismatchDetected,
+  SignatureInvalid,
+  TimestampTooOld,
+  UnknownKeyId,
+} from "./errors.js";
+export type { PostelErrorCode } from "./errors.js";
+
+export { dedup, inMemoryDedupAdapter } from "./dedup.js";
+export type { InMemoryDedupOptions } from "./dedup.js";
+
+export { ttlToSeconds } from "./ttl.js";
+export { jwksHandler } from "./jwks-handler.js";
+export { createKeyset } from "./keyset.js";
+export { signFixture } from "./sign-fixture.js";
+export { verify } from "./verify.js";
+
+export type {
+  DedupAdapter,
+  DedupOptions,
+  DedupRecordOptions,
+  DedupResult,
+  Jwk,
+  Jwks,
+  JwksHandlerOptions,
+  Keyset as JwksKeyset,
+  KeysetOptions,
+  Secret as RawSecret,
+  SecretOrKeyset,
+  SignFixtureOptions,
+  SignedFixture,
+  VerifyOptions,
+  VerifyResult,
+  WebhookEvent,
+  WebhookHeaders,
+} from "./types.js";
 
 export {
   AwsKms,
@@ -77,38 +115,3 @@ export type {
   Verifier,
   WorkerStrategy,
 } from "./strategies/index.js";
-
-export {
-  MalformedHeader,
-  PostelError,
-  RawBytesMismatchDetected,
-  SignatureInvalid,
-  TimestampTooOld,
-  UnknownKeyId,
-} from "@postel/edge";
-export type { PostelErrorCode } from "@postel/edge";
-
-export { createKeyset } from "@postel/edge";
-export { signFixture } from "@postel/edge";
-export { ttlToSeconds } from "@postel/edge";
-
-export type {
-  DedupAdapter,
-  DedupOptions,
-  DedupRecordOptions,
-  DedupResult,
-  InMemoryDedupOptions,
-  Jwk,
-  Jwks,
-  JwksHandlerOptions,
-  Keyset as JwksKeyset,
-  KeysetOptions,
-  Secret as RawSecret,
-  SecretOrKeyset,
-  SignFixtureOptions,
-  SignedFixture,
-  VerifyOptions,
-  VerifyResult,
-  WebhookEvent,
-  WebhookHeaders,
-} from "@postel/edge";

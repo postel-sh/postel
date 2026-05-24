@@ -3,7 +3,7 @@ title: Why Postel
 description: The positioning, the tradeoffs, and the design rationale. Why a library, not a service. Why polyglot. Why specs first.
 ---
 
-Postel exists because teams who need outbound webhooks today face two unattractive options. **A hosted service** — Svix, Hookdeck Outpost — solves the problem comprehensively but adds operational footprint (Postgres + Redis + a separate dispatcher process), costs $0→$490/mo cliff for hosted, and cannot run on edge runtimes at all. **A hand-rolled implementation on top of Sidekiq, Oban, or BullMQ** handles retries but reimplements signing, idempotency, replay, key rotation, JWKS, multi-secret windows, dedup, and raw-bytes preservation every time.
+Postel exists because teams who need outbound webhooks today face two unattractive options. **A hosted service** — Svix, Hookdeck Outpost — solves the problem comprehensively but adds operational footprint (Postgres + Redis + a separate dispatcher process) and costs $0→$490/mo cliff for hosted. **A hand-rolled implementation on top of Sidekiq, Oban, or BullMQ** handles retries but reimplements signing, idempotency, replay, key rotation, JWKS, multi-secret windows, dedup, and raw-bytes preservation every time.
 
 The [Standard Webhooks](https://www.standardwebhooks.com) specification covers the wire format and ships signing helpers in nine languages, but explicitly leaves delivery, retry, key management, replay, and operational tooling to implementers. There's a gap between "signs and verifies" and "production-grade delivery layer" that the consortium doesn't fill.
 
@@ -14,9 +14,9 @@ Postel sits in that gap.
 > Svix is for when webhooks are your **product**.
 > Postel is for when webhooks are a **feature** of your product.
 
-Postel does not compete with Svix or Hookdeck on customer-facing webhook portals, multi-region delivery, or 99.999% uptime SLAs. It targets a different audience: teams who want to add reliable outbound webhooks to an existing application without standing up a separate service, and teams whose runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy, Bun, single-binary OSS products) cannot run a Postgres + Redis + service sidecar in the first place.
+Postel does not compete with Svix or Hookdeck on customer-facing webhook portals, multi-region delivery, or 99.999% uptime SLAs. It targets a different audience: teams who want to add reliable outbound webhooks to an existing application without standing up a separate service, and single-binary OSS products that cannot run a Postgres + Redis + service sidecar in the first place.
 
-## Five design choices
+## Four design choices
 
 ### 1. Library, not service
 
@@ -36,7 +36,7 @@ The suite is the executable boundary between **CONTRACT** (everything every port
 
 ### 3. Polyglot from the start
 
-The TypeScript port ships first because the edge-runtime / serverless use case is underserved by the existing options. But the contract is language-agnostic: the wire format is AsyncAPI 3.0, the DB schema is SQL DDL, the capability behaviors are markdown specs, and the compliance suite drives any conformant receiver. Go, Python, and Rust ports follow on the same schedule, each gated on passing the suite.
+The TypeScript port ships first because Node + Postgres is the largest existing footprint and the receiver story is the smallest plausible cut. But the contract is language-agnostic: the wire format is AsyncAPI 3.0, the DB schema is SQL DDL, the capability behaviors are markdown specs, and the compliance suite drives any conformant receiver. Go, Python, and Rust ports follow on the same schedule, each gated on passing the suite.
 
 The bet: a small narrow contract enforced by an executable oracle scales further than per-port reinvention or single-language lock-in.
 
@@ -45,12 +45,6 @@ The bet: a small narrow contract enforced by an executable oracle scales further
 Postel implements the [Standard Webhooks](https://www.standardwebhooks.com) wire format end-to-end. The HMAC v1 signature scheme works unchanged. Ed25519 (`v1a`) for asymmetric verification is a Postel extension layered on top — additive, never breaking. JWKS publication is a one-liner. The `webhook-spec-version` header signals capability without breaking older receivers.
 
 When we deviate, we do so via the multi-secret rotation window: producers can sign with both old and new keys during overlap, and receivers accept either. No flag day.
-
-### 5. Edge-runtime as a first-class target
-
-`@postel/edge` is built with esbuild `platform: "neutral"` and verified at ≤ 50 KB minified+gzipped on every PR. The build fails if anything imports `node:*`. It uses Web Crypto, `fetch`, `TextEncoder` — and nothing else. It works unmodified on Cloudflare Workers, Vercel Edge, Deno Deploy, Bun, and Cloudflare Pages.
-
-Edge support is not bolted on — the receiver was designed for it. The Node-only adapters (Postgres dedup, SQLite dedup, etc.) are separate packages that you compose in when your runtime supports them. The 50 KB receiver itself does not.
 
 ## Operating principles
 
@@ -63,16 +57,15 @@ Edge support is not bolted on — the receiver was designed for it. The Node-onl
 
 A reasonable observer answers **yes** to all of:
 
-1. Does the receiver run unmodified on Cloudflare Workers in ≤ 50 KB?
-2. Can I add webhooks to my Postgres-backed app without bringing up Redis or a service?
-3. Does it handle key rotation with overlap windows out of the box?
-4. Can I publish a JWKS endpoint with one line?
-5. Is replay a first-class API verb?
-6. Does the TypeScript implementation pass `@postel/compliance` end-to-end?
-7. Are the receiver verifier errors actionable?
-8. Does the multi-tenant scheduler isolate noisy neighbors by default?
-9. Is the "Why not a service?" answer obvious from the docs?
-10. Are the wire format, DB schema, and capability specs documented well enough that the first community port is plausible — and validated by passing the compliance suite?
+1. Can I add webhooks to my Postgres-backed app without bringing up Redis or a service?
+2. Does it handle key rotation with overlap windows out of the box?
+3. Can I publish a JWKS endpoint with one line?
+4. Is replay a first-class API verb?
+5. Does the TypeScript implementation pass `@postel/compliance` end-to-end?
+6. Are the receiver verifier errors actionable?
+7. Does the multi-tenant scheduler isolate noisy neighbors by default?
+8. Is the "Why not a service?" answer obvious from the docs?
+9. Are the wire format, DB schema, and capability specs documented well enough that the first community port is plausible — and validated by passing the compliance suite?
 
 If all yes → 1.0. Otherwise it isn't done.
 

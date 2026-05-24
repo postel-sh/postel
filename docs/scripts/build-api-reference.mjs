@@ -4,7 +4,6 @@
  * rendered on the docs site, and post-processes the output so it renders
  * cleanly in Fumadocs (frontmatter, optional preamble).
  *
- *   ../typescript/packages/edge/src/index.ts  ->  content/docs/api/edge/index.mdx
  *   ../typescript/packages/core/src/index.ts  ->  content/docs/api/core/index.mdx
  *
  * Re-runnable: deletes each output dir first so stale exports don't linger.
@@ -19,20 +18,13 @@ const docsRoot = resolve(__dirname, "..");
 
 const PACKAGES = [
   {
-    name: "edge",
-    config: "typedoc.edge.json",
-    title: "@postel/edge",
-    description:
-      "Public API of @postel/edge — verify, createKeyset, jwksHandler, dedup, signFixture, and the structured error classes. Generated from source via TypeDoc.",
-  },
-  {
     name: "core",
     config: "typedoc.core.json",
     title: "@postel/core",
     description:
-      "Public API of @postel/core — the Postel({ inbound, outbound }) factory, Verifier strategies (Secret, PublicKey, Keyset), dedup helpers, and the PostelError hierarchy. Generated from source via TypeDoc.",
+      "Public API of @postel/core — the Postel({ inbound, outbound }) factory, Verifier strategies (Secret, PublicKey, Keyset), dedup helpers, JWKS consumer, signing fixtures, and the PostelError hierarchy. Generated from source via TypeDoc.",
     preamble: [
-      "> **Status: 0.0.0 — sender runtime not yet shipped.** Receiver runtime works today through `postel.inbound.<source>.verify` and `postel.inbound.<source>.dedup`. Sender runtime (`postel.outbound.*`) lands in v0.2.0+. Until then, every `outbound` method below is fully typed but throws `NotImplementedError` at runtime. See [ADR 0012](https://github.com/postel-sh/postel/blob/main/decisions/0012-package-granularity.md) for why both directions ship in one package.",
+      "> **Status: 0.0.0 — sender runtime not yet shipped.** Receiver runtime works today through `postel.inbound.<source>.verify` and `postel.inbound.<source>.dedup`. Sender runtime (`postel.outbound.*`) lands in v0.2.0+. Until then, every `outbound` method below is fully typed but throws `NotImplementedError` at runtime.",
       "",
     ].join("\n"),
   },

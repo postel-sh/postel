@@ -43,4 +43,4 @@ This PR scaffolds the site so future PRs can author content. **No spec / API / A
 2. The same for ADRs and the AsyncAPI / SQL DDL specs.
 3. An implementation-status badge component driven from [`scripts/spec-drift-deferred.txt`](../scripts/spec-drift-deferred.txt).
 4. A `compliance/vectors/**` → corpus index page.
-5. TypeDoc-generated API reference for `@postel/edge` (and other packages as they ship).
+5. TypeDoc-generated API reference for `@postel/core` (and other packages as they ship).

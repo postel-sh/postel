@@ -9,5 +9,4 @@ export default defineConfig({
   target: "es2022",
   platform: "neutral",
   treeshake: true,
-  noExternal: ["@postel/edge"],
 });

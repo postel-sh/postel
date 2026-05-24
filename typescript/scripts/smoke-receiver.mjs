@@ -4,7 +4,7 @@
 //
 // Self-contained smoke test for `typescript/scripts/reference-receiver.mjs`.
 // Boots the receiver in a child process, signs a few payloads with
-// `@postel/edge`'s signFixture helper, drives the receiver over HTTP, and
+// `@postel/core`'s signFixture helper, drives the receiver over HTTP, and
 // asserts the verdicts that the compliance suite will eventually assert.
 //
 // Used by CI before invoking the full `@postel/compliance` runner: a quick
@@ -16,7 +16,7 @@ import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { signFixture } from "@postel/edge";
+import { signFixture } from "@postel/core";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

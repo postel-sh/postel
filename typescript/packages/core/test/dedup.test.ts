@@ -61,7 +61,7 @@ describe("Idempotency dedup helper", () => {
   });
 
   describe("Redis is opt-in only", () => {
-    it("@postel/edge runs without Redis as a dependency (in-memory adapter is built in)", async () => {
+    it("@postel/core runs without Redis as a dependency (in-memory adapter is built in)", async () => {
       const adapter = inMemoryDedupAdapter();
       expect(typeof adapter.record).toBe("function");
       const r = await dedup("msg_no_redis", { ttl: "1h", adapter });

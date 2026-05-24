@@ -74,7 +74,7 @@ The library SHALL ship a vendor-neutral compliance test suite as a separate arti
 
 #### Scenario: Run suite against own implementation
 
-- **WHEN** CI runs `@postel/compliance` against a receiver built with `@postel/edge`
+- **WHEN** CI runs `@postel/compliance` against a receiver built with `@postel/core`
 - **THEN** the suite reports 100% pass
 
 #### Scenario: Run suite against a third-party receiver

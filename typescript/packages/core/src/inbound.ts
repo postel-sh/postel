@@ -1,20 +1,16 @@
-import {
-  MalformedHeader,
-  SignatureInvalid,
-  TimestampTooOld,
-  verify as edgeVerify,
-  ttlToSeconds,
-} from "@postel/edge";
+import { MalformedHeader, SignatureInvalid, TimestampTooOld } from "./errors.js";
+import { ttlToSeconds } from "./ttl.js";
 import type {
   DedupAdapter,
   DedupResult,
-  Secret as EdgeSecret,
+  Secret as RawSecret,
   SecretOrKeyset,
   VerifyOptions,
   VerifyResult,
   WebhookEvent,
   WebhookHeaders,
-} from "@postel/edge";
+} from "./types.js";
+import { verify } from "./verify.js";
 
 import type { Verifier } from "./strategies/verify.js";
 
@@ -51,8 +47,8 @@ export type InboundApi<S extends Record<string, InboundSource>> = {
 };
 
 function verifierToSecretOrKeyset(v: Verifier): SecretOrKeyset {
-  if (v.kind === "secret") return v.value satisfies EdgeSecret;
-  if (v.kind === "public-key") return v.value satisfies EdgeSecret;
+  if (v.kind === "secret") return v.value satisfies RawSecret;
+  if (v.kind === "public-key") return v.value satisfies RawSecret;
   return v.keyset;
 }
 
@@ -63,7 +59,7 @@ async function attempt<TData>(
   options: VerifyOptions,
 ): Promise<VerifyResult<TData>> {
   const secretOrKeyset = verifierToSecretOrKeyset(v);
-  return edgeVerify<TData>(rawBody, headers, secretOrKeyset, options);
+  return verify<TData>(rawBody, headers, secretOrKeyset, options);
 }
 
 async function verifySource<TData>(
