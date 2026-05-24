@@ -26,18 +26,24 @@ Where `${body}` is the **raw request body** — byte-identical to what the produ
 ## What `verify` checks, in order
 
 ```ts
-const { event, matchedSecretIndex } = await verify(body, headers, secretOrKeyset);
+import { Postel, Secret } from "@postel/core";
+
+const postel = Postel({
+  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+});
+
+const { event, matchedVerifierIndex } = await postel.inbound.vendor.verify(body, headers);
 ```
 
-Under the hood:
+Under the hood, for each `Verifier` configured on the source (in order):
 
 1. **Header presence and shape.** All three headers must exist and parse. The signature header must contain at least one token of the form `<version>,<base64>`. Any failure throws `MalformedHeader`.
-2. **Timestamp window.** Reject if `|now - webhook-timestamp| > toleranceSeconds` (default 300). Throws `TimestampTooOld`.
-3. **Key lookup** (JWKS mode only). If a `Keyset` is provided, extract the `kid` from the message id and look up the corresponding public key. Throws `UnknownKeyId` if no match.
-4. **Signature comparison.** For each `(secret, signature-token)` pair, compute the expected signature and compare in **constant time** to the one in the header. Any one match succeeds; if none match, throws `SignatureInvalid`.
-5. **Body parse.** The verified raw bytes are parsed as JSON; the event shape is returned. (Parse failures throw `SignatureInvalid` — a parse error after a successful signature check almost always indicates a body that was tampered with downstream.)
+2. **Timestamp window.** Reject if `|now - webhook-timestamp| > toleranceSeconds` (default 300). Throws `TimestampTooOld` — this short-circuits the whole verifier array, since timestamp validity is independent of which key signed.
+3. **Key lookup** (JWKS mode only). If the current verifier is a `Keyset({...})`, extract the `kid` from the message id and look up the corresponding public key. A miss throws `UnknownKeyId`; the next verifier in the array (if any) is then tried.
+4. **Signature comparison.** Compute the expected signature for this verifier and compare in **constant time** to one of the tokens in the header. A match wins immediately. If no token matches and there are more verifiers in the array, try the next one. If every verifier exhausts without a match, throws `SignatureInvalid`.
+5. **Body parse.** Once a verifier matches, the verified raw bytes are parsed as JSON; the event shape is returned. (Parse failures throw `SignatureInvalid` — a parse error after a successful signature check almost always indicates a body that was tampered with downstream.)
 
-On success the return value names which secret matched (`matchedSecretIndex`), so callers can detect when a sender is still using a deprecated key.
+On success the return value names which verifier matched (`matchedVerifierIndex`), so callers can detect when a sender is still using a deprecated key or signature scheme. First match wins; ordering matters only for which `matchedVerifierIndex` you observe.
 
 ## The signature schemes
 
@@ -63,23 +69,33 @@ Asymmetric: the producer signs with a private key, the receiver verifies with th
 
 `v1a` is a Postel-specific extension on top of Standard Webhooks. It is byte-compatible with the v1 envelope: a request can carry both `v1,...` and `v1a,...` tokens in the same header, and the receiver accepts on first match.
 
-## Multi-secret verification
+## Multi-verifier composition
 
-`verify` accepts a single secret or an array. Arrays are tried in order:
+Each source's `verify` slot accepts a single `Verifier` or a `ReadonlyArray<Verifier>`. Arrays are tried in order; the first match wins:
 
 ```ts
-const { event, matchedSecretIndex } = await verify(
-  body,
-  headers,
-  [process.env.WEBHOOK_SECRET_CURRENT, process.env.WEBHOOK_SECRET_PREVIOUS],
-);
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: [
+        Secret(process.env.WEBHOOK_SECRET_CURRENT!),
+        Secret(process.env.WEBHOOK_SECRET_PREVIOUS!),
+      ],
+    },
+  },
+});
 
-if (matchedSecretIndex === 1) {
-  log.warn("webhook signed with deprecated secret", { id: event.type });
+const { event, matchedVerifierIndex } = await postel.inbound.vendor.verify(body, headers);
+
+if (matchedVerifierIndex > 0) {
+  log.warn("webhook signed with deprecated verifier", {
+    type: event.type,
+    matchedVerifierIndex,
+  });
 }
 ```
 
-This is the rotation-overlap window — see [Key rotation](/docs/concepts/key-rotation) for the full pattern.
+Mixed-mode arrays are supported — e.g. `[Secret(LEGACY_HMAC), Keyset({ jwksUri: NEW_JWKS })]` for a cross-scheme HMAC → Ed25519 migration window. The same `matchedVerifierIndex` signal works for both rotation and scheme migration. See [Key rotation](/docs/concepts/key-rotation) for the full pattern.
 
 ## Constant-time comparison
 
@@ -89,7 +105,7 @@ The compliance suite includes a vector for this: two equal-length signatures tha
 
 ## Structured errors
 
-`verify` never returns a boolean. Failures are typed:
+`verify` never returns a boolean. Failures are typed instances of `PostelError` subclasses:
 
 ```ts
 import {
@@ -98,13 +114,13 @@ import {
   MalformedHeader,
   UnknownKeyId,
   RawBytesMismatchDetected,
-} from "@postel/edge";
+} from "@postel/core";
 
 try {
-  const { event } = await verify(body, headers, secret);
+  const { event } = await postel.inbound.vendor.verify(body, headers);
 } catch (err) {
   if (err instanceof SignatureInvalid) {
-    // signature didn't match any configured secret
+    // no verifier in the array matched the request's signature
   } else if (err instanceof TimestampTooOld) {
     // outside the configured window — likely a replay or clock skew
   } else if (err instanceof MalformedHeader) {
@@ -117,7 +133,7 @@ try {
 }
 ```
 
-Each error names the failing step. The error message is safe to log — it never contains the secret or the signature bytes.
+Each error subclass also carries a stable SCREAMING_SNAKE `code` (`'SIGNATURE_INVALID'`, `'TIMESTAMP_TOO_OLD'`, …) for adopters who want to discriminate by string — useful in logs, admin payloads, and cross-port JSON contracts. The error message is safe to log — it never contains the secret or the signature bytes.
 
 ## What's next
 

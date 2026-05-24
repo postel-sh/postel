@@ -11,13 +11,23 @@ Postel ships a dedup helper that gets this right. The contract is simple: hand i
 
 ## The dedup contract
 
-```ts
-import { dedup } from "@postel/edge";
+Configure a dedup adapter on the inbound source, then call `dedup(messageId, options?)` from the verified-event branch:
 
-const { duplicate } = await dedup(event.type, "msg_123", {
-  ttl: 60 * 60 * 24,        // remember this id for 24 hours
-  adapter: pgDedupAdapter({ client: pgPool }),
+```ts
+import { Postel, Secret, InMemoryDedup } from "@postel/core";
+
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: Secret(process.env.WEBHOOK_SECRET!),
+      dedup: InMemoryDedup(),
+      dedupTtl: "24h", // org-wide default; overridable per call
+    },
+  },
 });
+
+// In your route handler, after verify returns:
+const { duplicate } = await postel.inbound.vendor.dedup(event.id);
 
 if (duplicate) {
   return new Response("duplicate", { status: 200 });
@@ -29,24 +39,34 @@ await processOrder(event.data);
 
 A few things to note:
 
-- **TTL is your choice.** Pick a window longer than the producer's retry budget — 24h to 7d is typical. The downside of a too-short TTL is accepting a duplicate after expiry; the downside of a too-long TTL is more storage.
-- **The first-receipt branch must succeed.** If your work fails after `dedup` returns `{ duplicate: false }`, the next retry will be marked duplicate and skipped. Either move the dedup call after a successful commit, or use the host-transaction passthrough (below).
+- **TTL is your choice.** Pick a window longer than the producer's retry budget — 24h to 7d is typical. The downside of a too-short TTL is accepting a duplicate after expiry; the downside of a too-long TTL is more storage. Either set `dedupTtl` once on the source or pass `{ ttl: "1h" }` per call to override.
+- **The first-receipt branch must succeed.** If your work fails after `dedup` returns `{ duplicate: false }`, the next retry will be marked duplicate and skipped. Either move the dedup call after a successful commit, or use the transactional pattern (below).
 - **Concurrent calls race exactly once.** Two parallel `dedup('msg_X')` calls return `{ duplicate: false }` from exactly one of them. The other (or others) return `{ duplicate: true }`. The compliance suite tests this.
+- **`postel.inbound.<source>.dedup` only exists when an adapter is configured.** If you omit `dedup` from the source config, the method is not on the instance type — TypeScript catches the mistake at compile time.
 
 ## Adapters
 
-`dedup` accepts an adapter that controls storage. Postel ships three first-party adapters; you can plug in others by implementing the `DedupAdapter` interface (one method, `record(id, ttlSeconds) → { duplicate }`).
+`dedup` is wired through an adapter that controls storage. Postel ships three first-party adapters; you can plug in others by implementing the `DedupAdapter` interface (one method, `record(id, ttlSeconds, options?) → { duplicate }`).
 
 ### Postgres — `@postel/standalone-pg`
 
 ```ts
+import { Postel, Secret } from "@postel/core";
 import { pgDedupAdapter } from "@postel/standalone-pg";
 
-const adapter = pgDedupAdapter({
-  client: pgPool, // node-postgres pool or compatible
-  // tableName: "postel_received_messages",   (default)
-  // schema: undefined,                        (search_path)
-  // autoMigrate: true,                        (creates the table on first use)
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: Secret(process.env.WEBHOOK_SECRET!),
+      dedup: pgDedupAdapter({
+        client: pgPool, // node-postgres pool or compatible
+        // tableName: "postel_received_messages",   (default)
+        // schema: undefined,                        (search_path)
+        // autoMigrate: true,                        (creates the table on first use)
+      }),
+      dedupTtl: "24h",
+    },
+  },
 });
 ```
 
@@ -57,19 +77,33 @@ The adapter uses `INSERT ... ON CONFLICT ... DO UPDATE WHERE expires_at <= now()
 ```ts
 import { sqliteDedupAdapter } from "@postel/standalone-sqlite";
 
-const adapter = sqliteDedupAdapter({
-  db: betterSqlite3Db,
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: Secret(s),
+      dedup: sqliteDedupAdapter({ db: betterSqlite3Db }),
+      dedupTtl: "24h",
+    },
+  },
 });
 ```
 
 Uses `INSERT OR IGNORE`, identical contract. Periodically purges expired rows.
 
-### In-memory — `inMemoryDedupAdapter` (built into `@postel/edge`)
+### In-memory — `InMemoryDedup` (built into `@postel/core` and `@postel/edge`)
 
 ```ts
-import { inMemoryDedupAdapter } from "@postel/edge";
+import { Postel, Secret, InMemoryDedup } from "@postel/core";
 
-const adapter = inMemoryDedupAdapter({ maxEntries: 10_000 });
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: Secret(s),
+      dedup: InMemoryDedup(),
+      dedupTtl: "1h",
+    },
+  },
+});
 ```
 
 Per-instance, not shared. Fine for development; **not** fine for production with more than one process — concurrent receivers can both accept the same message. Use it when:
@@ -89,24 +123,21 @@ A Redis dedup adapter ships as a separate package for hosts that already run Red
 The naive placement is "before the work":
 
 ```ts
-const { duplicate } = await dedup(event.type, event.id, options);
+const { duplicate } = await postel.inbound.vendor.dedup(event.id);
 if (duplicate) return new Response("dup", { status: 200 });
 await processOrder(event.data);
 ```
 
 This is correct as long as `processOrder` is itself idempotent on its own writes. If it isn't — if you're charging a card, sending an email, calling an external API — you want **the dedup row and the side effect to commit together**.
 
-The cleanest pattern is the **transactional outbox** in reverse: the dedup insert participates in the same DB transaction as the work.
+The cleanest pattern is the **transactional outbox** in reverse: the dedup insert participates in the same DB transaction as the work. Every dedup call accepts an optional `tx` parameter that the adapter threads through to its storage.
 
 ```ts
 await pgPool.tx(async (tx) => {
-  const { duplicate } = await dedup(event.type, event.id, {
-    ttl: 60 * 60 * 24,
-    adapter: pgDedupAdapter({ client: tx }), // <-- the transaction, not the pool
-  });
+  const { duplicate } = await postel.inbound.vendor.dedup(event.id, { tx });
   if (duplicate) return; // tx commits with no work; safe.
 
-  await processOrder(tx, event.data);        // joins the same tx
+  await processOrder(tx, event.data);  // joins the same tx
 });
 ```
 

@@ -9,16 +9,18 @@ The reference pages below are generated from the package source via TypeDoc — 
 
 | Package | What it does |
 |---|---|
-| **[`@postel/edge`](/docs/api/edge)** | Receiver-side build for edge runtimes. `verify`, `createKeyset`, `jwksHandler`, `dedup`, `signFixture`, structured errors. ≤ 50 KB. |
+| **`@postel/core`** | Unified TypeScript entry point. The `Postel({ inbound, outbound })` factory, the `Verifier` strategies (`Secret`, `PublicKey`, `Keyset`), the dedup helpers, the structured error hierarchy. Receiver runtime works today through `postel.inbound.<source>.verify`; sender runtime lands in v0.2.0+ (`postel.outbound.*` throws `NotImplementedError` until then). See [ADR 0012](https://github.com/postel-sh/postel/blob/main/decisions/0012-package-granularity.md) for why this stays one package. |
+| **[`@postel/edge`](/docs/api/edge)** | Receiver-side build for edge runtimes. Named-export surface: `verify`, `createKeyset`, `jwksHandler`, `dedup`, `inMemoryDedupAdapter`, `signFixture`, structured errors. ≤ 50 KB minified+gzipped, Web Crypto only. Use this when bundle budget matters; use `@postel/core` everywhere else. |
+| **`@postel/hono`** | Hono adapter — raw-bytes preserving middleware that exposes the configured `Postel` instance on `c.get("postel")`. |
+| **`@postel/standalone-pg`** | Postgres dedup adapter, standalone (no workspace-wide install). Plug into `inbound.<source>.dedup` at factory time. |
+| **`@postel/standalone-sqlite`** | SQLite dedup adapter, standalone. Same shape as the Postgres adapter. |
 
 ## Coming next
 
 | Package | What it will do |
 |---|---|
-| `@postel/hono` | Hono middleware that wires raw bytes into `verify` and exposes the parsed event on the Hono context. Ships alongside v0.1.0. |
-| `@postel/standalone-pg` | The Postgres dedup adapter as a standalone (no workspace-wide install required). Ships alongside v0.1.0. |
-| `@postel/standalone-sqlite` | The SQLite dedup adapter. Ships alongside v0.1.0. |
-| `@postel/core` | Sender — `send()`, the transactional outbox, retry, fanout. v0.2.0. |
 | `@postel/express`, `@postel/fastify`, `@postel/nextjs`, `@postel/bun` | Framework adapters. v0.1.x as each lands. |
+| `@postel/drizzle`, `@postel/kysely`, `@postel/prisma` | Storage adapters wiring the Postel `Storage` interface against the host ORM. v0.2.x alongside sender. |
+| `postel.outbound.send` and friends | Sender runtime inside `@postel/core`. v0.2.0. Until then the types ship but each method throws `NotImplementedError`. |
 
 The shape of these packages is fixed by the [capability specs](https://github.com/postel-sh/postel/tree/main/openspec/specs) and the [compliance suite](https://github.com/postel-sh/postel/tree/main/compliance). What changes is when they ship code — the API is designed up-front, not as we go.

@@ -5,6 +5,8 @@ description: Verify webhooks at the edge. End-to-end walkthrough — wrangler in
 
 Cloudflare Workers is the reference runtime for `@postel/edge`. This guide deploys a working webhook receiver from a blank project to production.
 
+> **Why `@postel/edge` and not `@postel/core` here?** `@postel/edge` is the bundle-size carve-out (≤ 50 KB, Web Crypto only, named-export surface) designed for runtimes like Workers where every byte counts. `@postel/core` is the unified entry point with the `Postel({ inbound })` factory and the `Verifier` strategies — pick it when bundle size is not a constraint and you want one configured instance covering multiple inbound sources. Both verify against the same Standard Webhooks contract. See [ADR 0012](https://github.com/postel-sh/postel/blob/main/decisions/0012-package-granularity.md).
+
 ## Prerequisites
 
 - Node 20+ (for `wrangler`).

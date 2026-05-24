@@ -22,7 +22,10 @@ This is broken:
 app.post("/webhooks", async (req, res) => {
   const body = req.body;                          // parsed JSON object
   const reserialized = JSON.stringify(body);       // re-serialize as bytes
-  await verify(new TextEncoder().encode(reserialized), req.headers, secret);
+  await postel.inbound.vendor.verify(
+    new TextEncoder().encode(reserialized),
+    req.headers,
+  );
 });
 ```
 
@@ -30,7 +33,7 @@ app.post("/webhooks", async (req, res) => {
 
 ## The fix
 
-Every framework adapter Postel ships preserves the raw request body and passes it to `verify` byte-for-byte. The contract:
+Every framework adapter Postel ships preserves the raw request body and passes it into `postel.inbound.<source>.verify` byte-for-byte. The contract:
 
 - **Express, Fastify, Koa, Hono, Elysia** — middleware buffers the raw `req` stream before any JSON parser sees it. The buffered bytes are what `verify` operates on.
 - **Bun.serve, Deno.serve, Cloudflare Workers, Vercel Edge, Next.js Route Handlers, SvelteKit, Astro, Nitro** — the `Request` object already exposes the raw bytes via `await req.arrayBuffer()` before any `.json()` call. Adapters use that.
@@ -41,13 +44,13 @@ If you're calling `verify` directly (no framework adapter), the rule is:
 const body = new Uint8Array(await req.arrayBuffer());   // raw bytes
 // const body = await req.json();                       // WRONG — parsed
 // const body = JSON.stringify(await req.json());       // WRONG — re-serialized
-await verify(body, headers, secret);
+await postel.inbound.vendor.verify(body, headers);
 ```
 
 `req.arrayBuffer()` is destructive — you cannot call `req.json()` after it on the same Request. That's fine: `verify` parses the body once the signature checks out, and the parsed event is returned in `result.event`.
 
 ```ts
-const { event } = await verify(body, headers, secret);
+const { event } = await postel.inbound.vendor.verify(body, headers);
 console.log(event.type, event.data);  // parsed for you, signature already verified
 ```
 
