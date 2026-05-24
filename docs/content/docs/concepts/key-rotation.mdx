@@ -11,7 +11,7 @@ Postel handles rotation two ways, depending on whether your producers and receiv
 
 Each inbound source's `verify` slot accepts a single `Verifier` or a `ReadonlyArray<Verifier>`. During rotation, configure the source with both new and old — producers can sign with either, and the receiver accepts both for the duration of the overlap window.
 
-```ts
+```ts title="app/webhooks/route.ts"
 import { Postel, Secret } from "@postel/core";
 
 const postel = Postel({
@@ -56,7 +56,7 @@ This shape generalizes beyond same-scheme rotation in two ways:
 
 For Ed25519 signing (`v1a`), receivers verify with a public key — they never hold signing material. The producer publishes its public keys at a JWKS endpoint (`/.well-known/webhooks-keys`); the receiver fetches and caches them.
 
-```ts
+```ts title="app/webhooks/route.ts"
 import { Postel, Keyset } from "@postel/core";
 
 const postel = Postel({
@@ -87,7 +87,7 @@ The `Keyset({...})` verifier strategy returns a cached, auto-refreshing keyset. 
 
 If you're on the **producing** side, mounting a JWKS endpoint is one line:
 
-```ts
+```ts title="app/.well-known/webhooks-keys/route.ts"
 import { jwksHandler } from "@postel/core";
 
 app.get("/.well-known/webhooks-keys", jwksHandler({ keys: PUBLIC_JWKS }));

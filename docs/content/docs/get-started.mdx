@@ -199,7 +199,7 @@ You need a signed request to verify. The library ships a fixture helper for this
 
 <Tabs items={["TypeScript", "Go", "Python", "Rust"]} groupId="lang">
 <Tab value="TypeScript">
-```ts
+```ts title="scripts/send-fixture.ts"
 import { signFixture } from "@postel/core";
 
 const secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5";
@@ -223,7 +223,7 @@ console.log(res.status); // 200
 <Tab value="Go">
 > **Planned** — the API below reflects the target design for the Go port.
 
-```go
+```go title="cmd/send_fixture/main.go"
 secret := "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5"
 fixture, _ := postel.SignFixture(postel.FixtureOpts{
     Secret:  secret,
@@ -242,7 +242,7 @@ fmt.Println(resp.StatusCode) // 200
 <Tab value="Python">
 > **Planned** — the API below reflects the target design for the Python port.
 
-```python
+```python title="scripts/send_fixture.py"
 from postel import sign_fixture
 
 secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5"
@@ -262,7 +262,7 @@ print(resp.status_code)  # 200
 <Tab value="Rust">
 > **Planned** — the API below reflects the target design for the Rust port.
 
-```rust
+```rust title="examples/send_fixture.rs"
 let secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5";
 let fixture = postel::sign_fixture(SignFixtureOpts {
     secret,

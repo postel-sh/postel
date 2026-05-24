@@ -17,7 +17,7 @@ The most common cause: middleware that parses JSON, hands you a typed object, an
 
 This is broken:
 
-```ts
+```ts title="The trap"
 // DON'T do this.
 app.post("/webhooks", async (req, res) => {
   const body = req.body;                          // parsed JSON object
@@ -40,7 +40,7 @@ Every framework adapter Postel ships preserves the raw request body and passes i
 
 If you're calling `verify` directly (no framework adapter), the rule is:
 
-```ts
+```ts title="app/webhooks/route.ts"
 const body = new Uint8Array(await req.arrayBuffer());   // raw bytes
 // const body = await req.json();                       // WRONG — parsed
 // const body = JSON.stringify(await req.json());       // WRONG — re-serialized
@@ -49,7 +49,7 @@ await postel.inbound.vendor.verify(body, headers);
 
 `req.arrayBuffer()` is destructive — you cannot call `req.json()` after it on the same Request. That's fine: `verify` parses the body once the signature checks out, and the parsed event is returned in `result.event`.
 
-```ts
+```ts title="app/webhooks/route.ts"
 const { event } = await postel.inbound.vendor.verify(body, headers);
 console.log(event.type, event.data);  // parsed for you, signature already verified
 ```
