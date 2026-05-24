@@ -1,4 +1,4 @@
 {
   "title": "API reference",
-  "pages": ["index", "edge"]
+  "pages": ["index", "core", "edge"]
 }
