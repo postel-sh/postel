@@ -2,7 +2,7 @@
 //
 // typescript/scripts/reference-receiver.mjs
 //
-// Reference Standard Webhooks receiver built on top of `@postel/edge`. Driven
+// Reference Standard Webhooks receiver built on top of `@postel/core`. Driven
 // by the `@postel/compliance` suite as the v0.1.0 conformance gate per
 // `openspec/specs/compliance/spec.md` "Suite identity" requirement.
 //
@@ -41,7 +41,7 @@ import {
   inMemoryDedupAdapter,
   jwksHandler,
   verify,
-} from "@postel/edge";
+} from "@postel/core";
 
 const port = Number(process.env.PORT ?? 8787);
 const secrets = (process.env.POSTEL_SECRETS ?? "")

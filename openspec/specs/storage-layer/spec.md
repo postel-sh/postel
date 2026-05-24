@@ -134,7 +134,7 @@ Every write operation on the `Storage` interface SHALL accept an optional `tx` p
 
 #### Scenario: Adapter without real transaction support degrades gracefully
 
-- **WHEN** an adapter targets a backend that doesn't expose real transactions (e.g., a hypothetical edge KV-backed dedup-only adapter)
+- **WHEN** an adapter targets a backend that doesn't expose real transactions (e.g., a hypothetical KV-backed dedup-only adapter)
 - **THEN** the adapter's `transaction(cb)` MAY run the callback sequentially without true atomicity
 - **AND** the adapter's `capabilities.transactional` MUST be `false`
 - **AND** the documentation warns about the consequences
@@ -195,7 +195,6 @@ A `@postel/storage-helpers` package (zero DB dependencies) SHALL export utilitie
 
 - **WHEN** a consumer installs `@postel/storage-helpers`
 - **THEN** no Postgres, SQLite, or other DB client is pulled in transitively
-- **AND** the package is importable from edge runtimes if needed
 
 ### Requirement: Memory and cache strategies [PORT-SPECIFIC]
 

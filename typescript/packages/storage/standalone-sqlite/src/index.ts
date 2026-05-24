@@ -1,4 +1,4 @@
-import type { DedupAdapter, DedupResult } from "@postel/edge";
+import type { DedupAdapter, DedupResult } from "@postel/core";
 import type { Database, Statement } from "better-sqlite3";
 
 export interface SqliteDedupAdapterOptions {

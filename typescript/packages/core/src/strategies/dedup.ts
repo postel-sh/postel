@@ -1,5 +1,6 @@
-import { inMemoryDedupAdapter } from "@postel/edge";
-import type { DedupAdapter, InMemoryDedupOptions } from "@postel/edge";
+import { inMemoryDedupAdapter } from "../dedup.js";
+import type { InMemoryDedupOptions } from "../dedup.js";
+import type { DedupAdapter } from "../types.js";
 
 export function InMemoryDedup(options?: InMemoryDedupOptions): DedupAdapter {
   return inMemoryDedupAdapter(options);

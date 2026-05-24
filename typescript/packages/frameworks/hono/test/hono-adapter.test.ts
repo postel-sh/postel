@@ -1,4 +1,4 @@
-import { RawBytesMismatchDetected, SignatureInvalid, signFixture } from "@postel/edge";
+import { RawBytesMismatchDetected, SignatureInvalid, signFixture } from "@postel/core";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 

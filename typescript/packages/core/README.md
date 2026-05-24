@@ -10,8 +10,6 @@ This package is part of [Postel](https://github.com/postel-sh/postel), a polyglo
 
 `NotImplementedError` is **intentionally outside** the `PostelError` hierarchy — it describes library state ("this method's runtime hasn't shipped in your installed version"), not webhook semantics. Adopters who write `if (err instanceof PostelError) return 4xx` will *not* catch it, which is correct: a `NotImplementedError` is a programming/version error and should bubble as a 5xx (or fail-fast in development). It still carries a stable `code: "NOT_IMPLEMENTED"` for adopters who explicitly want to discriminate it.
 
-Under the hood, the receiver delegates to [`@postel/edge`](../edge/README.md) — same Web-Crypto code, inlined into the published `@postel/core` artifact at build time so the JavaScript runtime cost is one bundle. `@postel/edge` is also a declared dependency (and therefore installed transitively into `node_modules`) because the published `.d.ts` re-exports its public types; that lets adopters reach `WebhookEvent`, `Keyset`, etc. directly from `@postel/core` without TypeScript having to walk to a separate package for the symbols.
-
 ## Shape
 
 ```ts
@@ -65,7 +63,7 @@ await postel.stop();
 
 ## Configuration model
 
-**Two independent sub-namespaces, both optional.** `postel.outbound` and `postel.inbound` only exist on the returned instance type if you configured them. Edge-only consumers configure just `inbound`; outbound-only consumers configure just `outbound`. Conditional types enforce this at compile time.
+**Two independent sub-namespaces, both optional.** `postel.outbound` and `postel.inbound` only exist on the returned instance type if you configured them. Receiver-only consumers configure just `inbound`; outbound-only consumers configure just `outbound`. Conditional types enforce this at compile time.
 
 ```ts
 const inboundOnly = Postel({ inbound: { github: { verify: Secret(s) } } });
@@ -102,7 +100,6 @@ First match wins; `verify` returns `matchedVerifierIndex` so adopters can monito
 - Framework adapters (Express, Hono, Fastify, Next.js, Bun, …) — separate packages.
 - Storage adapters (Drizzle, Prisma, Kysely, standalone-pg, standalone-sqlite, raw-pg, …) — separate packages.
 - KMS adapter implementations — wired via the `AwsKms`, `GcpKms`, `Vault` strategy factories; runtime lands with sender in v0.2.0+.
-- Edge-runtime carve-out — that's [`@postel/edge`](../edge/README.md) (≤ 50 KB, Web Crypto only, named-export surface).
 - Effect-TS layer — deferred past 1.0 until a real Effect adopter drives the layer shape.
 
 ## License

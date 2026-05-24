@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Receiver-side verification of incoming webhook deliveries: signature verification (multi-secret rotation window, JWKS consumer, constant-time comparison), structured `verify()` errors that name the failing step, raw-bytes preservation across framework middleware adapters, timestamp window enforcement against replay, and an idempotency dedup helper. Designed to run unmodified on edge runtimes within a 50 KB minified+gzipped bundle.
+Receiver-side verification of incoming webhook deliveries: signature verification (multi-secret rotation window, JWKS consumer, constant-time comparison), structured `verify()` errors that name the failing step, raw-bytes preservation across framework middleware adapters, timestamp window enforcement against replay, and an idempotency dedup helper.
 ## Requirements
 ### Requirement: Verify returns parsed event or structured error
 
@@ -81,24 +81,6 @@ The library SHALL provide `createKeyset({ jwksUri, refreshEvery, cacheTtl })` th
 
 - **WHEN** an incoming request carries `webhook-id` with a known `kid` and the keyset has cached that key
 - **THEN** verification proceeds against that key
-
-### Requirement: Edge bundle size budget
-
-The receiver-only build (`@postel/edge`) SHALL be ≤ 50 KB minified+gzipped. CI MUST fail the build if this budget is exceeded.
-
-#### Scenario: Bundle size enforced in CI
-
-- **WHEN** a change increases `@postel/edge` to 55 KB minified+gzipped
-- **THEN** the CI check fails with a clear message
-
-### Requirement: Edge runtime portability
-
-`@postel/edge` SHALL run unmodified on Cloudflare Workers, Vercel Edge, Deno Deploy, Bun, and Cloudflare Pages. It MUST use Web Crypto only and MUST NOT import any `node:*` module.
-
-#### Scenario: Cloudflare Workers smoke test
-
-- **WHEN** `@postel/edge` is deployed to a Cloudflare Worker
-- **THEN** `verify` against a valid signed payload returns the parsed event without polyfills
 
 ### Requirement: Test fixtures for signed payloads
 

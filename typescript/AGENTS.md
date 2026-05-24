@@ -8,7 +8,6 @@
 typescript/
 ├── packages/                      # one folder per published @postel/* package
 │   ├── core/                      # @postel/core
-│   ├── edge/                      # @postel/edge
 │   ├── standalone-pg/             # @postel/standalone-pg
 │   ├── standalone-sqlite/         # @postel/standalone-sqlite
 │   ├── drizzle/                   # @postel/drizzle
@@ -33,15 +32,14 @@ typescript/
 └── AGENTS.md                      # this file
 ```
 
-The 18-package map is normative — see [`openspec/specs/distribution-packaging-typescript/spec.md`](../openspec/specs/distribution-packaging-typescript/spec.md). Adding or removing a package requires an OpenSpec change against that capability.
+The published-package map is normative — see [`openspec/specs/distribution-packaging-typescript/spec.md`](../openspec/specs/distribution-packaging-typescript/spec.md). Adding or removing a package requires an OpenSpec change against that capability.
 
 ## Runtimes
 
-`@postel/core`, framework adapters, and storage adapters target **Node ≥ 20 LTS**, **Bun ≥ 1.0**, and **Deno ≥ 2.0**. `@postel/edge` additionally targets Cloudflare Workers, Vercel Edge, and Deno Deploy — no Node built-ins, no Postgres / SQLite imports, ≤ 50 KB minified+gzipped.
+`@postel/core`, framework adapters, and storage adapters target **Node ≥ 20 LTS**, **Bun ≥ 1.0**, and **Deno ≥ 2.0**.
 
 Decisions:
 - Choose Web APIs (`fetch`, `crypto.subtle`, `TextEncoder`) over Node-specific equivalents unless a package is Node-only by design.
-- Storage and framework packages MAY use Node APIs; the `edge` package MAY NOT.
 - Workers / dispatcher / DB code MUST be tree-shakeable away from the receiver entry point — importing `verify` from `@postel/core` MUST NOT pull in worker or DB modules.
 
 ## Module format and exports

@@ -28,7 +28,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@postel/edge": "workspace:*"
+    "@postel/core": "workspace:*"
   },
   "peerDependencies": {
     "hono": ">=4"

@@ -90,7 +90,7 @@ const postel = Postel({
 
 Uses `INSERT OR IGNORE`, identical contract. Periodically purges expired rows.
 
-### In-memory — `InMemoryDedup` (built into `@postel/core` and `@postel/edge`)
+### In-memory — `InMemoryDedup` (built into `@postel/core`)
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret, InMemoryDedup } from "@postel/core";
@@ -109,7 +109,6 @@ const postel = Postel({
 Per-instance, not shared. Fine for development; **not** fine for production with more than one process — concurrent receivers can both accept the same message. Use it when:
 
 - You're running tests.
-- You're running on a single edge isolate (Cloudflare Worker with a single instance) and an at-most-twice window is acceptable.
 - You're pairing it with at-least-once application-level idempotency anyway.
 
 For anything else, use Postgres or SQLite.

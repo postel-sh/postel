@@ -8,6 +8,6 @@
     "smoke:receiver": "node scripts/smoke-receiver.mjs"
   },
   "dependencies": {
-    "@postel/edge": "workspace:*"
+    "@postel/core": "workspace:*"
   }
 }

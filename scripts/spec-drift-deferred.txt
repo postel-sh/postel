@@ -12,13 +12,13 @@
 # Reduction discipline: when a PR adds a test that covers a deferred
 # requirement, REMOVE the corresponding line in the same PR.
 #
-# Out-of-scope categories for the v0.1.0 TS edge receiver track:
+# Out-of-scope categories for the v0.1.0 TS receiver track:
 #   - sender / outbox / retry / fanout / replay / endpoint state machine
 #   - storage adapters and host-transaction passthrough
 #   - multi-tenancy, observability, filtering
 #   - compliance suite internals (Track A owns the runner)
 #   - distribution lifecycle policies (SemVer, deprecation, migrations)
-#   - api-surface-typescript surface beyond `@postel/edge`
+#   - api-surface-typescript surface beyond the v0.1.0 receiver-side shape
 #
 # Per `openspec/specs/compliance/spec.md` v0.1.0 scope, the in-scope set
 # is ~17 receiver / key-management / standard-webhooks-compliance items.
@@ -104,7 +104,7 @@ Verify latency budgets
 
 # (All v0.1.0 in-series receiver / key-management / standard-webhooks-
 # compliance requirements are now covered by tests; nothing remains
-# staged across the @postel/edge PR series.)
+# staged across the receiver PR series.)
 
 # replay-reconciliation — operator-facing
 Replay a single message

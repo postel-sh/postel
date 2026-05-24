@@ -1,4 +1,4 @@
-import { dedup } from "@postel/edge";
+import { dedup } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
 import { type PgClient, pgDedupAdapter } from "../src/index.js";

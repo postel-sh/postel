@@ -1,5 +1,5 @@
-import { createKeyset } from "@postel/edge";
-import type { Keyset as EdgeKeyset, KeysetOptions } from "@postel/edge";
+import { createKeyset } from "../keyset.js";
+import type { Keyset as EdgeKeyset, KeysetOptions } from "../types.js";
 
 export type Verifier =
   | { readonly kind: "secret"; readonly value: string }

@@ -137,9 +137,9 @@ const cards: ReadonlyArray<Card> = [
     body: "Headers, signature schemes (HMAC v1 + Ed25519 v1a), payload envelope, and prefixes follow the Standard Webhooks spec. JWKS publication is a one-liner.",
   },
   {
-    eyebrow: "Edge-first",
-    title: "Runs in 50 KB on the edge",
-    body: "@postel/edge ships unmodified on Cloudflare Workers, Vercel Edge, Deno Deploy, and Bun. Web Crypto only — no node:* imports, no polyfills.",
+    eyebrow: "Polyglot",
+    title: "Same contract, four languages",
+    body: "TypeScript first. Go, Python, and Rust follow. One executable compliance suite gates every port at the same release version. The contract is the suite — not prose, not promises.",
   },
   {
     eyebrow: "Library, not service",
@@ -208,7 +208,7 @@ export default async function HomePage() {
           Verify a webhook
         </p>
         <h2 className="mb-6 text-2xl font-semibold tracking-tight sm:text-3xl">
-          Five lines. Standard Webhooks. Edge-runtime native.
+          Five lines. Standard Webhooks. Structured errors.
         </h2>
         <p className="text-fd-muted-foreground mb-8 max-w-2xl text-sm">
           Configure one or more inbound sources with the{" "}
@@ -275,11 +275,8 @@ export default async function HomePage() {
           <p className="text-fd-muted-foreground mb-8 text-sm leading-relaxed">
             The TypeScript receiver ships today through the{" "}
             <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">Postel</code> factory in{" "}
-            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">@postel/core</code> (or
-            the{" "}
-            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">@postel/edge</code> ≤
-            50 KB carve-out): multi-verifier composition, JWKS consumer, dedup helper, raw-bytes
-            preservation. Sender (
+            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">@postel/core</code>:
+            multi-verifier composition, JWKS consumer, dedup helper, raw-bytes preservation. Sender (
             <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">
               postel.outbound.send
             </code>

@@ -8,6 +8,6 @@ export default defineConfig({
   clean: true,
   target: "es2022",
   platform: "node",
-  external: ["@postel/edge", "better-sqlite3"],
+  external: ["@postel/core", "better-sqlite3"],
   treeshake: true,
 });

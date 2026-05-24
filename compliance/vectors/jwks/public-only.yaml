@@ -7,7 +7,7 @@ description: |
   asserts the endpoint exists and returns 200 (the JWKS document).
   The structural assertion — "no entry exposes private key material" —
   is enforced out-of-band by the receiver implementation's test suite
-  (e.g., the Track B `@postel/edge` build's JWKS handler tests). When
+  (e.g., the Track B `@postel/core` build's JWKS handler tests). When
   the v0.1.0 vector schema is extended with a `response_body_schema`
   field, this vector will additionally schema-validate that no `whsk_`-
   prefixed or `d:` JWK fields appear in the response body.

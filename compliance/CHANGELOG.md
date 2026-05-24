@@ -48,8 +48,6 @@ Implementation-level expansion of the contracts. Each vector lands via its own P
 
 CONTRACT in capability specs but never enter the suite — they're enforced by other CI checks:
 
-- `receiver` — Edge bundle size budget (bundle-size CI)
-- `receiver` — Edge runtime portability (CI deploy test)
 - `receiver` — Constant-time signature comparison (timing analysis)
 - `receiver` — Verify latency budgets (perf benchmark harness)
 - `receiver` — No payload contents in logs (internal observable)
