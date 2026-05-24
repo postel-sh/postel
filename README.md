@@ -1,7 +1,16 @@
-# Postel
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/public/brand/postel-mark-dark.svg">
+    <img alt="Postel" src="./docs/public/brand/postel-mark-light.svg" width="96" height="96">
+  </picture>
+</p>
 
-> Be conservative in what you send, liberal in what you accept.
-> — Jon Postel, RFC 793
+<h1 align="center">Postel</h1>
+
+<p align="center">
+  <em>Be conservative in what you send, liberal in what you accept.</em><br>
+  — Jon Postel, RFC 793
+</p>
 
 **Postel is a polyglot webhook delivery library backed by solid, executable specs.** The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by an executable compliance test suite.
 

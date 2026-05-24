@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 import { codeToHtml } from "shiki";
+import { PostelMark } from "@/lib/postel-mark";
 
 const installCode = `pnpm add @postel/core`;
 
@@ -133,6 +134,7 @@ export default async function HomePage() {
   return (
     <main className="flex flex-1 flex-col">
       <section className="border-fd-border relative border-b px-6 pt-20 pb-16 text-center sm:pt-28 sm:pb-24">
+        <PostelMark className="text-fd-foreground mx-auto mb-8 size-14 sm:size-16" />
         <p className="text-fd-muted-foreground mb-6 font-mono text-[10px] tracking-[0.18em] uppercase sm:text-xs">
           Be conservative in what you send · liberal in what you accept
         </p>
