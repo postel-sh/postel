@@ -3,7 +3,7 @@
 **Status:** v0 draft, pre-implementation.
 **Audience:** maintainers, contributors, reviewers, future selves, port authors.
 
-> **Postel is a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [@postel/compliance](compliance/README.md) test suite.**
+> **Sending and receiving webhooks is easy. Doing it reliably and securely is hard — retries, replay, signing, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [@postel/compliance](compliance/README.md) test suite.**
 
 ---
 
@@ -22,7 +22,7 @@ An embeddable, **library-only** kernel for outbound and inbound webhooks that ru
 
 Postel writes through the host's existing database access layer — whether that's raw Postgres / SQLite, a query builder like Kysely, or an ORM like Drizzle or Prisma. Outbox inserts participate in the host's transaction, so `send()` commits or rolls back atomically with the host's business writes — the transactional-outbox guarantee without extra connections, brokers, or a sidecar process. The full strategy is in [decisions/0007-storage-strategy.md](decisions/0007-storage-strategy.md).
 
-Postel ships in multiple languages over time — TypeScript first, then Go, Python, and Rust. Every implementation conforms to the same shared specification — wire format ([AsyncAPI](specs/wire-format/asyncapi.yaml)), DB schema ([SQL DDL](specs/db-schema/0001_init.sql)), and capability behaviors ([per-capability specs](openspec/specs/)) — and is verified by the [executable compliance test suite](compliance/README.md).
+Postel ships in multiple languages over time — TypeScript first, then Go, Python, and Rust. Every implementation conforms to the same shared specification — wire format ([AsyncAPI](specs/wire-format/asyncapi.yaml)), DB schema ([SQL DDL](specs/db-schema/0001_init.sql)), and capability behaviors ([per-capability specs](openspec/specs/)) — and is verified by the [compliance test suite](compliance/README.md).
 
 ### Positioning
 
@@ -101,7 +101,7 @@ If any of those are required, Svix or Hookdeck Outpost is the right tool.
 
 A reasonable observer can answer YES to all of:
 
-1. Can I add webhooks to my Postgres-backed app without bringing up Redis or a service?
+1. Can I add webhooks to my existing relational-DB app (Postgres, MySQL, SQLite, …) without bringing up Redis or a service?
 2. Does it handle key rotation with overlap windows out of the box?
 3. Can I publish a JWKS endpoint with one line?
 4. Is replay a first-class API verb, not bolted on?

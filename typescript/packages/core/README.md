@@ -2,7 +2,7 @@
 
 > Sender, receiver, types, and errors — the Postel TypeScript core.
 
-This package is part of [Postel](https://github.com/postel-sh/postel), a polyglot webhooks library backed by solid, executable specs. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified by the `@postel/compliance` test suite.
+This package is part of [Postel](https://github.com/postel-sh/postel), a polyglot library for sending and receiving webhooks reliably and securely. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified by the `@postel/compliance` test suite.
 
 ## Status
 

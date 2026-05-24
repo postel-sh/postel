@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 
 export const dynamic = "force-static";
 export const alt =
-  "Postel — Polyglot webhooks library backed by solid, executable specs.";
+  "Postel — A polyglot library for sending and receiving webhooks reliably and securely.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -68,7 +68,7 @@ export default async function Image() {
               letterSpacing: "0.01em",
             }}
           >
-            Polyglot · Standard Webhooks · Sender + receiver · Edge-native
+            Reliable & secure · Standard Webhooks · Sender + receiver · Polyglot
           </div>
         </div>
 

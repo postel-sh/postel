@@ -2,7 +2,7 @@
 
 > **Canonical agent guidance for this repo.** Claude Code reads `CLAUDE.md`, which imports this file. Other agentic tools (Codex, Cursor, Aider, Gemini, …) should read this file directly.
 
-Postel is a **polyglot** webhooks library backed by solid, executable specs. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified by the compliance test suite. See [VISION.md](VISION.md).
+Sending and receiving webhooks is easy. Doing it reliably and securely is hard — retries, replay, signing, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a **polyglot** library that handles those for you. The TypeScript implementation in this repo ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified by the compliance test suite. See [VISION.md](VISION.md).
 
 ## Source of truth
 

@@ -171,9 +171,9 @@ export default async function HomePage() {
           Webhooks as a feature of your product.
         </h1>
         <p className="text-fd-muted-foreground mx-auto mb-10 max-w-2xl text-balance text-base sm:text-lg">
-          Postel is a polyglot webhooks library backed by executable specs. Standard
-          Webhooks-compliant. Sender plus receiver. Runs inside your application against your
-          Postgres or SQLite database.
+          Sending and receiving webhooks is easy. Doing it reliably and securely is hard —
+          retries, replay, signing, key rotation, idempotency, raw-bytes preservation. That's
+          where Postel comes in: a polyglot library that handles those for you.
         </p>
         <div className="mb-12 flex flex-wrap items-center justify-center gap-3">
           <Link

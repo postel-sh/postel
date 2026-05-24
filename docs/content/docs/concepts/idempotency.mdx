@@ -111,11 +111,11 @@ Per-instance, not shared. Fine for development; **not** fine for production with
 - You're running tests.
 - You're pairing it with at-least-once application-level idempotency anyway.
 
-For anything else, use Postgres or SQLite.
+For anything else, use a database-backed dedup adapter.
 
 ### Redis — opt-in
 
-A Redis dedup adapter ships as a separate package for hosts that already run Redis. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, the adapter is there. If you don't, don't stand one up just for dedup; Postgres or SQLite work.
+A Redis dedup adapter ships as a separate package for hosts that already run Redis. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, the adapter is there. If you don't, don't stand one up just for dedup; one of the SQL dedup adapters works.
 
 ## Where to put the dedup call
 

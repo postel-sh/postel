@@ -12,9 +12,9 @@
   — Jon Postel, RFC 793
 </p>
 
-**Postel is a polyglot webhook delivery library backed by solid, executable specs.** The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by an executable compliance test suite.
+**Sending and receiving webhooks is easy. Doing it reliably and securely is hard** — retries, replay, signing, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [@postel/compliance](compliance/README.md) test suite.
 
-[Standard Webhooks](https://www.standardwebhooks.com/) compliant, sender + receiver, runs inside your application against your existing Postgres or SQLite database — no separate service, no Redis, no message broker.
+[Standard Webhooks](https://www.standardwebhooks.com/) compliant, sender + receiver, runs inside your application against your existing relational database (Postgres, MySQL, SQLite, …) — no separate service, no Redis, no message broker.
 
 ## Status
 

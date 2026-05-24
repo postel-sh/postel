@@ -1,9 +1,11 @@
 ---
 title: Why Postel
-description: The positioning, the tradeoffs, and the design rationale. Why a library, not a service. Why polyglot. Why specs first.
+description: The positioning, the tradeoffs, and the design rationale. Why a library, not a service. Why polyglot. Why reliability and security are the differentiator.
 ---
 
-Postel exists because teams who need outbound webhooks today face two unattractive options. **A hosted service** — Svix, Hookdeck Outpost — solves the problem comprehensively but adds operational footprint (Postgres + Redis + a separate dispatcher process) and costs $0→$490/mo cliff for hosted. **A hand-rolled implementation on top of Sidekiq, Oban, or BullMQ** handles retries but reimplements signing, idempotency, replay, key rotation, JWKS, multi-secret windows, dedup, and raw-bytes preservation every time.
+Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, multi-secret windows, JWKS, raw-bytes preservation. That's where Postel comes in.
+
+Teams who need outbound webhooks today face two unattractive options. **A hosted service** — Svix, Hookdeck Outpost — solves the problem comprehensively but adds operational footprint (Postgres + Redis + a separate dispatcher process) and costs $0→$490/mo cliff for hosted. **A hand-rolled implementation on top of Sidekiq, Oban, or BullMQ** handles retries but reimplements signing, idempotency, replay, key rotation, JWKS, multi-secret windows, dedup, and raw-bytes preservation every time.
 
 The [Standard Webhooks](https://www.standardwebhooks.com) specification covers the wire format and ships signing helpers in nine languages, but explicitly leaves delivery, retry, key management, replay, and operational tooling to implementers. There's a gap between "signs and verifies" and "production-grade delivery layer" that the consortium doesn't fill.
 
@@ -26,19 +28,17 @@ This is the inverse of Svix's bet. Svix wins when webhooks are the product and t
 
 Postel will never have a hosted offering, never run a separate dispatcher process, never require Redis or a message broker, never ship a customer-facing portal as a packaged product. If you need any of that, use Svix or Hookdeck Outpost.
 
-### 2. Specs first, executable
+### 2. Conformance, enforced
 
-Every behavior in Postel — sender, receiver, retry, replay, dedup, key rotation — is specified in a per-capability `spec.md` with `### Requirement` blocks and `#### Scenario` (`WHEN`/`THEN`) clauses. Each scenario maps to a test 1:1; a requirement without a test fails CI.
+The reliability and security guarantees Postel makes have to hold across every port — TypeScript today, Go and Python and Rust tomorrow. That requires more than docs. Every behavior — sender, receiver, retry, replay, dedup, key rotation — is captured as a testable scenario, and the cross-port contract is enforced by a **compliance test suite** (`@postel/compliance`) that runs against any HTTP receiver claiming Standard Webhooks compliance. Every Postel port passes the same suite at the same version before it can ship.
 
-The cross-port contract is then enforced by an **executable compliance test suite** (`@postel/compliance`) that runs against any HTTP receiver claiming Standard Webhooks compliance. Every Postel port — TypeScript today, Go and Python and Rust tomorrow — passes the same suite at the same version before it can ship.
-
-The suite is the executable boundary between **CONTRACT** (everything every port must do) and **PORT-SPECIFIC** (mechanism each port is free to choose). What the suite tests is contract; what it doesn't is implementation detail.
+The suite is the boundary between **CONTRACT** (everything every port must do) and **PORT-SPECIFIC** (mechanism each port is free to choose). What the suite tests is contract; what it doesn't is implementation detail.
 
 ### 3. Polyglot from the start
 
 The TypeScript port ships first because Node + Postgres is the largest existing footprint and the receiver story is the smallest plausible cut. But the contract is language-agnostic: the wire format is AsyncAPI 3.0, the DB schema is SQL DDL, the capability behaviors are markdown specs, and the compliance suite drives any conformant receiver. Go, Python, and Rust ports follow on the same schedule, each gated on passing the suite.
 
-The bet: a small narrow contract enforced by an executable oracle scales further than per-port reinvention or single-language lock-in.
+The bet: a small narrow contract enforced by the compliance suite scales further than per-port reinvention or single-language lock-in.
 
 ### 4. Standard Webhooks-aligned, not divergent
 
@@ -57,7 +57,7 @@ When we deviate, we do so via the multi-secret rotation window: producers can si
 
 A reasonable observer answers **yes** to all of:
 
-1. Can I add webhooks to my Postgres-backed app without bringing up Redis or a service?
+1. Can I add webhooks to my existing relational-DB app (Postgres, MySQL, SQLite, …) without bringing up Redis or a service?
 2. Does it handle key rotation with overlap windows out of the box?
 3. Can I publish a JWKS endpoint with one line?
 4. Is replay a first-class API verb?

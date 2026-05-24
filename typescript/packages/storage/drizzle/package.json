@@ -1,7 +1,7 @@
 {
   "name": "@postel/drizzle",
   "version": "0.0.0",
-  "description": "Postel storage adapter — host hands Postel a Drizzle instance (Postgres or SQLite).",
+  "description": "Postel storage adapter — host hands Postel a Drizzle instance (any dialect Drizzle supports — Postgres, MySQL, SQLite, …).",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",

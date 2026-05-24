@@ -21,7 +21,7 @@ export const metadata = {
     template: "%s — Postel",
   },
   description:
-    "Polyglot webhooks library backed by solid, executable specs. Standard Webhooks-compliant; runs inside your Postgres or SQLite app.",
+    "A polyglot library for sending and receiving webhooks reliably and securely. Standard Webhooks-compliant; runs inside your existing relational-DB app (Postgres, MySQL, SQLite, …).",
 };
 
 export default function Layout({ children }: { children: ReactNode }) {
