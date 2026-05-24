@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { Tab, Tabs, TabsList, TabsTrigger } from "fumadocs-ui/components/tabs";
 import { codeToHtml } from "shiki";
 import { PostelMark } from "@/lib/postel-mark";
+import { GoIcon, PythonIcon, RustIcon, TypeScriptIcon } from "./lang-icons";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -26,6 +27,8 @@ const installCode = `pnpm add @postel/core`;
 const snippets = [
   {
     lang: "TypeScript",
+    value: "typescript",
+    Icon: TypeScriptIcon,
     shikiLang: "typescript",
     code: `import { Postel, Secret, SignatureInvalid } from "@postel/core";
 
@@ -42,13 +45,17 @@ export async function POST(req: Request) {
     console.log(event.type, event.data);
     return new Response("ok");
   } catch (err) {
-    if (err instanceof SignatureInvalid) return new Response("bad signature", { status: 401 });
+    if (err instanceof SignatureInvalid) {
+      return new Response("bad signature", { status: 401 });
+    }
     throw err;
   }
 }`,
   },
   {
     lang: "Go",
+    value: "go",
+    Icon: GoIcon,
     shikiLang: "go",
     planned: true,
     code: `import postel "github.com/postel-sh/postel-go"
@@ -73,6 +80,8 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
   },
   {
     lang: "Python",
+    value: "python",
+    Icon: PythonIcon,
     shikiLang: "python",
     planned: true,
     code: `from postel import verify, SignatureInvalid
@@ -91,6 +100,8 @@ def handle_webhook():
   },
   {
     lang: "Rust",
+    value: "rust",
+    Icon: RustIcon,
     shikiLang: "rust",
     planned: true,
     code: `use axum::{body::Bytes, http::{HeaderMap, StatusCode}, response::IntoResponse};
@@ -213,12 +224,17 @@ export default async function HomePage() {
           <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">MalformedHeader</code>,{" "}
           and friends.
         </p>
-        <Tabs
-          items={["TypeScript", "Go", "Python", "Rust"]}
-          className="bg-fd-background"
-        >
+        <Tabs defaultValue="typescript" className="bg-fd-background">
+          <TabsList>
+            {highlighted.map((s) => (
+              <TabsTrigger key={s.value} value={s.value}>
+                <s.Icon className="size-4" />
+                {s.lang}
+              </TabsTrigger>
+            ))}
+          </TabsList>
           {highlighted.map((s) => (
-            <Tab key={s.lang} value={s.lang}>
+            <Tab key={s.value} value={s.value}>
               {"planned" in s && s.planned && (
                 <p className="text-fd-muted-foreground mb-3 text-xs">
                   Planned — this API reflects the target design. The package is not published yet.
