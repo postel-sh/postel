@@ -33,3 +33,39 @@ html.dark {
   color: var(--shiki-dark);
   background-color: transparent;
 }
+
+/* Fumadocs's <TabsContent> ships an inner card by default
+ * (p-4 bg-fd-background rounded-xl) and an escape hatch that strips
+ * the padding when the panel wraps a <figure> as its only child —
+ * which is what docs-page CodeBlocks render. The landing page renders
+ * shiki HTML directly inside a plain <div>, so the escape hatch never
+ * fires and the inner panel becomes a visible card-within-a-card. Strip
+ * the panel chrome for the non-figure case so the outer Tabs container
+ * is the only visual frame; docs pages keep their current behavior. */
+[role="tabpanel"][data-orientation="horizontal"]:not(:has(> figure:only-child)) {
+  background: transparent;
+  border-radius: 0;
+  padding: 1rem;
+}
+
+/* When a .shiki <pre> is the scroll container (landing page direct
+ * Shiki render — docs pages wrap shiki in their own .fd-scroll-container
+ * div, this rule is harmless there), style the webkit scrollbar to match
+ * Fumadocs's fd-scroll-container utility: 5px thin, themed thumb. */
+.shiki::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.shiki::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background: var(--color-fd-border);
+}
+
+.shiki::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.shiki::-webkit-scrollbar-corner {
+  display: none;
+}

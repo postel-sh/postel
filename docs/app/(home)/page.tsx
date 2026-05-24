@@ -213,7 +213,10 @@ export default async function HomePage() {
           <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">MalformedHeader</code>,{" "}
           and friends.
         </p>
-        <Tabs items={["TypeScript", "Go", "Python", "Rust"]}>
+        <Tabs
+          items={["TypeScript", "Go", "Python", "Rust"]}
+          className="bg-fd-background"
+        >
           {highlighted.map((s) => (
             <Tab key={s.lang} value={s.lang}>
               {"planned" in s && s.planned && (
@@ -222,7 +225,7 @@ export default async function HomePage() {
                 </p>
               )}
               <div
-                className="[&_pre]:border-fd-border [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:p-4 [&_pre]:text-sm [&_pre]:leading-relaxed"
+                className="[&_pre]:overflow-x-auto [&_pre]:text-sm [&_pre]:leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: s.html }}
               />
             </Tab>
