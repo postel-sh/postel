@@ -1,0 +1,124 @@
+---
+title: Endpoints
+description: Manage the receivers your application sends to — create, update, filter, rotate secrets. Planned for v0.2.0.
+---
+
+> **Status: planned — v0.2.0.** Types ship today; the runtime throws `NotImplementedError`.
+
+Endpoints are the receiver-of-record for fanout. A `send()` reaches every endpoint whose `types` filter matches the event.
+
+## Lifecycle
+
+```ts
+// Create
+const ep = await postel.outbound.endpoints.create({
+  url:    "https://customer.example.com/webhooks",
+  types:  ["order.*", "shipment.delivered"],
+  tenantId: "cust_42",
+  metadata: { displayName: "ACME Co — Production" },
+});
+
+// Update
+await postel.outbound.endpoints.update(ep.id, {
+  types: ["order.*"],
+});
+
+// Disable (delivery stops; row remains for audit)
+await postel.outbound.endpoints.disable(ep.id);
+
+// Delete (delivery stops; row removed unless purgeAttempts: false)
+await postel.outbound.endpoints.delete(ep.id, { purgeAttempts: true });
+
+// List / get
+const all = await postel.outbound.endpoints.list({ tenantId: "cust_42" });
+const one = await postel.outbound.endpoints.get(ep.id);
+```
+
+Every endpoint operation accepts an optional `tx` so endpoint state changes can join the same DB transaction as your business write.
+
+## Filtering
+
+The `types` filter accepts string globs:
+
+| Pattern | Matches |
+|---|---|
+| `"order.created"` | Exactly `order.created` |
+| `"order.*"` | `order.created`, `order.refunded`, `order.shipped` |
+| `"*.created"` | `order.created`, `user.created`, … |
+| `"*"` | Everything |
+
+For finer control, pass a `filter: (event) => boolean` callback:
+
+```ts
+await postel.outbound.endpoints.create({
+  url:   "https://internal.example.com/audit",
+  types: ["*"],
+  filter: (event) =>
+    event.type === "user.signup" && event.data.plan === "enterprise",
+});
+```
+
+The callback runs at `send` time, in-process — keep it cheap.
+
+## Transformation (per-endpoint payload shape)
+
+Some endpoints want a subset of the data, or a flattened shape. Pass `transform`:
+
+```ts
+await postel.outbound.endpoints.create({
+  url:    "https://legacy-customer.example.com/webhooks",
+  types:  ["order.*"],
+  transform: (event) => ({
+    type: event.type,
+    id:   event.data.id,
+    // Drop everything else.
+  }),
+});
+```
+
+The transformed payload is what gets signed and sent. The original payload remains in the outbox row for replay (in its original form).
+
+## Secret rotation
+
+Symmetric (HMAC) endpoints carry a secret. Rotate with `rotateSecret`:
+
+```ts
+await postel.outbound.endpoints.rotateSecret(ep.id, {
+  keepPreviousFor: "7d",   // overlap window
+});
+```
+
+During the overlap, both the previous and current secrets are valid signers. After `keepPreviousFor` elapses, the previous secret is purged. The mirror image of the [receiver-side multi-secret window](/docs/inbound/key-rotation#multi-verifier-overlap-hmac).
+
+## Headers
+
+Static or dynamic headers on outgoing requests:
+
+```ts
+await postel.outbound.endpoints.create({
+  url:     "https://customer.example.com/webhooks",
+  types:   ["*"],
+  headers: {
+    "x-tenant-id":     "cust_42",
+    "x-environment":   process.env.NODE_ENV ?? "production",
+  },
+});
+
+// Or dynamic:
+await postel.outbound.endpoints.create({
+  url:     "...",
+  types:   ["*"],
+  headers: ({ message }) => ({
+    "x-correlation-id": (message as { correlationId: string }).correlationId,
+  }),
+});
+```
+
+## Per-endpoint overrides
+
+The full set of outbound config defaults — `retryPolicy`, `circuitBreaker`, `autoDisable`, `http` — can be overridden per endpoint. See [Retries & backoff](/docs/outbound/retries).
+
+## Read next
+
+- [`send()` and the outbox](/docs/outbound/send) — how `send` chooses which endpoints to enqueue.
+- [Replay](/docs/outbound/replay) — re-emitting historical messages to a specific endpoint.

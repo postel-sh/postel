@@ -1,5 +1,5 @@
 ---
-title: Idempotency
+title: Deduplication
 description: Webhooks are at-least-once. The dedup helper makes them once-effectively, atomically, in Postgres, SQLite, or memory.
 ---
 
@@ -13,7 +13,7 @@ Postel ships a dedup helper that gets this right. The contract is simple: hand i
 
 Configure a dedup adapter on the inbound source, then call `dedup(messageId, options?)` from the verified-event branch:
 
-```ts title="app/webhooks/route.ts"
+```ts
 import { Postel, Secret, InMemoryDedup } from "@postel/core";
 
 const postel = Postel({
@@ -21,7 +21,7 @@ const postel = Postel({
     vendor: {
       verify: Secret(process.env.WEBHOOK_SECRET!),
       dedup: InMemoryDedup(),
-      dedupTtl: "24h", // org-wide default; overridable per call
+      dedupTtl: "24h",  // org-wide default; overridable per call
     },
   },
 });
@@ -39,14 +39,14 @@ await processOrder(event.data);
 
 A few things to note:
 
-- **TTL is your choice.** Pick a window longer than the producer's retry budget — 24h to 7d is typical. The downside of a too-short TTL is accepting a duplicate after expiry; the downside of a too-long TTL is more storage. Either set `dedupTtl` once on the source or pass `{ ttl: "1h" }` per call to override.
-- **The first-receipt branch must succeed.** If your work fails after `dedup` returns `{ duplicate: false }`, the next retry will be marked duplicate and skipped. Either move the dedup call after a successful commit, or use the transactional pattern (below).
-- **Concurrent calls race exactly once.** Two parallel `dedup('msg_X')` calls return `{ duplicate: false }` from exactly one of them. The other (or others) return `{ duplicate: true }`. The compliance suite tests this.
-- **`postel.inbound.<source>.dedup` only exists when an adapter is configured.** If you omit `dedup` from the source config, the method is not on the instance type — TypeScript catches the mistake at compile time.
+- **TTL is your choice.** Pick a window longer than the producer's retry budget — 24h to 7d is typical. The downside of a too-short TTL is accepting a duplicate after expiry; a too-long TTL costs more storage. Set `dedupTtl` once on the source or pass `{ ttl: "1h" }` per call.
+- **The first-receipt branch must succeed.** If your work fails after `dedup` returns `{ duplicate: false }`, the next retry will be marked duplicate and skipped. Either move dedup after a successful commit, or use the transactional pattern below.
+- **Concurrent calls race exactly once.** Two parallel `dedup('msg_X')` calls return `{ duplicate: false }` from exactly one of them. The other(s) return `{ duplicate: true }`. The compliance suite tests this.
+- **`postel.inbound.<source>.dedup` only exists when an adapter is configured.** Omit `dedup` from the source config and the method is not on the instance type — TypeScript catches the mistake at compile time.
 
 ## Adapters
 
-`dedup` is wired through an adapter that controls storage. Postel ships three first-party adapters; you can plug in others by implementing the `DedupAdapter` interface (one method, `record(id, ttlSeconds, options?) → { duplicate }`).
+`dedup` is wired through an adapter that controls storage. Postel ships three first-party adapters; you can plug others in by implementing the `DedupAdapter` interface (one method, `record(id, ttlSeconds, options?) → { duplicate }`).
 
 ### Postgres — `@postel/standalone-pg`
 
@@ -59,10 +59,10 @@ const postel = Postel({
     vendor: {
       verify: Secret(process.env.WEBHOOK_SECRET!),
       dedup: pgDedupAdapter({
-        client: pgPool, // node-postgres pool or compatible
-        // tableName: "postel_received_messages",   (default)
-        // schema: undefined,                        (search_path)
-        // autoMigrate: true,                        (creates the table on first use)
+        client: pgPool,        // node-postgres pool or compatible
+        // tableName: "postel_received_messages",  (default)
+        // schema: undefined,                       (search_path)
+        // autoMigrate: true,                       (creates the table on first use)
       }),
       dedupTtl: "24h",
     },
@@ -70,7 +70,7 @@ const postel = Postel({
 });
 ```
 
-The adapter uses `INSERT ... ON CONFLICT ... DO UPDATE WHERE expires_at <= now()` — atomic at the DB level, no application-level locks. The table is two columns: `message_id text PRIMARY KEY`, `expires_at timestamptz`. An index on `expires_at` keeps cleanup cheap.
+The adapter uses `INSERT … ON CONFLICT … DO UPDATE WHERE expires_at <= now()` — atomic at the DB level, no application-level locks. The table is two columns: `message_id text PRIMARY KEY`, `expires_at timestamptz`. An index on `expires_at` keeps cleanup cheap.
 
 ### SQLite — `@postel/standalone-sqlite`
 
@@ -88,7 +88,7 @@ const postel = Postel({
 });
 ```
 
-Uses `INSERT OR IGNORE`, identical contract. Periodically purges expired rows.
+Uses `INSERT OR IGNORE`. Identical contract. Periodically purges expired rows.
 
 ### In-memory — `InMemoryDedup` (built into `@postel/core`)
 
@@ -113,15 +113,15 @@ Per-instance, not shared. Fine for development; **not** fine for production with
 
 For anything else, use a database-backed dedup adapter.
 
-### Redis — opt-in
+### Redis — opt-in (not in v0.1)
 
-A Redis dedup adapter ships as a separate package for hosts that already run Redis. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, the adapter is there. If you don't, don't stand one up just for dedup; one of the SQL dedup adapters works.
+A Redis dedup adapter ships as a separate package for hosts that already run Redis. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, use it. If you don't, don't stand one up just for dedup; one of the SQL dedup adapters works.
 
 ## Where to put the dedup call
 
 The naive placement is "before the work":
 
-```ts title="app/webhooks/route.ts"
+```ts
 const { duplicate } = await postel.inbound.vendor.dedup(event.id);
 if (duplicate) return new Response("dup", { status: 200 });
 await processOrder(event.data);
@@ -131,7 +131,7 @@ This is correct as long as `processOrder` is itself idempotent on its own writes
 
 The cleanest pattern is the **transactional outbox** in reverse: the dedup insert participates in the same DB transaction as the work. Every dedup call accepts an optional `tx` parameter that the adapter threads through to its storage.
 
-```ts title="app/webhooks/route.ts"
+```ts
 await pgPool.tx(async (tx) => {
   const { duplicate } = await postel.inbound.vendor.dedup(event.id, { tx });
   if (duplicate) return; // tx commits with no work; safe.
@@ -142,9 +142,9 @@ await pgPool.tx(async (tx) => {
 
 If `processOrder` throws, both the dedup row and the work roll back. The next retry sees the ID as unseen and tries again. If `processOrder` succeeds, both commit; the next retry is correctly skipped.
 
-This is exactly the pattern the v0.2.0 sender uses for outbox inserts — see [Why Postel](/docs/why#1-library-not-service).
+This is exactly the pattern the v0.2.0 [outbound](/docs/outbound) sender will use for outbox inserts — the receiver's dedup row is the mirror image of the sender's outbox row.
 
 ## What's next
 
-- [Raw bytes](/docs/concepts/raw-bytes) — the silent failure mode that breaks signature verification.
-- [Key rotation](/docs/concepts/key-rotation) — rotating without dropped messages.
+- [Raw bytes](/docs/inbound/raw-bytes) — the silent failure mode that breaks signature verification.
+- [Key rotation](/docs/inbound/key-rotation) — rotating without dropped messages.

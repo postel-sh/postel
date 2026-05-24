@@ -1,0 +1,49 @@
+---
+title: Inbound · Overview
+description: Verify Standard Webhooks signed requests sent to your application. What ships, what to read in which order.
+---
+
+The inbound half of Postel verifies signed webhook requests that other services send to *your* application. This is the half that ships today (v0.1) in `@postel/core`.
+
+If you're sending webhooks to your customers — that's the [outbound half](/docs/outbound), planned for v0.2.
+
+## What you get
+
+| Feature | Status | Where |
+|---|---|---|
+| `Postel({ inbound })` factory with typed per-source configuration | Ships | `@postel/core` |
+| HMAC-SHA256 (`v1`) signature verification (Standard Webhooks default) | Ships | `Secret(...)` strategy |
+| Ed25519 (`v1a`) signature verification (Postel extension) | Ships | `PublicKey(...)` strategy |
+| JWKS consumer with caching and auto-refresh | Ships | `Keyset({ jwksUri })` strategy |
+| Multi-secret rotation windows and cross-scheme migration | Ships | Pass `[Verifier, Verifier, …]` |
+| Constant-time signature comparison | Ships | (always on) |
+| Structured `PostelError` subclasses for every failure mode | Ships | `SignatureInvalid`, `TimestampTooOld`, `MalformedHeader`, `UnknownKeyId`, `RawBytesMismatchDetected` |
+| Idempotency dedup with Postgres / SQLite / in-memory adapters | Ships | `@postel/standalone-pg`, `@postel/standalone-sqlite`, `InMemoryDedup` |
+| Hono framework adapter | Ships | `@postel/hono` |
+| Express, Fastify, Next.js, Bun adapters | Stub packages today (`__postelPackage` only); proper releases follow v0.1.0 | `@postel/express`, `@postel/fastify`, `@postel/nextjs`, `@postel/bun` |
+
+If a row above isn't on this list, it's outbound — see [Outbound](/docs/outbound).
+
+## Where to start
+
+1. **First time?** [Verify a signed request](/docs/inbound/verify) — the basic recipe.
+2. **About to ship to production?** Read these in order. They are the four things that bite every webhook integration eventually.
+   - [Raw bytes](/docs/inbound/raw-bytes) — why `JSON.stringify(JSON.parse(body))` will silently break verification. The single most common silent failure.
+   - [Signing schemes](/docs/inbound/signing) — what `verify()` actually checks; v1 vs v1a.
+   - [Key rotation](/docs/inbound/key-rotation) — the multi-secret window; JWKS for asymmetric.
+   - [Deduplication](/docs/inbound/deduplication) — webhooks are at-least-once; the atomic dedup helper.
+3. **On a framework?** [Framework adapters](/docs/inbound/frameworks) — adapter status per framework.
+
+## The mental model
+
+A verified webhook is just an HTTP POST with three extra headers:
+
+```
+webhook-id:        msg_2k4n8...
+webhook-timestamp: 1716553200
+webhook-signature: v1,h7P3wKjQz...
+```
+
+The receiver's job is to reject any request that doesn't match a small, well-defined set of conditions — and to do so in a way that doesn't leak timing information. Postel's `verify()` does this in five steps; failures throw subclasses of `PostelError` that name which step failed. See [Signing schemes](/docs/inbound/signing) for the full pipeline.
+
+You wire this once per source with the `Postel({ inbound })` factory and call `postel.inbound.<source>.verify(rawBytes, headers)` from your route handler. That's the whole receiver surface.

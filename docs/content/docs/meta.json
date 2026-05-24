@@ -1,4 +1,14 @@
 {
   "title": "Documentation",
-  "pages": ["index", "get-started", "concepts", "guides", "api", "why"]
+  "pages": [
+    "index",
+    "quickstart",
+    "is-postel-for-me",
+    "inbound",
+    "outbound",
+    "---Library---",
+    "reference",
+    "polyglot",
+    "why"
+  ]
 }

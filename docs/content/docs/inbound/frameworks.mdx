@@ -1,0 +1,132 @@
+---
+title: Framework adapters
+description: Adapter status per framework. Hono ships today; others coming alongside v0.1. The framework-agnostic factory works everywhere.
+---
+
+`@postel/core` is framework-agnostic — anywhere you can hand it raw bytes and headers, the `Postel({...})` factory works. Framework adapters add two niceties on top:
+
+- They handle the raw-bytes plumbing for you (no `arrayBuffer()` / `req.rawBody` dance).
+- They expose the configured `Postel` instance on the framework's request context, so you don't have to import the singleton in every route file.
+
+Until your framework's adapter ships, the factory snippet from [Verify a signed request](/docs/inbound/verify) works against the framework's native request type directly.
+
+## Status
+
+| Framework | Package | Ships? | Notes |
+|---|---|---|---|
+| Hono | `@postel/hono` | ✅ Today | Real implementation: `postelHono()` middleware sets `c.get("postel")`; `honoVerify()` for ad-hoc calls. |
+| Express | `@postel/express` | ⏳ Soon | Package exists as a stub; full middleware lands alongside v0.1.0. |
+| Fastify | `@postel/fastify` | ⏳ Soon | Stub today. |
+| Next.js Route Handlers | `@postel/nextjs` | ⏳ Soon | Stub today. Native `Request` works fine without an adapter; the package is for type ergonomics. |
+| Bun.serve | `@postel/bun` | ⏳ Soon | Stub today. |
+| Deno.serve | (none planned) | n/a | Use the factory directly with `req.arrayBuffer()`. |
+| SvelteKit, Astro, Nitro | (none planned for v0.1) | n/a | Use the factory directly. |
+
+> "Stub today" means the package is registered (`@postel/express`, etc.) but contains only a name export — no real runtime. Don't depend on these stubs in production; they exist to reserve the name in the workspace.
+
+## Hono — the real adapter
+
+```ts title="lib/postel.ts"
+import { Postel, Secret } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) },
+  },
+});
+```
+
+```ts title="app.ts"
+import { Hono } from "hono";
+import { honoVerify } from "@postel/hono";
+import { postel } from "./lib/postel";
+import { SignatureInvalid } from "@postel/core";
+
+const app = new Hono();
+
+app.post("/webhooks/vendor", async (c) => {
+  try {
+    // Either thread the verifier strategy directly:
+    const { event } = await honoVerify(c, Secret(process.env.WEBHOOK_SECRET!));
+
+    // Or, more commonly, use the source you configured at module scope:
+    // const body = new Uint8Array(await c.req.arrayBuffer());
+    // const { event } = await postel.inbound.vendor.verify(
+    //   body,
+    //   c.req.header() as Record<string, string>,
+    // );
+
+    return c.text("ok");
+  } catch (err) {
+    if (err instanceof SignatureInvalid) return c.text("bad signature", 401);
+    throw err;
+  }
+});
+```
+
+`honoVerify` is a convenience that handles `c.req.arrayBuffer()` and header extraction. The full middleware form (`postelHono(...)`) attaches the result to `c.get("postel")` for downstream handlers.
+
+See [`@postel/hono` source](https://github.com/postel-sh/postel/tree/main/typescript/packages/frameworks/hono) for the exposed API.
+
+## Other frameworks (until adapters ship)
+
+The factory call works directly against any runtime that exposes raw bytes:
+
+```ts title="Next.js Route Handler"
+export async function POST(req: Request) {
+  const body = new Uint8Array(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers);
+  const { event } = await postel.inbound.vendor.verify(body, headers);
+  return new Response("ok");
+}
+```
+
+```ts title="Express (with express.raw)"
+import express from "express";
+const app = express();
+
+app.post(
+  "/webhooks/vendor",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const body = new Uint8Array(req.body);
+    const headers = req.headers as Record<string, string>;
+    const { event } = await postel.inbound.vendor.verify(body, headers);
+    res.status(200).send("ok");
+  },
+);
+```
+
+```ts title="Fastify (with content-type-parser)"
+fastify.addContentTypeParser(
+  "application/json",
+  { parseAs: "buffer" },
+  (_req, body, done) => done(null, body),
+);
+
+fastify.post("/webhooks/vendor", async (req, reply) => {
+  const body = new Uint8Array(req.body as Buffer);
+  const headers = req.headers as Record<string, string>;
+  const { event } = await postel.inbound.vendor.verify(body, headers);
+  return reply.send("ok");
+});
+```
+
+```ts title="Bun.serve"
+Bun.serve({
+  async fetch(req) {
+    if (req.method !== "POST") return new Response(null, { status: 405 });
+    const body = new Uint8Array(await req.arrayBuffer());
+    const headers = Object.fromEntries(req.headers);
+    const { event } = await postel.inbound.vendor.verify(body, headers);
+    return new Response("ok");
+  },
+});
+```
+
+The full adapters will package each of these as one-liner middleware (and add framework-specific runtime detection for `RawBytesMismatchDetected`). Until then, the snippets above are what we run in production.
+
+## What's next
+
+- [Verify a signed request](/docs/inbound/verify) — the basic recipe.
+- [Raw bytes](/docs/inbound/raw-bytes) — the framework-integration footgun.

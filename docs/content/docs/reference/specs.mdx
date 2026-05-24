@@ -1,0 +1,49 @@
+---
+title: Specs & standards
+description: Where the source of truth lives. Wire format, DB schema, capability specs, ADRs, conformance levels.
+---
+
+Postel is spec-first. The narrative in these docs explains how to use the library; the specs define what the library is contractually required to do. Two ports passing the same compliance suite at the same version are guaranteed to be interoperable, even if their narrative docs disagree.
+
+This page links to the canonical artifacts in the repo.
+
+## The four sources of truth
+
+| Layer | What lives there | Format |
+|---|---|---|
+| **Wire format** | The on-the-wire HTTP shape: headers, signature schemes, payload envelope. The thing producers and receivers actually agree on across language boundaries. | [AsyncAPI 3.0](https://github.com/postel-sh/postel/blob/main/specs/wire-format/asyncapi.yaml) |
+| **DB schema** | The canonical table layout for the outbox, endpoints, dedup, and meta tables. Every storage adapter (Postgres-native, Drizzle, Kysely, Prisma, …) maps to this. | [SQL DDL](https://github.com/postel-sh/postel/blob/main/specs/db-schema/0001_init.sql) (Postgres dialect; SQLite variants commented inline) |
+| **Capability behaviors** | One `spec.md` per capability — `### Requirement` blocks with `#### Scenario` (WHEN/THEN) clauses. Each scenario maps 1:1 to a test. | [Capability specs in the repo](https://github.com/postel-sh/postel/tree/main/openspec/specs) |
+| **Architectural decisions** | Why things are the way they are. ADRs that don't directly drive behavior — package shape, monorepo layout, polyglot strategy, storage strategy. | [`decisions/`](https://github.com/postel-sh/postel/tree/main/decisions) |
+
+## The executable oracle
+
+`@postel/compliance` is the binding contract between ports. It is the executable boundary between:
+
+- **CONTRACT** — every port must satisfy it; the compliance suite tests it. Examples: wire-format headers, signature schemes, endpoint state vocabulary, outbox transactional semantics, dedup atomicity, the `Storage` interface operation set.
+- **PORT-SPECIFIC** — reference-implementation guidance; ports MAY vary the mechanism as long as the related CONTRACT outcomes hold. Examples: worker scheduler algorithm, lease renewal cadence, polling interval default, concurrency model, HTTP client choice.
+
+What the suite tests is CONTRACT. What it doesn't is PORT-SPECIFIC, regardless of how prose phrases it. See [ADR 0008](https://github.com/postel-sh/postel/blob/main/decisions/0008-conformance-levels.md) for the full distinction.
+
+`@postel/compliance` ships at lockstep `MAJOR.MINOR` with every other `@postel/*` package. A port version `X.Y.Z` claims conformance by passing `@postel/compliance@X.Y.*` end-to-end before release.
+
+## Versioning policy
+
+| Layer | Pre-1.0 (`0.x`) | Post-1.0 |
+|---|---|---|
+| `@postel/*` packages | Breaking changes allowed across minor versions. Pin to `~0.5.0`, not `^0.x`. | Strict SemVer. Major bumps share across all `@postel/*` packages. |
+| DB schema | Forward-only migrations; may be semantically breaking. | Forward-only; library reads state written by the previous two majors. |
+| Wire format | Anchored to Standard Webhooks. Deviations only via multi-secret rotation windows + the `webhook-spec-version` header. | Same; this is the most expensive layer to break because receivers in the wild verify against signature schemes. |
+
+See [VISION.md §8](https://github.com/postel-sh/postel/blob/main/VISION.md#8-conformance--versioning-policy) for the full policy.
+
+## Standard Webhooks alignment
+
+Postel implements the [Standard Webhooks](https://www.standardwebhooks.com) wire format end-to-end. The HMAC `v1` scheme works unchanged. Ed25519 (`v1a`) is a Postel extension layered on top — additive, never breaking. JWKS publication is a one-liner. The `webhook-spec-version` header signals capability without breaking older receivers.
+
+We pursue Standard Webhooks consortium engagement: official "delivery layer" reference implementation status is on the roadmap.
+
+## Related reading
+
+- [Polyglot](/docs/polyglot) — how ports gate on the compliance suite.
+- [Why Postel](/docs/why) — why this spec-first shape exists in the first place.

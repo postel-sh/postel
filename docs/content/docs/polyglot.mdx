@@ -1,0 +1,143 @@
+---
+title: Polyglot
+description: One contract, many languages. TypeScript ships today. Go, Python, and Rust follow. Each port is gated on the same executable compliance suite.
+---
+
+Postel is a polyglot library by design. The wire format is AsyncAPI 3.0. The DB schema is SQL DDL. The capability behaviors are markdown specs. The compliance suite drives any conformant receiver. All of that is language-agnostic — the same contract, implemented in four languages over time.
+
+> **Today only TypeScript ships.** The Go, Python, and Rust ports are roadmap items, not shipped packages. Snippets on this page show the *target* API for each language so you can evaluate whether the contract fits your stack.
+
+## Port status
+
+| Port | Status | Repo | Notes |
+|---|---|---|---|
+| **TypeScript** | Receiver: shipping (`0.0.0`). Sender: planned v0.2. | [`postel-sh/postel`](https://github.com/postel-sh/postel) (this repo, `typescript/`) | Reference implementation. The other ports gate on passing the same compliance suite at the same version. |
+| **Go** | Roadmap | (not yet) | Receiver first, then sender. Target package: `github.com/postel-sh/postel-go`. |
+| **Python** | Roadmap | (not yet) | Receiver first. Target package: `postel` on PyPI. |
+| **Rust** | Roadmap | (not yet) | Receiver first. Target package: `postel` on crates.io. |
+
+## What "polyglot" means in practice
+
+It does **not** mean "we'll transpile the TypeScript." Each port is a real, idiomatic implementation in its target language. What's shared:
+
+1. **The wire format.** Headers, signature schemes (`v1` HMAC, `v1a` Ed25519), payload envelope. Defined in [`specs/wire-format/asyncapi.yaml`](https://github.com/postel-sh/postel/blob/main/specs/wire-format/asyncapi.yaml).
+2. **The DB schema.** [`specs/db-schema/0001_init.sql`](https://github.com/postel-sh/postel/blob/main/specs/db-schema/0001_init.sql).
+3. **The capability behaviors.** Markdown specs, [one folder per capability](https://github.com/postel-sh/postel/tree/main/openspec/specs).
+4. **The compliance suite.** [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) — vendor-neutral; drives any HTTP receiver/sender pair.
+
+What's port-specific: the package shape, the framework adapters, the worker scheduler algorithm, the HTTP client, the type system idioms, the error-handling idioms.
+
+## The target receiver API, per language
+
+The same conceptual contract — verify raw bytes + headers against one or more verifiers — expressed in each language's idioms.
+
+### TypeScript (ships today)
+
+```ts
+import { Postel, Secret, SignatureInvalid } from "@postel/core";
+
+const postel = Postel({
+  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+});
+
+export async function POST(req: Request) {
+  const body = new Uint8Array(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers);
+
+  try {
+    const { event } = await postel.inbound.vendor.verify(body, headers);
+    return new Response("ok");
+  } catch (err) {
+    if (err instanceof SignatureInvalid) return new Response("bad signature", { status: 401 });
+    throw err;
+  }
+}
+```
+
+### Go (roadmap)
+
+```go
+// Target API — package not published yet.
+package main
+
+import (
+    "errors"
+    "io"
+    "net/http"
+    "os"
+
+    postel "github.com/postel-sh/postel-go"
+)
+
+func handleWebhook(w http.ResponseWriter, r *http.Request) {
+    body, _ := io.ReadAll(r.Body)
+
+    event, err := postel.Verify(body, r.Header, postel.Secret(os.Getenv("WEBHOOK_SECRET")))
+    if err != nil {
+        var sigErr *postel.SignatureInvalid
+        if errors.As(err, &sigErr) {
+            http.Error(w, "bad signature", http.StatusUnauthorized)
+            return
+        }
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    _ = event
+    w.WriteHeader(http.StatusOK)
+}
+```
+
+### Python (roadmap)
+
+```python
+# Target API — package not published yet.
+import os
+from flask import Flask, request, abort
+from postel import verify, Secret, SignatureInvalid
+
+app = Flask(__name__)
+
+@app.post("/webhooks")
+def handle_webhook():
+    body = request.get_data()
+    headers = dict(request.headers)
+
+    try:
+        event = verify(body, headers, Secret(os.environ["WEBHOOK_SECRET"]))
+        return "ok", 200
+    except SignatureInvalid:
+        abort(401, "bad signature")
+```
+
+### Rust (roadmap)
+
+```rust
+// Target API — package not published yet.
+use axum::{body::Bytes, http::{HeaderMap, StatusCode}, response::IntoResponse};
+use postel::{verify, Secret, PostelError};
+
+async fn handle_webhook(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
+    let secret = std::env::var("WEBHOOK_SECRET").unwrap();
+
+    match verify(&body, &headers, Secret(&secret)).await {
+        Ok(_event) => (StatusCode::OK, "ok"),
+        Err(PostelError::SignatureInvalid(_)) => (StatusCode::UNAUTHORIZED, "bad signature"),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "error"),
+    }
+}
+```
+
+## How a port joins
+
+A new language port is added by implementing the wire format, DB schema, and capability behaviors against the same shared specifications as the reference TypeScript port — and proving conformance by passing `@postel/compliance` at the same `MAJOR.MINOR` as the rest of the `@postel/*` packages. Concretely:
+
+1. Port implements receiver capabilities first (smaller surface, immediate value).
+2. Port passes `@postel/compliance@X.Y.*` against its local HTTP receiver.
+3. Port is announced as a v0.X release.
+
+The contract is the suite — not prose, not promises. See [Reference → Specs & standards](/docs/reference/specs).
+
+## Read next
+
+- [Reference → Specs & standards](/docs/reference/specs) — the canonical artifacts.
+- [Why Postel](/docs/why) — why polyglot matters for this kind of library.

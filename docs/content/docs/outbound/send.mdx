@@ -1,0 +1,77 @@
+---
+title: send() and the outbox
+description: The transactional outbox pattern, implemented inside the host application's database. Planned for v0.2.0.
+---
+
+> **Status: planned — v0.2.0.** Types ship today; the runtime throws `NotImplementedError`. The shape below is what we're building toward.
+
+`postel.outbound.send(event, options?)` is the single entry point for emitting a webhook. Under the hood it's an INSERT into a `postel_outbox` table, scoped to whichever DB transaction you pass.
+
+## The shape
+
+```ts
+import { Postel, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
+
+const postel = Postel({
+  outbound: {
+    storage:     /* see /docs/reference/packages — storage adapters */,
+    signing:     HmacV1(),
+    retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
+    workers:     InProcess({ concurrency: 4 }),
+  },
+});
+
+// Inside a transaction:
+await db.tx(async (tx) => {
+  await db.orders.insert({ id: "ord_123", status: "paid" }, { tx });
+
+  const messageId = await postel.outbound.send(
+    { type: "order.created", data: { id: "ord_123", amount: 4200 } },
+    { tx },
+  );
+
+  // messageId is the webhook-id the receiver will see.
+});
+```
+
+## The transactional contract
+
+The contract is intentionally narrow:
+
+1. **`send()` writes an outbox row.** It does not deliver. Delivery is the worker's job, asynchronously, after commit.
+2. **The outbox row joins your transaction.** Pass `{ tx }` and the row commits or rolls back with everything else under that transaction handle.
+3. **No `tx` → autonomous commit.** Pass no `{ tx }` and the row commits immediately in its own transaction. Use this only when there's no business write to join.
+
+This is the **transactional outbox** pattern as described in [decisions/0007-storage-strategy.md](https://github.com/postel-sh/postel/blob/main/decisions/0007-storage-strategy.md). It's why Postel doesn't need a broker: your DB already does atomic commits, and that's the only atomicity property webhook fanout needs.
+
+## What happens after commit
+
+1. The worker (in-process by default; configurable) selects unprocessed outbox rows.
+2. For each row, it computes the signature over the event payload, opens an HTTP connection to each matching endpoint, and POSTs the request.
+3. Successes mark the attempt complete. Failures schedule the next retry per the configured `retryPolicy` ([Retries & backoff](/docs/outbound/retries)).
+4. Persistent failures trigger the circuit breaker or auto-disable per endpoint.
+
+## Fanout
+
+A single `send()` reaches every endpoint whose `types` filter matches. If you create three endpoints — `webhook-A` (types: `*`), `webhook-B` (types: `order.created`), `webhook-C` (types: `user.signup`) — a single `send({ type: "order.created", ... })` enqueues attempts for A and B, not C.
+
+```ts
+await postel.outbound.endpoints.create({
+  url: "https://example.com/webhooks",
+  types: ["order.*", "shipment.*"],
+});
+```
+
+Filter strings support globs and (for advanced cases) a custom `filter: (event) => boolean` predicate. See [Endpoints](/docs/outbound/endpoints).
+
+## What about idempotency on send?
+
+`SendEvent` accepts an optional `idempotencyKey`. If the caller provides one, the outbox uses a unique constraint on `(idempotencyKey)` to enforce at-most-once *enqueuing* — repeated calls with the same key in the same transaction are no-ops.
+
+If you don't pass one, Postel generates a stable `webhook-id` for the receiver but does not enforce send-side idempotency. (You usually don't need both — the [receiver's dedup](/docs/inbound/deduplication) handles the at-least-once contract on the wire.)
+
+## Read next
+
+- [Retries & backoff](/docs/outbound/retries) — what happens after a 5xx.
+- [Replay](/docs/outbound/replay) — re-emitting historical messages.
+- [Endpoints](/docs/outbound/endpoints) — managing the fanout matrix.
