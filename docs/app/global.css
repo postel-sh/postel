@@ -19,6 +19,16 @@ html.dark {
   --color-fd-card: hsl(0, 0%, 5%);
 }
 
+/* The sidebar uses bg-fd-card (which we bumped to hsl(0, 0%, 5%) so
+ * floating cards elevate visibly above the pitch-black canvas). The
+ * sidebar isn't a floating card — it's a structural panel separated
+ * from the content by its own border-e, so the elevation is wrong
+ * there. Pin its background to the page canvas color so it reads as
+ * pure black in dark mode (and pure white in light mode). */
+#nd-sidebar {
+  background: var(--color-fd-background);
+}
+
 /* Let code blocks inherit the page canvas — no extra surface behind the
  * syntax. The shiki HTML still defines --shiki-*-bg CSS variables inline,
  * but we deliberately don't read them as background-color anywhere. */
