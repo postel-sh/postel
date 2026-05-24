@@ -10,16 +10,12 @@ export const baseOptions: BaseLayoutProps = {
       </span>
     ),
   },
+  githubUrl: "https://github.com/postel-sh/postel",
   links: [
     {
       text: "Docs",
       url: "/docs",
       active: "nested-url",
-    },
-    {
-      text: "GitHub",
-      url: "https://github.com/postel-sh/postel",
-      external: true,
     },
   ],
 };

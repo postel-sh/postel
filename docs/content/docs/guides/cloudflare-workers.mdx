@@ -95,7 +95,7 @@ wrangler secret put WEBHOOK_SECRET_PREVIOUS
 
 And in the Worker:
 
-```ts
+```ts title="src/index.ts"
 const { event, matchedSecretIndex } = await verify(body, headers, [
   env.WEBHOOK_SECRET,
   env.WEBHOOK_SECRET_PREVIOUS,
@@ -154,7 +154,7 @@ Streams every `console.log` from production in real time. Useful when debugging 
 
 **Workers Analytics Engine** (optional, free tier-friendly): emit a counter for each receipt type and each error branch. Postel doesn't ship this by default; the few lines of glue look like:
 
-```ts
+```ts title="src/index.ts"
 const start = Date.now();
 try {
   const { event } = await verify(body, headers, env.WEBHOOK_SECRET);

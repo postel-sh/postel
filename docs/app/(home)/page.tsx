@@ -1,13 +1,34 @@
 import Link from "next/link";
-import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+import { Tab, Tabs, TabsList, TabsTrigger } from "fumadocs-ui/components/tabs";
 import { codeToHtml } from "shiki";
 import { PostelMark } from "@/lib/postel-mark";
+import { GoIcon, PythonIcon, RustIcon, TypeScriptIcon } from "@/components/lang-icons";
+
+function GithubIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+      />
+    </svg>
+  );
+}
 
 const installCode = `pnpm add @postel/core`;
 
 const snippets = [
   {
     lang: "TypeScript",
+    value: "typescript",
+    Icon: TypeScriptIcon,
     shikiLang: "typescript",
     code: `import { Postel, Secret, SignatureInvalid } from "@postel/core";
 
@@ -24,13 +45,17 @@ export async function POST(req: Request) {
     console.log(event.type, event.data);
     return new Response("ok");
   } catch (err) {
-    if (err instanceof SignatureInvalid) return new Response("bad signature", { status: 401 });
+    if (err instanceof SignatureInvalid) {
+      return new Response("bad signature", { status: 401 });
+    }
     throw err;
   }
 }`,
   },
   {
     lang: "Go",
+    value: "go",
+    Icon: GoIcon,
     shikiLang: "go",
     planned: true,
     code: `import postel "github.com/postel-sh/postel-go"
@@ -55,6 +80,8 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
   },
   {
     lang: "Python",
+    value: "python",
+    Icon: PythonIcon,
     shikiLang: "python",
     planned: true,
     code: `from postel import verify, SignatureInvalid
@@ -73,6 +100,8 @@ def handle_webhook():
   },
   {
     lang: "Rust",
+    value: "rust",
+    Icon: RustIcon,
     shikiLang: "rust",
     planned: true,
     code: `use axum::{body::Bytes, http::{HeaderMap, StatusCode}, response::IntoResponse};
@@ -125,7 +154,7 @@ export default async function HomePage() {
       ...s,
       html: await codeToHtml(s.code, {
         lang: s.shikiLang,
-        themes: { dark: "github-dark-default", light: "github-light-default" },
+        themes: { dark: "dark-plus", light: "light-plus" },
         defaultColor: false,
       }),
     })),
@@ -162,9 +191,10 @@ export default async function HomePage() {
           </Link>
           <Link
             href="https://github.com/postel-sh/postel"
-            className="text-fd-muted-foreground hover:text-fd-foreground inline-flex h-10 items-center px-2 text-sm font-medium transition-colors"
+            aria-label="Postel on GitHub"
+            className="text-fd-muted-foreground hover:text-fd-foreground inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors"
           >
-            GitHub ↗
+            <GithubIcon className="size-5" />
           </Link>
         </div>
         <div className="mx-auto inline-flex items-center gap-3 rounded-full border border-fd-border bg-fd-muted/30 px-4 py-1.5 font-mono text-xs text-fd-muted-foreground">
@@ -194,16 +224,24 @@ export default async function HomePage() {
           <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">MalformedHeader</code>,{" "}
           and friends.
         </p>
-        <Tabs items={["TypeScript", "Go", "Python", "Rust"]}>
+        <Tabs defaultValue="typescript" className="bg-fd-background">
+          <TabsList>
+            {highlighted.map((s) => (
+              <TabsTrigger key={s.value} value={s.value}>
+                <s.Icon className="size-4" />
+                {s.lang}
+              </TabsTrigger>
+            ))}
+          </TabsList>
           {highlighted.map((s) => (
-            <Tab key={s.lang} value={s.lang}>
+            <Tab key={s.value} value={s.value}>
               {"planned" in s && s.planned && (
                 <p className="text-fd-muted-foreground mb-3 text-xs">
                   Planned — this API reflects the target design. The package is not published yet.
                 </p>
               )}
               <div
-                className="[&_pre]:border-fd-border [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:p-4 [&_pre]:text-sm [&_pre]:leading-relaxed"
+                className="[&_pre]:overflow-x-auto [&_pre]:text-sm [&_pre]:leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: s.html }}
               />
             </Tab>

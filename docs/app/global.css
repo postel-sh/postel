@@ -4,14 +4,125 @@
 
 @source '../node_modules/fumadocs-ui/dist/**/*.js';
 
+/* Push the page canvas to true extremes: pure white in light mode, pitch
+ * black in dark mode. Cards / muted surfaces keep their proportional offset
+ * from the Fumadocs neutral preset (light cards are 94.7%, dark cards bumped
+ * to 5% so they still elevate visibly above the new #000 canvas). */
+@theme {
+  --color-fd-background: hsl(0, 0%, 100%);
+  --color-fd-popover: hsl(0, 0%, 100%);
+}
+
+html.dark {
+  --color-fd-background: hsl(0, 0%, 0%);
+  --color-fd-popover: hsl(0, 0%, 0%);
+  --color-fd-card: hsl(0, 0%, 5%);
+}
+
+/* The sidebar uses bg-fd-card (which we bumped to hsl(0, 0%, 5%) so
+ * floating cards elevate visibly above the pitch-black canvas). The
+ * sidebar isn't a floating card — it's a structural panel separated
+ * from the content by its own border-e, so the elevation is wrong
+ * there. Pin its background to the page canvas color so it reads as
+ * pure black in dark mode (and pure white in light mode). */
+#nd-sidebar {
+  background: var(--color-fd-background);
+}
+
+/* Let code blocks inherit the page canvas — no extra surface behind the
+ * syntax. The shiki HTML still defines --shiki-*-bg CSS variables inline,
+ * but we deliberately don't read them as background-color anywhere. */
 .shiki,
 .shiki span {
   color: var(--shiki-light);
-  background-color: var(--shiki-light-bg);
+  background-color: transparent;
 }
 
 .dark .shiki,
 .dark .shiki span {
   color: var(--shiki-dark);
-  background-color: var(--shiki-dark-bg);
+  background-color: transparent;
+}
+
+/* Fumadocs's <TabsContent> ships an inner card by default
+ * (p-4 bg-fd-background rounded-xl) and an escape hatch that strips
+ * the padding when the panel wraps a <figure> as its only child —
+ * which is what docs-page CodeBlocks render. The landing page renders
+ * shiki HTML directly inside a plain <div>, so the escape hatch never
+ * fires and the inner panel becomes a visible card-within-a-card. Strip
+ * the panel chrome for the non-figure case so the outer Tabs container
+ * is the only visual frame; docs pages keep their current behavior. */
+[role="tabpanel"][data-orientation="horizontal"]:not(:has(> figure:only-child)) {
+  background: transparent;
+  border-radius: 0;
+  padding: 1rem;
+}
+
+/* Inside a Tabs language switcher, the Fumadocs CodeBlock figcaption
+ * (file path + lang icon + copy button) is redundant — the tab itself
+ * already names the language and the file path either matches every
+ * tab or applies once at the top of the section. Hide that whole header
+ * row so the tab card is just the language bar + the code. Code blocks
+ * outside Tabs keep the figcaption (filename is useful when standalone). */
+[role="tabpanel"] figure > div:has(> figcaption) {
+  display: none;
+}
+
+/* Fumadocs's CodeBlock figure ships its own card (border + bg-fd-card +
+ * rounded-xl + shadow-sm + my-4) which nests inside the Tabs language
+ * switcher's card — same card-in-card problem the tabpanel rule above
+ * fixed. Strip the surface chrome (bg, border, rounded, shadow) only
+ * when the figure lives in a tabpanel; on concept pages with standalone
+ * code blocks the figure card stays.
+ *
+ * Margin is deliberately NOT overridden — Fumadocs's tabpanel rule
+ * applies `-m-4` to a `figure:only-child` to cancel the panel's p-4
+ * padding and pull the figure flush with the outer Tabs card edge.
+ * Overriding margin here would defeat that and reintroduce a padding
+ * mismatch between code and surrounding text. */
+[role="tabpanel"] figure {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* LangNotes is a Fumadocs Tabs that shares groupId="lang" with the code
+ * switcher above but renders no language bar — only the active language's
+ * notes show. Strip the inherited Tabs card (border + bg-fd-secondary +
+ * rounded-xl) and the panel padding so the prose flows with the
+ * surrounding article instead of sitting inside a visible card. */
+[data-lang-notes] {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+[data-lang-notes] [role="tabpanel"] {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* When a .shiki <pre> is the scroll container (landing page direct
+ * Shiki render — docs pages wrap shiki in their own .fd-scroll-container
+ * div, this rule is harmless there), style the webkit scrollbar to match
+ * Fumadocs's fd-scroll-container utility: 5px thin, themed thumb. */
+.shiki::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.shiki::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background: var(--color-fd-border);
+}
+
+.shiki::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.shiki::-webkit-scrollbar-corner {
+  display: none;
 }

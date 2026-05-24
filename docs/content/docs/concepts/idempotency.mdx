@@ -13,7 +13,7 @@ Postel ships a dedup helper that gets this right. The contract is simple: hand i
 
 Configure a dedup adapter on the inbound source, then call `dedup(messageId, options?)` from the verified-event branch:
 
-```ts
+```ts title="app/webhooks/route.ts"
 import { Postel, Secret, InMemoryDedup } from "@postel/core";
 
 const postel = Postel({
@@ -50,7 +50,7 @@ A few things to note:
 
 ### Postgres — `@postel/standalone-pg`
 
-```ts
+```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
 import { pgDedupAdapter } from "@postel/standalone-pg";
 
@@ -74,7 +74,7 @@ The adapter uses `INSERT ... ON CONFLICT ... DO UPDATE WHERE expires_at <= now()
 
 ### SQLite — `@postel/standalone-sqlite`
 
-```ts
+```ts title="lib/postel.ts"
 import { sqliteDedupAdapter } from "@postel/standalone-sqlite";
 
 const postel = Postel({
@@ -92,7 +92,7 @@ Uses `INSERT OR IGNORE`, identical contract. Periodically purges expired rows.
 
 ### In-memory — `InMemoryDedup` (built into `@postel/core` and `@postel/edge`)
 
-```ts
+```ts title="lib/postel.ts"
 import { Postel, Secret, InMemoryDedup } from "@postel/core";
 
 const postel = Postel({
@@ -122,7 +122,7 @@ A Redis dedup adapter ships as a separate package for hosts that already run Red
 
 The naive placement is "before the work":
 
-```ts
+```ts title="app/webhooks/route.ts"
 const { duplicate } = await postel.inbound.vendor.dedup(event.id);
 if (duplicate) return new Response("dup", { status: 200 });
 await processOrder(event.data);
@@ -132,7 +132,7 @@ This is correct as long as `processOrder` is itself idempotent on its own writes
 
 The cleanest pattern is the **transactional outbox** in reverse: the dedup insert participates in the same DB transaction as the work. Every dedup call accepts an optional `tx` parameter that the adapter threads through to its storage.
 
-```ts
+```ts title="app/webhooks/route.ts"
 await pgPool.tx(async (tx) => {
   const { duplicate } = await postel.inbound.vendor.dedup(event.id, { tx });
   if (duplicate) return; // tx commits with no work; safe.

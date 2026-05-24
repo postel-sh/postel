@@ -25,7 +25,7 @@ Where `${body}` is the **raw request body** — byte-identical to what the produ
 
 ## What `verify` checks, in order
 
-```ts
+```ts title="app/webhooks/route.ts"
 import { Postel, Secret } from "@postel/core";
 
 const postel = Postel({
@@ -73,7 +73,7 @@ Asymmetric: the producer signs with a private key, the receiver verifies with th
 
 Each source's `verify` slot accepts a single `Verifier` or a `ReadonlyArray<Verifier>`. Arrays are tried in order; the first match wins:
 
-```ts
+```ts title="lib/postel.ts"
 const postel = Postel({
   inbound: {
     vendor: {
@@ -107,7 +107,7 @@ The compliance suite includes a vector for this: two equal-length signatures tha
 
 `verify` never returns a boolean. Failures are typed instances of `PostelError` subclasses:
 
-```ts
+```ts title="app/webhooks/route.ts"
 import {
   SignatureInvalid,
   TimestampTooOld,

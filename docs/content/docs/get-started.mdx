@@ -5,6 +5,8 @@ description: Install @postel/core and verify a signed webhook in under a minute.
 
 This page gets you from zero to a verified webhook on your laptop. `@postel/core` is the unified TypeScript entry point — the `Postel({...})` factory exposes a receiver today and a sender in v0.2.0+. If you need the ≤ 50 KB edge-runtime carve-out, swap `@postel/core` for [`@postel/edge`](/docs/concepts/edge-runtimes) — same wire format, smaller bundle, named-export surface.
 
+> The Go, Python, and Rust snippets throughout this page reflect the target API designs — those ports are planned, packages not yet published.
+
 ## 1. Install
 
 <Tabs items={["TypeScript", "Go", "Python", "Rust"]} groupId="lang">
@@ -16,31 +18,25 @@ pnpm add @postel/core
 # or: bun add @postel/core
 # or (Deno): import { Postel } from "npm:@postel/core";
 ```
-
-`@postel/core` has zero runtime dependencies beyond `@postel/edge` (the shared Web-Crypto verifier). Tree-shaking keeps the sender code paths out of receiver-only builds. If your runtime is Cloudflare Workers, Vercel Edge, Deno Deploy, or Bun and you care about cold-start bundle size, install [`@postel/edge`](/docs/concepts/edge-runtimes) instead.
 </Tab>
 <Tab value="Go">
-> **Planned** — `postel-go` ships alongside the Go port. The API below reflects the target design.
-
 ```bash
 go get github.com/postel-sh/postel-go
 ```
 </Tab>
 <Tab value="Python">
-> **Planned** — `postel` for Python ships alongside the Python port. The API below reflects the target design.
-
 ```bash
 pip install postel
 ```
 </Tab>
 <Tab value="Rust">
-> **Planned** — `postel` for Rust ships alongside the Rust port. The API below reflects the target design.
-
 ```bash
 cargo add postel
 ```
 </Tab>
 </Tabs>
+
+`@postel/core` has zero runtime dependencies beyond `@postel/edge` (the shared Web-Crypto verifier). Tree-shaking keeps the sender code paths out of receiver-only builds. If your runtime is Cloudflare Workers, Vercel Edge, Deno Deploy, or Bun and you care about cold-start bundle size, install [`@postel/edge`](/docs/concepts/edge-runtimes) instead.
 
 ## 2. Verify a webhook
 
@@ -88,18 +84,8 @@ export async function POST(req: Request) {
   }
 }
 ```
-
-A few things worth noticing:
-
-- **`Secret(...)` is a verifier factory.** `inbound.<source>.verify` accepts a single `Verifier` or a `ReadonlyArray<Verifier>` — pass `[Secret(NEW), Secret(OLD)]` for rotation, or `[Secret(LEGACY), Keyset({ jwksUri })]` for HMAC→Ed25519 migration. See [Key rotation](/docs/concepts/key-rotation).
-- **`inbound` is keyed by source name.** Configure `github`, `stripe`, `internal-api`, … and route requests to the matching source. Each source is independently typed.
-- **`outbound` is not configured here.** With only `inbound` in the config, `postel.outbound` does not exist on the instance type — TypeScript refuses to reference it.
-
-The route handler above works unmodified on Cloudflare Workers, Vercel Edge, Next.js, Bun, and Deno. See [Cloudflare Workers](/docs/guides/cloudflare-workers) for a complete deployment walkthrough.
 </Tab>
 <Tab value="Go">
-> **Planned** — the API below reflects the target design for the Go port.
-
 ```go title="main.go"
 package main
 
@@ -133,8 +119,6 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 ```
 </Tab>
 <Tab value="Python">
-> **Planned** — the API below reflects the target design for the Python port.
-
 ```python title="app.py"
 import os
 from flask import Flask, request, abort
@@ -160,8 +144,6 @@ def handle_webhook():
 ```
 </Tab>
 <Tab value="Rust">
-> **Planned** — the API below reflects the target design for the Rust port.
-
 ```rust title="src/main.rs"
 use axum::{body::Bytes, http::{HeaderMap, StatusCode}, response::IntoResponse};
 use postel::{verify, PostelError};
@@ -193,13 +175,25 @@ async fn handle_webhook(headers: HeaderMap, body: Bytes) -> impl IntoResponse {
 </Tab>
 </Tabs>
 
+<LangNotes>
+<Tab value="TypeScript">
+A few things worth noticing:
+
+- **`Secret(...)` is a verifier factory.** `inbound.<source>.verify` accepts a single `Verifier` or a `ReadonlyArray<Verifier>` — pass `[Secret(NEW), Secret(OLD)]` for rotation, or `[Secret(LEGACY), Keyset({ jwksUri })]` for HMAC→Ed25519 migration. See [Key rotation](/docs/concepts/key-rotation).
+- **`inbound` is keyed by source name.** Configure `github`, `stripe`, `internal-api`, … and route requests to the matching source. Each source is independently typed.
+- **`outbound` is not configured here.** With only `inbound` in the config, `postel.outbound` does not exist on the instance type — TypeScript refuses to reference it.
+
+The route handler above works unmodified on Cloudflare Workers, Vercel Edge, Next.js, Bun, and Deno. See [Cloudflare Workers](/docs/guides/cloudflare-workers) for a complete deployment walkthrough.
+</Tab>
+</LangNotes>
+
 ## 3. Try it locally
 
 You need a signed request to verify. The library ships a fixture helper for this:
 
 <Tabs items={["TypeScript", "Go", "Python", "Rust"]} groupId="lang">
 <Tab value="TypeScript">
-```ts
+```ts title="scripts/send-fixture.ts"
 import { signFixture } from "@postel/core";
 
 const secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5";
@@ -217,13 +211,9 @@ const res = await fetch("http://localhost:3000/api/webhooks", {
 
 console.log(res.status); // 200
 ```
-
-`signFixture` exists so tests don't need to stand up a real producer. It is **not** for production signing — that's the sender's job (`postel.outbound.send(...)`), which lands in v0.2.0+. Calling it before then throws `NotImplementedError`.
 </Tab>
 <Tab value="Go">
-> **Planned** — the API below reflects the target design for the Go port.
-
-```go
+```go title="cmd/send_fixture/main.go"
 secret := "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5"
 fixture, _ := postel.SignFixture(postel.FixtureOpts{
     Secret:  secret,
@@ -240,9 +230,7 @@ fmt.Println(resp.StatusCode) // 200
 ```
 </Tab>
 <Tab value="Python">
-> **Planned** — the API below reflects the target design for the Python port.
-
-```python
+```python title="scripts/send_fixture.py"
 from postel import sign_fixture
 
 secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5"
@@ -260,9 +248,7 @@ print(resp.status_code)  # 200
 ```
 </Tab>
 <Tab value="Rust">
-> **Planned** — the API below reflects the target design for the Rust port.
-
-```rust
+```rust title="examples/send_fixture.rs"
 let secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5";
 let fixture = postel::sign_fixture(SignFixtureOpts {
     secret,
@@ -280,6 +266,8 @@ println!("{}", resp.status()); // 200
 ```
 </Tab>
 </Tabs>
+
+`signFixture` exists so tests don't need to stand up a real producer. It is **not** for production signing — that's the sender's job (`postel.outbound.send(...)`), which lands in v0.2.0+. Calling it before then throws `NotImplementedError`.
 
 ## 4. Pick a framework adapter
 
