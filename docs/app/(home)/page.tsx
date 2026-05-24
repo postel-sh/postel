@@ -125,7 +125,7 @@ export default async function HomePage() {
       ...s,
       html: await codeToHtml(s.code, {
         lang: s.shikiLang,
-        themes: { dark: "github-dark-default", light: "github-light-default" },
+        themes: { dark: "dark-plus", light: "light-plus" },
         defaultColor: false,
       }),
     })),

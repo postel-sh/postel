@@ -4,14 +4,32 @@
 
 @source '../node_modules/fumadocs-ui/dist/**/*.js';
 
+/* Push the page canvas to true extremes: pure white in light mode, pitch
+ * black in dark mode. Cards / muted surfaces keep their proportional offset
+ * from the Fumadocs neutral preset (light cards are 94.7%, dark cards bumped
+ * to 5% so they still elevate visibly above the new #000 canvas). */
+@theme {
+  --color-fd-background: hsl(0, 0%, 100%);
+  --color-fd-popover: hsl(0, 0%, 100%);
+}
+
+html.dark {
+  --color-fd-background: hsl(0, 0%, 0%);
+  --color-fd-popover: hsl(0, 0%, 0%);
+  --color-fd-card: hsl(0, 0%, 5%);
+}
+
+/* Let code blocks inherit the page canvas — no extra surface behind the
+ * syntax. The shiki HTML still defines --shiki-*-bg CSS variables inline,
+ * but we deliberately don't read them as background-color anywhere. */
 .shiki,
 .shiki span {
   color: var(--shiki-light);
-  background-color: var(--shiki-light-bg);
+  background-color: transparent;
 }
 
 .dark .shiki,
 .dark .shiki span {
   color: var(--shiki-dark);
-  background-color: var(--shiki-dark-bg);
+  background-color: transparent;
 }

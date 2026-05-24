@@ -5,5 +5,12 @@ export const docs = defineDocs({
 });
 
 export default defineConfig({
-  mdxOptions: {},
+  mdxOptions: {
+    rehypeCodeOptions: {
+      themes: {
+        light: "light-plus",
+        dark: "dark-plus",
+      },
+    },
+  },
 });
