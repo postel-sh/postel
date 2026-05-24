@@ -16,6 +16,6 @@ Postel is a **library, not a service.** It runs inside the host application agai
 
 ## Status
 
-Pre-alpha. `@postel/edge` (receiver-side) is what ships today: `verify`, JWKS consumer, dedup helper, multi-secret rotation, raw-bytes-preserving framework adapters. Sender, outbox, retries, fanout, replay land in v0.2.0. Polyglot ports follow.
+Pre-alpha. The TypeScript receiver ships today through the `Postel({ inbound })` factory in `@postel/core` (or the smaller [`@postel/edge`](/docs/concepts/edge-runtimes) carve-out for edge-budget consumers): multi-verifier composition, JWKS consumer, dedup helper, raw-bytes-preserving framework adapters. The sender — `postel.outbound.send`, the transactional outbox, retries, fanout, replay — lands in v0.2.0; its types ship today and the runtime throws `NotImplementedError` until then. Polyglot ports (Go, Python, Rust) follow.
 
 We document the spec ahead of the implementation. Pages covering unimplemented capabilities are explicit about it — assume nothing ships until the [API reference](/docs/api) lists it.

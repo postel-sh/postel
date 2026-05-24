@@ -2,20 +2,24 @@ import Link from "next/link";
 import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 import { codeToHtml } from "shiki";
 
-const installCode = `pnpm add @postel/edge`;
+const installCode = `pnpm add @postel/core`;
 
 const snippets = [
   {
     lang: "TypeScript",
     shikiLang: "typescript",
-    code: `import { verify, SignatureInvalid } from "@postel/edge";
+    code: `import { Postel, Secret, SignatureInvalid } from "@postel/core";
+
+const postel = Postel({
+  inbound: { github: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+});
 
 export async function POST(req: Request) {
   const body = new Uint8Array(await req.arrayBuffer());
   const headers = Object.fromEntries(req.headers);
 
   try {
-    const { event } = await verify(body, headers, process.env.WEBHOOK_SECRET!);
+    const { event } = await postel.inbound.github.verify(body, headers);
     console.log(event.type, event.data);
     return new Response("ok");
   } catch (err) {
@@ -175,8 +179,14 @@ export default async function HomePage() {
           Five lines. Standard Webhooks. Edge-runtime native.
         </h2>
         <p className="text-fd-muted-foreground mb-8 max-w-2xl text-sm">
-          <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">verify</code> returns the
-          parsed event on success, or throws a structured error naming the failing step:{" "}
+          Configure one or more inbound sources with the{" "}
+          <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">Postel</code> factory, then
+          call{" "}
+          <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">
+            postel.inbound.&lt;source&gt;.verify
+          </code>{" "}
+          from your handler. On success you get the parsed event; on failure a structured error names
+          the failing step:{" "}
           <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">SignatureInvalid</code>,{" "}
           <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">TimestampTooOld</code>,{" "}
           <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">MalformedHeader</code>,{" "}
@@ -223,11 +233,17 @@ export default async function HomePage() {
           </p>
           <h2 className="mb-4 text-2xl font-semibold tracking-tight">Pre-alpha. Receiver first.</h2>
           <p className="text-fd-muted-foreground mb-8 text-sm leading-relaxed">
-            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">@postel/edge</code> ships
-            today: <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">verify</code>,
-            JWKS consumer, dedup helper, multi-secret rotation, raw-bytes preservation. Sender (
-            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">postel.send</code>,
-            outbox, retries, fanout, replay) lands in v0.2.0. Go, Python, and Rust ports follow.
+            The TypeScript receiver ships today through the{" "}
+            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">Postel</code> factory in{" "}
+            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">@postel/core</code> (or
+            the{" "}
+            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">@postel/edge</code> ≤
+            50 KB carve-out): multi-verifier composition, JWKS consumer, dedup helper, raw-bytes
+            preservation. Sender (
+            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono">
+              postel.outbound.send
+            </code>
+            , outbox, retries, fanout, replay) lands in v0.2.0. Go, Python, and Rust ports follow.
           </p>
           <Link
             href="/docs/get-started"

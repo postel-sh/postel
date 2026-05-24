@@ -1,23 +1,23 @@
 ---
 title: Get started
-description: Install @postel/edge and verify a signed webhook in under a minute. Works in Node, Bun, Deno, and on the edge.
+description: Install @postel/core and verify a signed webhook in under a minute. Works in Node, Bun, Deno, and on the edge.
 ---
 
-This page gets you from zero to a verified webhook on your laptop. The receiver-side build is `@postel/edge` — small enough to run on Cloudflare Workers (≤ 50 KB), portable to Node, Bun, and Deno.
+This page gets you from zero to a verified webhook on your laptop. `@postel/core` is the unified TypeScript entry point — the `Postel({...})` factory exposes a receiver today and a sender in v0.2.0+. If you need the ≤ 50 KB edge-runtime carve-out, swap `@postel/core` for [`@postel/edge`](/docs/concepts/edge-runtimes) — same wire format, smaller bundle, named-export surface.
 
 ## 1. Install
 
 <Tabs items={["TypeScript", "Go", "Python", "Rust"]} groupId="lang">
 <Tab value="TypeScript">
 ```bash
-pnpm add @postel/edge
-# or: npm install @postel/edge
-# or: yarn add @postel/edge
-# or: bun add @postel/edge
-# or (Deno): import { verify } from "npm:@postel/edge";
+pnpm add @postel/core
+# or: npm install @postel/core
+# or: yarn add @postel/core
+# or: bun add @postel/core
+# or (Deno): import { Postel } from "npm:@postel/core";
 ```
 
-`@postel/edge` has zero runtime dependencies. The bundle uses Web Crypto only; nothing imports from `node:*`.
+`@postel/core` has zero runtime dependencies beyond `@postel/edge` (the shared Web-Crypto verifier). Tree-shaking keeps the sender code paths out of receiver-only builds. If your runtime is Cloudflare Workers, Vercel Edge, Deno Deploy, or Bun and you care about cold-start bundle size, install [`@postel/edge`](/docs/concepts/edge-runtimes) instead.
 </Tab>
 <Tab value="Go">
 > **Planned** — `postel-go` ships alongside the Go port. The API below reflects the target design.
@@ -44,17 +44,24 @@ cargo add postel
 
 ## 2. Verify a webhook
 
-The minimum viable receiver: pass the raw request bytes, the headers, and your shared secret to `verify`. On success you get the parsed [Standard Webhooks](https://www.standardwebhooks.com) event; on failure a structured error tells you which step failed.
+Configure a `Postel` instance once at module scope with one or more inbound sources, then call `postel.inbound.<source>.verify(rawBytes, headers)` from your route handler. On success you get the parsed [Standard Webhooks](https://www.standardwebhooks.com) event plus the index of the verifier that matched; on failure a structured error tells you which step failed.
 
 <Tabs items={["TypeScript", "Go", "Python", "Rust"]} groupId="lang">
 <Tab value="TypeScript">
 ```ts title="app/api/webhooks/route.ts"
 import {
-  verify,
+  Postel,
+  Secret,
   SignatureInvalid,
   TimestampTooOld,
   MalformedHeader,
-} from "@postel/edge";
+} from "@postel/core";
+
+const postel = Postel({
+  inbound: {
+    github: { verify: Secret(process.env.WEBHOOK_SECRET!) },
+  },
+});
 
 export async function POST(req: Request) {
   // IMPORTANT: pass the raw bytes — never JSON.stringify(await req.json()).
@@ -63,7 +70,7 @@ export async function POST(req: Request) {
   const headers = Object.fromEntries(req.headers);
 
   try {
-    const { event } = await verify(body, headers, process.env.WEBHOOK_SECRET!);
+    const { event } = await postel.inbound.github.verify(body, headers);
 
     console.log("received:", event.type, event.data);
     return new Response("ok", { status: 200 });
@@ -82,7 +89,13 @@ export async function POST(req: Request) {
 }
 ```
 
-That's it. The route handler above works unmodified on Cloudflare Workers, Vercel Edge, Next.js, Bun, and Deno. See [Cloudflare Workers](/docs/guides/cloudflare-workers) for a complete deployment walkthrough.
+A few things worth noticing:
+
+- **`Secret(...)` is a verifier factory.** `inbound.<source>.verify` accepts a single `Verifier` or a `ReadonlyArray<Verifier>` — pass `[Secret(NEW), Secret(OLD)]` for rotation, or `[Secret(LEGACY), Keyset({ jwksUri })]` for HMAC→Ed25519 migration. See [Key rotation](/docs/concepts/key-rotation).
+- **`inbound` is keyed by source name.** Configure `github`, `stripe`, `internal-api`, … and route requests to the matching source. Each source is independently typed.
+- **`outbound` is not configured here.** With only `inbound` in the config, `postel.outbound` does not exist on the instance type — TypeScript refuses to reference it.
+
+The route handler above works unmodified on Cloudflare Workers, Vercel Edge, Next.js, Bun, and Deno. See [Cloudflare Workers](/docs/guides/cloudflare-workers) for a complete deployment walkthrough.
 </Tab>
 <Tab value="Go">
 > **Planned** — the API below reflects the target design for the Go port.
@@ -187,7 +200,7 @@ You need a signed request to verify. The library ships a fixture helper for this
 <Tabs items={["TypeScript", "Go", "Python", "Rust"]} groupId="lang">
 <Tab value="TypeScript">
 ```ts
-import { signFixture } from "@postel/edge";
+import { signFixture } from "@postel/core";
 
 const secret = "whsec_aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5";
 const fixture = await signFixture({
@@ -205,7 +218,7 @@ const res = await fetch("http://localhost:3000/api/webhooks", {
 console.log(res.status); // 200
 ```
 
-`signFixture` exists so tests don't need to stand up a real producer. It is **not** for production signing — that's the sender's job, which lands in v0.2.0.
+`signFixture` exists so tests don't need to stand up a real producer. It is **not** for production signing — that's the sender's job (`postel.outbound.send(...)`), which lands in v0.2.0+. Calling it before then throws `NotImplementedError`.
 </Tab>
 <Tab value="Go">
 > **Planned** — the API below reflects the target design for the Go port.
@@ -270,10 +283,10 @@ println!("{}", resp.status()); // 200
 
 ## 4. Pick a framework adapter
 
-Calling `verify` directly works everywhere. If you're on a framework, the matching adapter takes care of plumbing the raw bytes and surfacing the parsed event:
+The factory snippet above is framework-agnostic — it works anywhere you can hand it the raw bytes and headers. If you're on a framework, the matching adapter takes care of the raw-bytes plumbing and exposes the configured `Postel` instance on the request context:
 
 - **Hono** — [`@postel/hono`](/docs/api/hono). Middleware exposes `c.get("postel")` on every route.
-- **Express, Fastify, Bun.serve, Deno.serve, Next.js Route Handlers, SvelteKit, Astro, Nitro** — adapters land alongside the v0.1.0 release. Until then, the framework-agnostic `verify(bytes, headers, secret)` call works.
+- **Express, Fastify, Bun.serve, Deno.serve, Next.js Route Handlers, SvelteKit, Astro, Nitro** — adapters land alongside the v0.1.0 release. Until then, the factory snippet above works directly against each runtime's native `Request`/`Response` (or its raw-body buffer).
 
 ## What's next
 

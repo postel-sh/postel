@@ -24,7 +24,7 @@ The 50 KB ceiling is enforced in CI ([`scripts/check-edge-bundle.mjs`](https://g
 - `signFixture` — test helper.
 - All five structured errors.
 
-What's **not** in it: the Postgres dedup adapter (`pg` is Node-only), the SQLite dedup adapter (`better-sqlite3` is Node-only), the sender (lands as `@postel/core` in v0.2.0, with separate Node-only Postgres workers).
+What's **not** in it: the Postgres dedup adapter (`pg` is Node-only), the SQLite dedup adapter (`better-sqlite3` is Node-only), the unified `Postel({...})` factory (lives in `@postel/core` — install it instead when you want multi-source config plus the eventual sender), and the sender runtime itself (lands inside `@postel/core` in v0.2.0, with separate Node-only Postgres workers).
 
 When you need dedup against a real DB on the edge, you compose: `@postel/edge` for the receiver-side verify + an HTTP-callable Postgres (like Neon's serverless driver, Cloudflare Hyperdrive, or Supabase) and a small adapter implementation. Postel ships the `DedupAdapter` interface; the connection to your DB is on you.
 
