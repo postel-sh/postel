@@ -38,6 +38,8 @@ Postel is a **polyglot** webhooks library backed by solid, executable specs. The
 
 7. **Every requirement carries a conformance level.** Per [ADR 0008](decisions/0008-conformance-levels.md), each `### Requirement` is either CONTRACT (default; part of the cross-port contract; will be tested by `@postel/compliance`) or PORT-SPECIFIC (explicit opt-out; reference-implementation guidance; ports MAY vary the mechanism). To opt out, add `[PORT-SPECIFIC]` to the requirement title AND include a `**Conformance**:` note in the body explaining what stays CONTRACT (the outcome) vs what's PORT-SPECIFIC (the mechanism). Default is CONTRACT — you must justify the opt-out. The compliance suite is the executable boundary between the two; what the suite tests is CONTRACT, regardless of how prose phrases it.
 
+8. **Docs site stays in lockstep with the public API.** The Fumadocs site at [docs/](docs/) is what every adopter sees on `postel.dev`. Before merging any PR, ask: *would a reader of the docs now find a snippet that no longer compiles, a name that no longer exists, or a package/architecture claim that's been superseded?* If yes — i.e., the PR changes the canonical adopter snippet (factory shape, exported function/class/error names), the `Verifier`/strategy factory list, the `@postel/*` package inventory, the framework or storage adapter list, or any concept the docs explicitly explain (raw bytes, multi-verifier composition, dedup contract, JWKS) — then update the relevant pages under [docs/content/docs/](docs/content/docs/) **and** the landing-page snippets in [docs/app/(home)/page.tsx](docs/app/) in the same PR. Do NOT update docs for internal refactors, spec-quality cleanups with no observable change, or per-package README touch-ups (READMEs travel with their package; the docs site travels with the public surface). When in doubt, run `mise run docs:dev` and read what the page actually says against your change.
+
 ## Per-capability implementation loop
 
 For each capability you implement:
@@ -46,7 +48,8 @@ For each capability you implement:
 2. Translate every `#### Scenario` into a test case in the relevant language root (e.g., `typescript/packages/<pkg>/test/<cap>.test.ts`). The test description should include the requirement title verbatim so the spec-drift check passes.
 3. Implement the **simplest** code in the relevant language root (e.g., `typescript/packages/<pkg>/src/`) that makes all tests pass. No extras.
 4. Run the verification chain. Iterate until green.
-5. Open a PR via `gh pr create`. Reference the capability spec.
+5. Apply rule 8 — grep [docs/content/docs/](docs/content/docs/) and [docs/app/(home)/page.tsx](docs/app/) for any name, snippet, or claim your change invalidated, and update them in the same PR.
+6. Open a PR via `gh pr create`. Reference the capability spec.
 
 If you discover the spec is incomplete or wrong: stop, open an OpenSpec change to fix it, archive it, then resume. Don't sneak spec edits into the implementation PR.
 
