@@ -48,6 +48,29 @@ html.dark {
   padding: 1rem;
 }
 
+/* Inside a Tabs language switcher, the Fumadocs CodeBlock figcaption
+ * (file path + lang icon + copy button) is redundant — the tab itself
+ * already names the language and the file path either matches every
+ * tab or applies once at the top of the section. Hide that whole header
+ * row so the tab card is just the language bar + the code. Code blocks
+ * outside Tabs keep the figcaption (filename is useful when standalone). */
+[role="tabpanel"] figure > div:has(> figcaption) {
+  display: none;
+}
+
+/* Fumadocs's CodeBlock figure ships its own card (border + bg-fd-card +
+ * rounded-xl + shadow-sm + my-4) which nests inside the Tabs language
+ * switcher's card — same card-in-card problem the tabpanel rule above
+ * fixed. Strip the figure chrome only when it lives in a tabpanel; on
+ * concept pages with standalone code blocks the figure card stays. */
+[role="tabpanel"] figure {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+}
+
 /* When a .shiki <pre> is the scroll container (landing page direct
  * Shiki render — docs pages wrap shiki in their own .fd-scroll-container
  * div, this rule is harmless there), style the webkit scrollbar to match

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Tab, Tabs, TabsList, TabsTrigger } from "fumadocs-ui/components/tabs";
 import { codeToHtml } from "shiki";
 import { PostelMark } from "@/lib/postel-mark";
-import { GoIcon, PythonIcon, RustIcon, TypeScriptIcon } from "./lang-icons";
+import { GoIcon, PythonIcon, RustIcon, TypeScriptIcon } from "@/components/lang-icons";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
