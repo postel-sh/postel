@@ -1,0 +1,16 @@
+id: sender/ssrf-tls/ssrf-private-ip-create-blocked
+mode: sender
+requirement:
+  capability: endpoint-management
+  title: URL validation at create time
+description: Registering an endpoint with a private IP (10.0.0.5) fails the SSRF gate at create time.
+triggers:
+  - op: register_endpoint
+    as: ep_blocked
+    endpoint:
+      url: "http://10.0.0.5/hook"
+      types: ["evt.x"]
+      allowHttp: true
+expected:
+  outcome: reject
+  error_code: ENDPOINT_VALIDATION

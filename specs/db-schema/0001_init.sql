@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS attempts (
   endpoint_id        text NOT NULL REFERENCES endpoints(id) ON DELETE CASCADE,
   tenant_id          text REFERENCES tenants(id) ON DELETE CASCADE,
   attempt_number     integer NOT NULL,
-  status             text NOT NULL,        -- pending | success | failed | failed-permanent | dead-letter | expired | filtered | skipped | ssrf_blocked
+  status             text NOT NULL,        -- pending | success | failed | failed-permanent | dead-letter | expired | filtered | skipped | ssrf-blocked
   scheduled_for      timestamptz,
   started_at         timestamptz,
   completed_at       timestamptz,

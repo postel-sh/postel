@@ -1,0 +1,28 @@
+id: sender/ttl/expired-message-skipped
+mode: sender
+requirement:
+  capability: sender
+  title: Per-message TTL
+description: A message past its TTL is recorded with status=expired; no HTTP is fired.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_main
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      signing: { fixture_id: hmac_primary }
+  - op: send
+    event: { type: evt.x, ttl: "1s" }
+  - op: advance_clock
+    ms: 2000
+  - op: start_workers
+    concurrency: 1
+  - op: wait_for
+    request_count: 0
+    timeout_ms: 1000
+expected_requests: []
+expected:
+  outcome: accept

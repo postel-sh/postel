@@ -1,0 +1,30 @@
+id: sender/idempotency/distinct-keys-distinct-dispatch
+mode: sender
+requirement:
+  capability: sender
+  title: Idempotent send by client-supplied key
+description: Two send() calls with different idempotencyKey values produce two outgoing requests.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_main
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["order.created"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: order.created, idempotencyKey: "idem-a", data: { id: "1" } }
+  - op: send
+    event: { type: order.created, idempotencyKey: "idem-b", data: { id: "2" } }
+  - op: wait_for
+    request_count: 2
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_main
+  - endpoint: ep_main
+expected:
+  outcome: accept

@@ -1,0 +1,15 @@
+id: sender/ssrf-tls/https-only-rejected
+mode: sender
+requirement:
+  capability: endpoint-management
+  title: URL validation at create time
+description: An http:// URL without allowHttp is rejected with EndpointValidation at create time.
+triggers:
+  - op: register_endpoint
+    as: ep_http_block
+    endpoint:
+      url: "http://example.com/hook"
+      types: ["evt.x"]
+expected:
+  outcome: reject
+  error_code: ENDPOINT_VALIDATION

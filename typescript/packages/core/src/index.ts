@@ -41,11 +41,16 @@ export type {
 } from "./outbound.js";
 
 export {
+  EndpointDisabled,
+  EndpointValidation,
+  IdempotencyKeyConflict,
   MalformedHeader,
+  MigrationRequired,
   NotImplementedError,
   PostelError,
   RawBytesMismatchDetected,
   SignatureInvalid,
+  SsrfBlocked,
   TimestampTooOld,
   UnknownKeyId,
 } from "./errors.js";
@@ -55,6 +60,37 @@ export { dedup, inMemoryDedupAdapter } from "./dedup.js";
 export type { InMemoryDedupOptions } from "./dedup.js";
 
 export { ttlToSeconds } from "./ttl.js";
+export { systemClock } from "./clock.js";
+export type { Clock } from "./clock.js";
+export type {
+  AttemptId,
+  AttemptStatsResult,
+  AttemptStatus,
+  EndpointId,
+  EndpointRecord,
+  EndpointSecretRecord,
+  EndpointSecretStatus,
+  EndpointState,
+  EndpointStateTransition,
+  EndpointWithSecrets,
+  HostTxOption,
+  InsertOrReuseResult,
+  MessageId as StorageMessageId,
+  NewAttempt,
+  NewMessage,
+  RangeQueryFilter,
+  ReconcileFilter,
+  RescheduleOpts,
+  ReserveBatchOpts,
+  ReservedMessage,
+  SecretAlgorithm,
+  Storage,
+  StorageCapabilities,
+  TenantId,
+  TenantRecord,
+  Unsubscribe as StorageUnsubscribe,
+  WorkerId,
+} from "./storage/types.js";
 export { jwksHandler } from "./jwks-handler.js";
 export { createKeyset } from "./keyset.js";
 export { signFixture } from "./sign-fixture.js";

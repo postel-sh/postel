@@ -1,0 +1,36 @@
+id: sender/retry-schedule/retry-after-honored
+mode: sender
+requirement:
+  capability: retry-policy
+  title: Status-code-aware retry
+description: A 429 response with Retry-After is honored — the next attempt arrives no sooner than the indicated delay.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  scripted_responses:
+    - { status: 429, headers: { "retry-after": "2" } }
+    - { status: 200 }
+triggers:
+  - op: register_endpoint
+    as: ep_rl
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["100ms"], jitter: 0, maxAttempts: 3 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 2
+    timeout_ms: 5000
+expected_requests:
+  - endpoint: ep_rl
+    attempt_status: failed
+  - endpoint: ep_rl
+    attempt_status: success
+    arrived_within_ms: { after: "request:0", min_ms: 1800, max_ms: 3000 }
+expected:
+  outcome: accept

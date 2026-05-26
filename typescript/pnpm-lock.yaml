@@ -31,7 +31,24 @@ importers:
 
   packages/cli: {}
 
-  packages/core: {}
+  packages/compliance-driver:
+    dependencies:
+      '@postel/core':
+        specifier: workspace:*
+        version: link:../core
+      '@postel/memory':
+        specifier: workspace:*
+        version: link:../memory
+    devDependencies:
+      '@types/node':
+        specifier: 20.17.10
+        version: 20.17.10
+
+  packages/core:
+    devDependencies:
+      '@types/node':
+        specifier: 20.17.10
+        version: 20.17.10
 
   packages/effect: {}
 
@@ -52,6 +69,16 @@ importers:
         version: 4.12.18
 
   packages/frameworks/nextjs: {}
+
+  packages/memory:
+    dependencies:
+      '@postel/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: 20.17.10
+        version: 20.17.10
 
   packages/storage/drizzle: {}
 

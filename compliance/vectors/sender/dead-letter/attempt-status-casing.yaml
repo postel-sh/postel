@@ -1,0 +1,31 @@
+id: sender/dead-letter/attempt-status-casing
+mode: sender
+requirement:
+  capability: sender
+  title: Attempt status enum casing
+description: All recorded attempt-status values use kebab-case (failed-permanent, dead-letter, ssrf-blocked) never snake_case variants.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  default_response: { status: 400 }
+triggers:
+  - op: register_endpoint
+    as: ep_case
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["100ms"], jitter: 0, maxAttempts: 1 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_case
+    attempt_status: failed-permanent
+expected:
+  outcome: accept

@@ -1,0 +1,35 @@
+id: sender/multi-tenancy/tenant-scoped-fanout
+mode: sender
+requirement:
+  capability: multi-tenancy
+  title: Tenant-scoped persistence
+description: An event with tenantId 't_42' only reaches endpoints registered for tenant 't_42'.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_t42
+    endpoint:
+      url: "{{mock_receiver_url}}/t42"
+      tenantId: "t_42"
+      types: ["evt.x"]
+      signing: { fixture_id: hmac_primary }
+  - op: register_endpoint
+    as: ep_t99
+    endpoint:
+      url: "{{mock_receiver_url}}/t99"
+      tenantId: "t_99"
+      types: ["evt.x"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x, tenantId: "t_42" }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_t42
+expected:
+  outcome: accept

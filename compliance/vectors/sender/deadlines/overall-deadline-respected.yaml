@@ -1,0 +1,32 @@
+id: sender/deadlines/overall-deadline-respected
+mode: sender
+requirement:
+  capability: sender
+  title: Per-endpoint and overall delivery deadlines
+description: After the overall deadline elapses, no further retries are attempted; the message is marked failed-permanent.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  default_response: { status: 503 }
+triggers:
+  - op: register_endpoint
+    as: ep_deadline
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["100ms"], jitter: 0, maxAttempts: 5 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: advance_clock
+    ms: 600000
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 5000
+expected_requests:
+  - endpoint: ep_deadline
+expected:
+  outcome: accept

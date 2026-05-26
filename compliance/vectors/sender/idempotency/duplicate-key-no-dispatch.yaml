@@ -1,0 +1,43 @@
+id: sender/idempotency/duplicate-key-no-dispatch
+mode: sender
+requirement:
+  capability: sender
+  title: Idempotent send by client-supplied key
+description: >-
+  Two send() calls with the same idempotencyKey produce the same MessageId and
+  exactly one outgoing request reaches the mock receiver.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_main
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["order.created"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    as: send_a
+    event:
+      type: order.created
+      data: { id: "ord_1" }
+      idempotencyKey: "idem-abc"
+  - op: send
+    as: send_b
+    event:
+      type: order.created
+      data: { id: "ord_1" }
+      idempotencyKey: "idem-abc"
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_main
+    headers_present: ["webhook-id"]
+    signature_verifies:
+      fixture_id: hmac_primary
+      scheme: v1
+expected:
+  outcome: accept

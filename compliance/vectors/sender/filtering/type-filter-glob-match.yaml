@@ -1,0 +1,27 @@
+id: sender/filtering/type-filter-glob-match
+mode: sender
+requirement:
+  capability: filtering-transformation
+  title: Type filter with glob support
+description: Endpoint with types [user.*] receives user.created.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_users
+    endpoint:
+      url: "{{mock_receiver_url}}/u"
+      types: ["user.*"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: user.created }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_users
+expected:
+  outcome: accept

@@ -1,0 +1,33 @@
+id: sender/late-binding/endpoint-config-honored-mid-retry
+mode: sender
+requirement:
+  capability: filtering-transformation
+  title: Late binding at dispatch time
+description: Endpoint retry config changes between attempts are honored — the retry uses the latest values.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  scripted_responses:
+    - { status: 500 }
+    - { status: 200 }
+triggers:
+  - op: register_endpoint
+    as: ep_lb2
+    endpoint:
+      url: "{{mock_receiver_url}}/lb2"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["200ms"], jitter: 0, maxAttempts: 2 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 2
+    timeout_ms: 4000
+expected_requests:
+  - endpoint: ep_lb2
+  - endpoint: ep_lb2
+expected:
+  outcome: accept

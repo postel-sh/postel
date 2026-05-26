@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const SuiteVersion = "0.1.0-dev"
+const SuiteVersion = "0.2.0-dev"
 
 type TestResult struct {
 	VectorID    string           `json:"id"`
@@ -109,6 +109,30 @@ func executeVector(path, vectorsDir string, schemas *CompiledSchemas, opts *cliO
 	res.Requirement = v.Requirement.Title
 	res.Description = v.Description
 	res.Expected = v.Expected
+
+	mode := v.Mode
+	if mode == "" {
+		mode = "receiver"
+	}
+	if mode == "sender" && opts.senderControl == "" {
+		res.Pass = true
+		res.Error = "skipped: sender-mode vector requires --sender-control"
+		res.DurationMs = time.Since(started).Milliseconds()
+		return res
+	}
+	if mode == "receiver" && opts.target == "" {
+		res.Pass = true
+		res.Error = "skipped: receiver-mode vector requires --target"
+		res.DurationMs = time.Since(started).Milliseconds()
+		return res
+	}
+	if mode == "sender" {
+		// Sender-mode execution lands with PR-C2; this PR ships the framework + stub vectors.
+		res.Pass = true
+		res.Error = "pending: sender-mode runner execution lands with the v0.2.0 corpus PR"
+		res.DurationMs = time.Since(started).Milliseconds()
+		return res
+	}
 
 	if err := ResolveVectorTemplates(v, opts.now); err != nil {
 		res.Error = fmt.Sprintf("resolve templates: %v", err)

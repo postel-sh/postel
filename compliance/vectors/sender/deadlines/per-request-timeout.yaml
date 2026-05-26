@@ -1,0 +1,30 @@
+id: sender/deadlines/per-request-timeout
+mode: sender
+requirement:
+  capability: sender
+  title: Per-endpoint and overall delivery deadlines
+description: A receiver that hangs past the per-request timeout causes the attempt to be recorded as failed.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  default_response: { status: 200, delay_ms: 2000 }
+triggers:
+  - op: register_endpoint
+    as: ep_slow
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.slow"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.slow }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_slow
+    attempt_status: failed
+expected:
+  outcome: accept

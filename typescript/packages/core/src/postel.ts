@@ -1,5 +1,11 @@
 import { type InboundApi, type InboundSource, buildInboundApi } from "./inbound.js";
-import { type OutboundApi, type OutboundConfig, buildOutboundApi } from "./outbound.js";
+import {
+  type OutboundApi,
+  type OutboundConfig,
+  type OutboundRuntime,
+  buildOutboundRuntime,
+} from "./outbound.js";
+import { type EventHandler, type PostelEvent, PostelEventEmitter } from "./sender/events.js";
 
 export interface ObservabilityConfig {
   readonly logger?: unknown;
@@ -10,7 +16,7 @@ export interface ObservabilityConfig {
 export interface HealthStatus {
   readonly ok: boolean;
   readonly outboxDepth?: number;
-  readonly oldestPendingAge?: number;
+  readonly oldestPendingAge?: number | undefined;
   readonly workerCount?: number;
 }
 
@@ -18,6 +24,8 @@ export interface LifecycleApi {
   start(): Promise<void>;
   stop(): Promise<void>;
   health(): Promise<HealthStatus>;
+  on(event: PostelEvent, handler: EventHandler): void;
+  off(event: PostelEvent, handler: EventHandler): void;
 }
 
 export interface PostelConfig<
@@ -43,17 +51,39 @@ export type PostelInstance<C extends PostelConfig> = LifecycleApi &
   WithInbound<C>;
 
 export function Postel<const C extends PostelConfig>(config: C): PostelInstance<C> {
+  let outboundRuntime: OutboundRuntime | undefined;
+  if (config.outbound) outboundRuntime = buildOutboundRuntime(config.outbound);
+  const fallbackEmitter = new PostelEventEmitter();
+  const emitter = outboundRuntime ? outboundRuntime.emitter : fallbackEmitter;
+
   const lifecycle: LifecycleApi = {
-    async start() {},
-    async stop() {},
+    async start() {
+      if (outboundRuntime) await outboundRuntime.pool.start();
+    },
+    async stop() {
+      if (outboundRuntime) await outboundRuntime.pool.stop();
+    },
     async health() {
-      return { ok: true };
+      if (!outboundRuntime) return { ok: true };
+      const depth = await outboundRuntime.storage.outboxDepth();
+      return {
+        ok: true,
+        outboxDepth: depth.depth,
+        oldestPendingAge: depth.oldestPendingAge,
+        workerCount: outboundRuntime.pool.workerCount(),
+      };
+    },
+    on(event, handler) {
+      emitter.on(event, handler);
+    },
+    off(event, handler) {
+      emitter.off(event, handler);
     },
   };
 
   return {
     ...lifecycle,
-    ...(config.outbound ? { outbound: buildOutboundApi(config.outbound) } : {}),
+    ...(outboundRuntime ? { outbound: outboundRuntime.api } : {}),
     ...(config.inbound ? { inbound: buildInboundApi(config.inbound) } : {}),
   } as PostelInstance<C>;
 }

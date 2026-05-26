@@ -1,11 +1,22 @@
+import { type Clock, systemClock } from "./clock.js";
 import { NotImplementedError } from "./errors.js";
+import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
+import { buildEndpointApi } from "./sender/endpoint/crud.js";
+import { PostelEventEmitter } from "./sender/events.js";
+import { generateAsymmetric, generateSymmetric } from "./sender/keys/generate.js";
+import { rotateSecret } from "./sender/keys/rotation.js";
+import { reconcileImpl, replayImpl } from "./sender/replay/replay.js";
+import { buildRetryDispatcher } from "./sender/retry/orchestrator.js";
+import { sendImpl } from "./sender/send.js";
+import { WorkerPool } from "./sender/worker/pool.js";
+import type { Storage } from "./storage/types.js";
 import type { KmsStrategy } from "./strategies/kms.js";
 import type { RetryStrategy } from "./strategies/retry.js";
 import type { SigningStrategy } from "./strategies/signing.js";
 import type { WorkerStrategy } from "./strategies/workers.js";
 
 export interface OutboundConfig {
-  readonly storage: unknown;
+  readonly storage: Storage;
   readonly signing?: SigningStrategy;
   readonly retryPolicy?: RetryStrategy;
   readonly workers?: WorkerStrategy;
@@ -16,6 +27,8 @@ export interface OutboundConfig {
   readonly replay?: ReplayDefaults;
   readonly retention?: RetentionDefaults;
   readonly ephemeralKeys?: EphemeralKeysDefaults;
+  readonly clock?: Clock;
+  readonly defaultTenantId?: string | null;
 }
 
 export interface HttpDefaults {
@@ -28,6 +41,7 @@ export interface HttpDefaults {
     readonly allowedRanges?: ReadonlyArray<string>;
   };
   readonly userAgent?: string;
+  readonly fetch?: typeof globalThis.fetch;
 }
 
 export interface CircuitBreakerDefaults {
@@ -157,7 +171,7 @@ export interface OutboundApi {
   };
   keys: {
     generateSymmetric(): string;
-    generateAsymmetric(): AsymmetricKeypair;
+    generateAsymmetric(): Promise<AsymmetricKeypair>;
   };
   tenants: {
     setRateLimit(tenantId: string, opts: SetRateLimitOptions): Promise<void>;
@@ -167,59 +181,122 @@ export interface OutboundApi {
   reconcile(opts: ReconcileOptions): Promise<ReadonlyArray<MessageId>>;
 }
 
+export interface OutboundRuntime {
+  readonly api: OutboundApi;
+  readonly pool: WorkerPool;
+  readonly storage: Storage;
+  readonly clock: Clock;
+  readonly emitter: PostelEventEmitter;
+}
+
 function notImplemented(symbol: string): never {
   throw new NotImplementedError(symbol);
 }
 
-export function buildOutboundApi(_config: OutboundConfig): OutboundApi {
-  return {
-    async send() {
-      return notImplemented("postel.outbound.send");
+export function buildOutboundRuntime(config: OutboundConfig): OutboundRuntime {
+  const clock: Clock = config.clock ?? systemClock;
+  const emitter = new PostelEventEmitter();
+  const concurrency = config.workers?.kind === "in-process" ? config.workers.concurrency : 4;
+  const fetchImpl = config.http?.fetch ?? globalThis.fetch;
+  const httpDispatcher = buildHttpDispatcher({
+    storage: config.storage,
+    clock,
+    fetchImpl,
+    defaults: config.http ?? {},
+  });
+  const retryDispatcher = buildRetryDispatcher(
+    {
+      storage: config.storage,
+      clock,
+      emitter,
+      ...(config.retryPolicy !== undefined ? { orgRetryPolicy: config.retryPolicy } : {}),
+      ...(config.circuitBreaker !== undefined ? { orgCircuitBreaker: config.circuitBreaker } : {}),
+      ...(config.autoDisable !== undefined ? { orgAutoDisable: config.autoDisable } : {}),
+    },
+    httpDispatcher,
+  );
+  const pool = new WorkerPool({
+    storage: config.storage,
+    clock,
+    concurrency,
+    dispatchOne: retryDispatcher,
+  });
+  const endpointApi = buildEndpointApi(
+    config.storage,
+    config.http?.ssrf
+      ? {
+          ssrf: {
+            blockPrivateRanges: config.http.ssrf.blockPrivateRanges ?? true,
+            allowedRanges: config.http.ssrf.allowedRanges ?? [],
+          },
+        }
+      : {},
+  );
+  const api: OutboundApi = {
+    async send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions) {
+      return sendImpl(
+        { storage: config.storage, clock, defaultTenantId: config.defaultTenantId ?? null },
+        event,
+        options,
+      );
     },
     endpoints: {
-      async create() {
-        return notImplemented("postel.outbound.endpoints.create");
-      },
-      async update() {
-        return notImplemented("postel.outbound.endpoints.update");
-      },
-      async delete() {
-        return notImplemented("postel.outbound.endpoints.delete");
-      },
-      async list() {
-        return notImplemented("postel.outbound.endpoints.list");
-      },
-      async get() {
-        return notImplemented("postel.outbound.endpoints.get");
-      },
-      async disable() {
-        return notImplemented("postel.outbound.endpoints.disable");
-      },
-      async rotateSecret() {
-        return notImplemented("postel.outbound.endpoints.rotateSecret");
+      create: endpointApi.create,
+      update: endpointApi.update,
+      delete: endpointApi.delete,
+      list: endpointApi.list,
+      get: endpointApi.get,
+      disable: endpointApi.disable,
+      async rotateSecret(id, opts) {
+        await rotateSecret(config.storage, clock, id, { keepPreviousFor: opts.keepPreviousFor });
       },
     },
     keys: {
       generateSymmetric() {
-        return notImplemented("postel.outbound.keys.generateSymmetric");
+        return generateSymmetric();
       },
-      generateAsymmetric() {
-        return notImplemented("postel.outbound.keys.generateAsymmetric");
+      async generateAsymmetric() {
+        return generateAsymmetric();
       },
     },
     tenants: {
-      async setRateLimit() {
-        return notImplemented("postel.outbound.tenants.setRateLimit");
+      async setRateLimit(tenantId, opts) {
+        const existing = await config.storage.tenants.get(tenantId);
+        const metadata = {
+          ...(existing?.metadata ?? {}),
+          rateLimit: { perSecond: opts.perSecond },
+        } as Readonly<Record<string, unknown>>;
+        await config.storage.tenants.upsert(
+          tenantId,
+          metadata,
+          opts.tx !== undefined ? { tx: opts.tx } : undefined,
+        );
       },
-      async delete() {
-        return notImplemented("postel.outbound.tenants.delete");
+      async delete(tenantId, opts) {
+        await config.storage.tenants.delete(
+          tenantId,
+          opts?.tx !== undefined ? { tx: opts.tx } : undefined,
+        );
       },
     },
-    async replay() {
-      return notImplemented("postel.outbound.replay");
+    async replay(opts) {
+      const replayCtx: { storage: Storage; clock: Clock; defaultThroughput?: number } = {
+        storage: config.storage,
+        clock,
+      };
+      if (config.replay?.defaultThroughput !== undefined) {
+        replayCtx.defaultThroughput = config.replay.defaultThroughput;
+      }
+      return replayImpl(replayCtx, opts);
     },
-    async reconcile() {
-      return notImplemented("postel.outbound.reconcile");
+    async reconcile(opts) {
+      return reconcileImpl({ storage: config.storage, clock }, opts.endpointId, opts.since);
     },
   };
+  void notImplemented;
+  return { api, pool, storage: config.storage, clock, emitter };
+}
+
+export function buildOutboundApi(config: OutboundConfig): OutboundApi {
+  return buildOutboundRuntime(config).api;
 }
