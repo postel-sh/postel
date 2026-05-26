@@ -1,0 +1,82 @@
+---
+title: Replay
+description: First-class replay verbs — by message id, by endpoint + time range, or by custom filter. Planned for v0.2.0.
+---
+
+> **Status: planned — v0.2.0.** Types ship today; the runtime throws `NotImplementedError`.
+
+Replay is the question *"can I make this message happen again, exactly as it would have happened the first time?"* — answered with a single call instead of by hand-rolling SQL against an outbox table.
+
+## The three replay verbs
+
+`postel.outbound.replay(opts)` takes one of three shapes, distinguished by which fields are present.
+
+### By message id
+
+```ts
+await postel.outbound.replay({
+  messageId:        "msg_2k4n8...",
+  freshWebhookId:   false,         // keep the original id so receivers can dedup
+});
+```
+
+Re-enqueues a single historical message to every endpoint that originally received it. The receiver sees the same `webhook-id` — if their dedup window is still open, they correctly skip it; if not, they process it again.
+
+Pass `freshWebhookId: true` if you *want* the receiver to treat it as new (for testing receiver behavior, for instance).
+
+### By endpoint + time range
+
+```ts
+await postel.outbound.replay({
+  endpointId:        "ep_payments_webhook",
+  since:             "2026-05-23T00:00:00Z",
+  until:             "2026-05-24T00:00:00Z",
+  types:             ["order.created", "order.refunded"],
+  replayThroughput:  50,     // messages/sec; throttles to avoid overwhelming the receiver
+  freshWebhookId:    false,
+});
+```
+
+The canonical operational verb: *"customer X's webhook receiver was down from 02:00 to 04:00 last Tuesday; replay everything they should have received."*
+
+### By predicate
+
+```ts
+await postel.outbound.replay({
+  filter:           (msg) => msg.type === "user.signup" && msg.data.plan === "enterprise",
+  replayThroughput: 20,
+  freshWebhookId:   false,
+});
+```
+
+The escape hatch for replays that can't be expressed as "endpoint + time range."
+
+## What `replay` returns
+
+```ts
+type ReplayResult = { enqueued: number };
+```
+
+A count of outbox rows created. Each row goes through the normal delivery pipeline — same retries, same circuit breaker, same observability hooks.
+
+## `reconcile`
+
+Distinct from replay: `reconcile({ endpointId, since })` re-attempts only messages that **previously failed permanently** for the given endpoint. Equivalent to `replay` with an additional filter on `lastAttempt.state === 'failed'`. Useful as a recurring background job: a healthy endpoint will return zero reconciled rows; an unhealthy one surfaces the backlog.
+
+```ts
+const replayed = await postel.outbound.reconcile({
+  endpointId: "ep_payments_webhook",
+  since:      Date.now() - 86_400_000,
+});
+console.log(`replayed ${replayed.length} previously-failed messages`);
+```
+
+## Throughput control
+
+The `replayThroughput` setting (messages/sec) is per-replay, not global. The worker schedules outbox rows tagged with a replay batch id; the rate limiter applies before the HTTP call. A receiver under load won't be flooded by a 100k-message replay.
+
+## Read next
+
+- [`send()` and the outbox](/docs/outbound/send) — what gets replayed.
+- [Retries & backoff](/docs/outbound/retries) — how replayed attempts behave when they fail.
+- [Endpoints](/docs/outbound/endpoints) — the lifecycle of the receiver-of-record.

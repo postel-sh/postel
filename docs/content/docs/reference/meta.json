@@ -1,0 +1,10 @@
+{
+  "title": "Reference",
+  "pages": [
+    "index",
+    "packages",
+    "core",
+    "errors",
+    "specs"
+  ]
+}

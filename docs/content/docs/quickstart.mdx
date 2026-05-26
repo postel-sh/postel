@@ -1,0 +1,109 @@
+---
+title: Quickstart
+description: Install @postel/core and verify your first signed webhook in under a minute. Node, Bun, or Deno.
+---
+
+This page takes you from zero to a verified webhook on your laptop. It uses only what ships today in `@postel/core` v0.1 — the receiver half. The sender lands in v0.2; see [Outbound](/docs/outbound) for the planned API.
+
+Other languages (Go, Python, Rust) are on the roadmap. The TypeScript examples below are what you can run *right now*. See [Polyglot](/docs/polyglot) for port status.
+
+## 1. Install
+
+```bash
+pnpm add @postel/core
+# or: npm i @postel/core
+# or: yarn add @postel/core
+# or: bun add @postel/core
+```
+
+Zero runtime dependencies. Tree-shaking keeps outbound code paths out of receiver-only builds.
+
+## 2. Configure a `Postel` instance
+
+Once per process, at module scope. One entry per webhook *source* — keep them keyed by the producer name.
+
+```ts title="lib/postel.ts"
+import { Postel, Secret } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    github: { verify: Secret(process.env.GITHUB_WEBHOOK_SECRET!) },
+    // Add more sources as you grow:
+    // stripe: { verify: Secret(process.env.STRIPE_WEBHOOK_SECRET!) },
+  },
+});
+```
+
+A few things worth noticing now (the [Inbound](/docs/inbound) section explains them properly):
+
+- `Secret(...)` is a *verifier strategy*. You can also use `Keyset({...})` for JWKS, or pass an array of strategies for [rotation](/docs/inbound/key-rotation).
+- Sources are keyed by name. `postel.inbound.github` is fully typed; `postel.inbound.stripe` only exists if you configured it.
+- `postel.outbound` is *absent* on the instance type because you didn't configure `outbound`. TypeScript catches accidental use at compile time.
+
+## 3. Verify a request
+
+This is framework-agnostic — anywhere you can hand off raw bytes and headers, it works:
+
+```ts title="app/api/webhooks/github/route.ts"
+import { postel } from "@/lib/postel";
+import {
+  SignatureInvalid,
+  TimestampTooOld,
+  MalformedHeader,
+} from "@postel/core";
+
+export async function POST(req: Request) {
+  // The signature is computed over the EXACT bytes sent.
+  // Never re-serialize the body before verify — see /docs/inbound/raw-bytes.
+  const body = new Uint8Array(await req.arrayBuffer());
+  const headers = Object.fromEntries(req.headers);
+
+  try {
+    const { event } = await postel.inbound.github.verify(body, headers);
+    console.log("received:", event.type, event.data);
+    return new Response("ok", { status: 200 });
+  } catch (err) {
+    if (err instanceof SignatureInvalid)  return new Response("bad signature", { status: 401 });
+    if (err instanceof TimestampTooOld)   return new Response("timestamp out of window", { status: 401 });
+    if (err instanceof MalformedHeader)   return new Response("malformed headers", { status: 400 });
+    throw err;
+  }
+}
+```
+
+Works unmodified on Next.js Route Handlers, Bun, Deno, and any other runtime whose `Request` exposes `arrayBuffer()`. For Hono there's a dedicated adapter that puts the verified event on `c.get("postel")` — see [Framework adapters](/docs/inbound/frameworks).
+
+## 4. Try it locally
+
+You need a signed request to verify. The library ships a fixture helper for exactly this:
+
+```ts title="scripts/send-fixture.ts"
+import { signFixture } from "@postel/core";
+
+const secret = process.env.GITHUB_WEBHOOK_SECRET!;
+const fixture = await signFixture({
+  secret,
+  payload: { type: "issue.opened", data: { id: 42 } },
+});
+
+const res = await fetch("http://localhost:3000/api/webhooks/github", {
+  method: "POST",
+  headers: fixture.headers,
+  body: fixture.body,
+});
+
+console.log(res.status); // 200
+```
+
+`signFixture` is **for tests**, not production signing. Production signing is the sender's job (`postel.outbound.send`), which lands in v0.2.
+
+## Where to next
+
+You have a working verifier. The next things you'll hit:
+
+- [Raw bytes](/docs/inbound/raw-bytes) — the single most common silent failure mode. Read this before you ship.
+- [Key rotation](/docs/inbound/key-rotation) — how to rotate without dropping requests.
+- [Deduplication](/docs/inbound/deduplication) — webhooks are at-least-once; here's the atomic helper.
+- [Inbound overview](/docs/inbound) — the full receiver feature map.
+
+If you're not sure whether the library fits your case, jump to [Is Postel for me?](/docs/is-postel-for-me).

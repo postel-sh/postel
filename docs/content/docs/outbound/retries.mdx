@@ -1,0 +1,112 @@
+---
+title: Retries & backoff
+description: Retry strategies, circuit breakers, and auto-disable for persistently failing endpoints. Planned for v0.2.0.
+---
+
+> **Status: planned — v0.2.0.** Types ship today; the runtime throws `NotImplementedError`. This page documents the *target* shape.
+
+A webhook delivery is at-least-once, which means it sometimes fails and gets retried. The relevant questions are: *how many times*, *with what delay*, and *what happens when an endpoint stays broken*.
+
+## Retry strategies
+
+Postel ships three strategies. Pick one at the outbound config level, or override per endpoint.
+
+### `ExponentialBackoff` (default)
+
+```ts
+import { ExponentialBackoff } from "@postel/core";
+
+const postel = Postel({
+  outbound: {
+    retryPolicy: ExponentialBackoff({
+      maxAttempts: 8,
+      initialDelay: "1s",
+      maxDelay:     "1h",
+      jitter:       0.2,     // ± 20%
+    }),
+  },
+});
+```
+
+Doubles the delay between attempts up to `maxDelay`. Jitter de-correlates retries across a stampede.
+
+### `LinearBackoff`
+
+```ts
+import { LinearBackoff } from "@postel/core";
+
+LinearBackoff({
+  maxAttempts: 5,
+  step:        "30s",
+});
+```
+
+Predictable, slower escalation.
+
+### `Custom`
+
+```ts
+import { Custom } from "@postel/core";
+
+Custom({
+  maxAttempts: 6,
+  delay: (attempt) => Math.min(60 * 60, attempt ** 2 * 5),  // seconds
+});
+```
+
+For SLAs that don't fit the canned strategies.
+
+## Circuit breaker
+
+Per-endpoint short-circuit when the failure rate crosses a threshold. While the breaker is open, attempts skip the HTTP call and re-enqueue after a cooldown.
+
+```ts
+const postel = Postel({
+  outbound: {
+    circuitBreaker: {
+      threshold: 0.5,    // 50% failures across the window
+      cooldown:  "5m",
+    },
+  },
+});
+```
+
+The breaker prevents one misbehaving endpoint from saturating worker capacity. Per-endpoint state lives in the DB so it survives process restarts.
+
+## Auto-disable
+
+If an endpoint has been broken long enough that retrying is wasted work, auto-disable removes it from delivery rotation. The endpoint moves to `state: "disabled"`; a human (or an automated reconciliation job) re-enables it.
+
+```ts
+const postel = Postel({
+  outbound: {
+    autoDisable: {
+      failureRate: 0.9,     // 90% over the window
+      window:      "1h",
+      minAttempts: 20,
+    },
+  },
+});
+```
+
+## Dead-letter
+
+Messages that exhaust `maxAttempts` move to the dead-letter table. `postel.outbound.replay({ filter: m => m.deadLetter, freshWebhookId: false })` re-enqueues them. The receiver sees the same `webhook-id` (or a fresh one if you ask for it).
+
+## Per-endpoint overrides
+
+Endpoints inherit the outbound-level defaults; pass strategy overrides at `endpoints.create` time to differentiate:
+
+```ts
+await postel.outbound.endpoints.create({
+  url:   "https://strict-customer.example.com/hook",
+  types: ["*"],
+  retryPolicy:    LinearBackoff({ maxAttempts: 3, step: "10s" }),
+  circuitBreaker: { threshold: 0.3, cooldown: "30m" },
+});
+```
+
+## Read next
+
+- [Replay](/docs/outbound/replay) — re-emitting historical messages.
+- [`send()` and the outbox](/docs/outbound/send) — what gets retried.

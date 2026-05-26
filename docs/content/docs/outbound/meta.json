@@ -1,0 +1,10 @@
+{
+  "title": "Outbound (v0.2)",
+  "pages": [
+    "index",
+    "send",
+    "retries",
+    "replay",
+    "endpoints"
+  ]
+}

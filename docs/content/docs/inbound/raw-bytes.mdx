@@ -17,8 +17,7 @@ The most common cause: middleware that parses JSON, hands you a typed object, an
 
 This is broken:
 
-```ts title="The trap"
-// DON'T do this.
+```ts title="DON'T do this"
 app.post("/webhooks", async (req, res) => {
   const body = req.body;                          // parsed JSON object
   const reserialized = JSON.stringify(body);       // re-serialize as bytes
@@ -36,7 +35,7 @@ app.post("/webhooks", async (req, res) => {
 Every framework adapter Postel ships preserves the raw request body and passes it into `postel.inbound.<source>.verify` byte-for-byte. The contract:
 
 - **Express, Fastify, Koa, Hono, Elysia** — middleware buffers the raw `req` stream before any JSON parser sees it. The buffered bytes are what `verify` operates on.
-- **Bun.serve, Deno.serve, Next.js Route Handlers, SvelteKit, Astro, Nitro** — the `Request` object already exposes the raw bytes via `await req.arrayBuffer()` before any `.json()` call. Adapters use that.
+- **Bun.serve, Deno.serve, Next.js Route Handlers, SvelteKit, Astro, Nitro** — the `Request` object already exposes raw bytes via `await req.arrayBuffer()` before any `.json()` call. Adapters use that.
 
 If you're calling `verify` directly (no framework adapter), the rule is:
 
@@ -49,7 +48,7 @@ await postel.inbound.vendor.verify(body, headers);
 
 `req.arrayBuffer()` is destructive — you cannot call `req.json()` after it on the same Request. That's fine: `verify` parses the body once the signature checks out, and the parsed event is returned in `result.event`.
 
-```ts title="app/webhooks/route.ts"
+```ts
 const { event } = await postel.inbound.vendor.verify(body, headers);
 console.log(event.type, event.data);  // parsed for you, signature already verified
 ```
@@ -58,21 +57,22 @@ console.log(event.type, event.data);  // parsed for you, signature already verif
 
 Some adapters can detect re-serialization at runtime. If a framework adapter receives a `Buffer` or `Uint8Array` that looks like it was JSON-re-encoded (specific whitespace patterns, key reordering, number reformatting), it throws `RawBytesMismatchDetected` instead of silently producing `SignatureInvalid`. The error message names the suspected mutation — much faster to diagnose than a generic "bad signature."
 
-This is best-effort: it catches the common cases (Express's default JSON parser, mass re-serialization) but cannot detect every possible mutation. The clean path is to always plumb the raw bytes; the detector is a safety net.
+This is best-effort: it catches the common cases (Express's default JSON parser, mass re-serialization) but cannot detect every possible mutation. The clean path is always to plumb the raw bytes; the detector is a safety net.
 
 ## What the compliance suite checks
 
-The `receiver/raw-bytes/*` vectors in `@postel/compliance` are exactly this:
+The `receiver/raw-bytes/*` vectors in [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) are exactly this:
 
 - **byte-identical-accept** — the signed body and the request body are byte-equal. Receiver accepts.
 - **json-reserialized-reject** — the signed body and the request body are semantically equal but differ in whitespace. A conformant receiver rejects with `SignatureInvalid`. A lenient receiver that re-serializes JSON erroneously accepts — and fails this vector.
 
-If you're building a port or a custom adapter, this is the single most important behavior to get right. Every receiver capability requirement in the spec is downstream of this one being correct.
+If you're building a port or a custom adapter, this is the single most important behavior to get right. Every other receiver requirement is downstream of this one being correct.
 
-## Producer side
+## Producer side (v0.2+)
 
-The same rule applies in reverse on the sender. The signed-content string is built once at signing time; if the body is mutated between signing and sending (a proxy re-serializes JSON, a transformer adds a trailing newline), the receiver will reject. Postel's v0.2.0 sender signs the bytes immediately before writing them to the network and stamps the signature in the outgoing headers. Nothing in the pipeline touches the body after the signature is computed.
+The same rule applies in reverse on the sender. The signed-content string is built once at signing time; if the body is mutated between signing and sending (a proxy re-serializes JSON, a transformer adds a trailing newline), the receiver will reject. Postel's v0.2 sender signs the bytes immediately before writing them to the network and stamps the signature in the outgoing headers — nothing in the pipeline touches the body after the signature is computed.
 
 ## What's next
 
-- [Signing and verification](/docs/concepts/signing-and-verification) — the full verify pipeline.
+- [Signing schemes](/docs/inbound/signing) — the full verify pipeline.
+- [Framework adapters](/docs/inbound/frameworks) — adapter status per framework.

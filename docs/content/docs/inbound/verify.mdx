@@ -1,0 +1,101 @@
+---
+title: Verify a signed request
+description: The basic receiver recipe — configure once at module scope, call verify() from your handler.
+---
+
+The full receiver surface is two calls: a factory at module scope, and a `verify` call inside your handler. This page covers the basic shape. Edge cases — rotation, JWKS, dedup, framework integration — get their own pages.
+
+## The recipe
+
+```ts title="lib/postel.ts"
+import { Postel, Secret } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    vendor: { verify: Secret(process.env.VENDOR_WEBHOOK_SECRET!) },
+  },
+});
+```
+
+```ts title="app/api/webhooks/vendor/route.ts"
+import { postel } from "@/lib/postel";
+import {
+  SignatureInvalid,
+  TimestampTooOld,
+  MalformedHeader,
+} from "@postel/core";
+
+export async function POST(req: Request) {
+  const body = new Uint8Array(await req.arrayBuffer());     // <- raw bytes; see /docs/inbound/raw-bytes
+  const headers = Object.fromEntries(req.headers);
+
+  try {
+    const { event, matchedVerifierIndex } = await postel.inbound.vendor.verify(body, headers);
+    // event.type, event.data, event.timestamp — all parsed for you.
+    return new Response("ok", { status: 200 });
+  } catch (err) {
+    if (err instanceof SignatureInvalid)  return new Response("bad signature",          { status: 401 });
+    if (err instanceof TimestampTooOld)   return new Response("timestamp out of window", { status: 401 });
+    if (err instanceof MalformedHeader)   return new Response("malformed headers",       { status: 400 });
+    throw err;
+  }
+}
+```
+
+That's the whole thing. The rest of the inbound section explains the parts you'll eventually need to reach for.
+
+## What `verify` returns
+
+On success:
+
+```ts
+{
+  event: { type: string; data: unknown; timestamp: string; /* ... */ },
+  matchedVerifierIndex: number,  // which verifier in the configured array matched (0 if a single Verifier)
+}
+```
+
+You generally only inspect `matchedVerifierIndex` during [key rotation](/docs/inbound/key-rotation) to detect when a producer is still signing with a deprecated key.
+
+## What `verify` throws
+
+Every failure is a typed subclass of `PostelError`:
+
+| Error class | Code | Meaning |
+|---|---|---|
+| `MalformedHeader` | `MALFORMED_HEADER` | A required header is missing or doesn't parse. |
+| `TimestampTooOld` | `TIMESTAMP_TOO_OLD` | The `webhook-timestamp` is outside the tolerance window (default ±5 minutes). |
+| `SignatureInvalid` | `SIGNATURE_INVALID` | No configured verifier matched the signature. Most common cause: re-serialized bytes ([Raw bytes](/docs/inbound/raw-bytes)) or a wrong secret. |
+| `UnknownKeyId` | `UNKNOWN_KEY_ID` | JWKS mode only: the `kid` in the request is not in the cached keyset. |
+| `RawBytesMismatchDetected` | `RAW_BYTES_MISMATCH_DETECTED` | Framework adapter detected the body was mutated before `verify` was called. |
+
+Each carries a stable `code` string for log filters and cross-port discrimination. Error messages are safe to log — they never contain the secret or the signature bytes.
+
+## Configuration shape
+
+```ts
+Postel({
+  inbound: {
+    <source-name>: {
+      verify: Verifier | ReadonlyArray<Verifier>,  // required
+      dedup?: DedupAdapter,                          // see /docs/inbound/deduplication
+      dedupTtl?: number | string,                    // "24h", "1d", or seconds
+      tolerance?: number,                            // seconds; default 300
+      now?: () => Date,                              // for tests / deterministic builds
+      onSuccess?: (event, result) => void,           // observability hook
+      onFailure?: (error, headers) => void,          // observability hook
+    },
+    // ... more sources
+  },
+})
+```
+
+Each source is independently typed. `postel.inbound.<source>.dedup` only appears on the instance type if `dedup` is configured — call it on a source without a configured adapter and TypeScript refuses to compile.
+
+## What's next
+
+- [Raw bytes](/docs/inbound/raw-bytes) — read this before you ship.
+- [Signing schemes](/docs/inbound/signing) — under the hood, in five steps.
+- [Key rotation](/docs/inbound/key-rotation) — rotating without dropped requests.
+- [Deduplication](/docs/inbound/deduplication) — handling at-least-once.
+- [Framework adapters](/docs/inbound/frameworks) — Hono adapter details, framework-agnostic notes.

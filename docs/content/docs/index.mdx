@@ -1,21 +1,35 @@
 ---
 title: Welcome
-description: Postel is a polyglot library for sending and receiving webhooks reliably and securely. Standard Webhooks-compliant. Library, not a service.
+description: A polyglot library for sending and receiving webhooks reliably and securely. It does two halves — inbound and outbound — and you can use either alone.
 ---
 
-Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. It runs inside the host application against the host application's existing relational database (Postgres, MySQL, SQLite, …), and ships in multiple languages over time. The TypeScript implementation ships first; Go, Python, and Rust follow.
+Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. It runs inside your application against your existing relational database (Postgres, MySQL, SQLite, …) — no Redis, no broker, no separate dispatcher process.
 
 > Svix is for when webhooks are your **product**.
 > Postel is for when webhooks are a **feature** of your product.
 
-## Where to start
+## Two halves, one library
 
-- **New to Postel?** Read [Get started](/docs/get-started) — install the receiver, verify your first signed request in under a minute.
-- **Evaluating the library?** Read [Why Postel](/docs/why) — the positioning, the tradeoffs, and the design rationale.
-- **Already integrating?** Jump to the [Concepts](/docs/concepts) (idempotency, key rotation, raw bytes) or the [API reference](/docs/api).
+Postel has two independent halves. Use either alone, or both together.
 
-## Status
+| Half | What it does | Status |
+|---|---|---|
+| **[Inbound](/docs/inbound)** | Verify Standard Webhooks-signed requests other services send to you. Constant-time signature checks, multi-secret rotation windows, JWKS, idempotent dedup, raw-bytes preservation. | **Ships today** in `@postel/core` v0.1.x. |
+| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter. | **Planned** for v0.2.0. The types ship today; the runtime throws `NotImplementedError`. |
 
-Pre-alpha. The TypeScript receiver ships today through the `Postel({ inbound })` factory in `@postel/core`: multi-verifier composition, JWKS consumer, dedup helper, raw-bytes-preserving framework adapters. The sender — `postel.outbound.send`, the transactional outbox, retries, fanout, replay — lands in v0.2.0; its types ship today and the runtime throws `NotImplementedError` until then. Polyglot ports (Go, Python, Rust) follow.
+The `Postel({ inbound, outbound })` factory composes both — but everywhere else in these docs they're separated. You shouldn't have to wade through outbound material to integrate the receiver, or vice versa.
 
-We document the spec ahead of the implementation. Pages covering unimplemented capabilities are explicit about it — assume nothing ships until the [API reference](/docs/api) lists it.
+## Picking a starting point
+
+- **You want to evaluate.** Read [Is Postel for me?](/docs/is-postel-for-me) — a six-line decision gate.
+- **You want to verify your first webhook.** Read [Quickstart](/docs/quickstart) — 60 seconds, TypeScript, Hono or framework-agnostic.
+- **You want the positioning.** Read [Why Postel](/docs/why) — the tradeoffs, comparison vs Svix, comparison vs hand-rolled.
+- **You're a port author (Go, Python, Rust).** Read [Polyglot](/docs/polyglot) — what conformance means and where the suite lives.
+
+## Pre-1.0 reality check
+
+Postel is pre-alpha. The receiver is feature-complete for what the v0.1 spec calls out, but no `@postel/*` package has cut a numbered release yet — they all sit at `0.0.0` in the workspace. The receiver works; you can clone and use it. We don't recommend production deployment until v0.1.0 ships on npm.
+
+The sender is *designed* (types, capability specs, ADRs) but the runtime is not implemented. Pages under [Outbound](/docs/outbound) describe the target shape, not what's currently callable. Every such page banners that.
+
+This documentation site is the public surface of that work. If something here suggests behavior that isn't in the source — call it out in an issue.

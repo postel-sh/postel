@@ -2,7 +2,7 @@
   "$schema": "https://typedoc.org/schema.json",
   "entryPoints": ["../typescript/packages/core/src/index.ts"],
   "tsconfig": "../typescript/packages/core/tsconfig.json",
-  "out": "content/docs/api/core",
+  "out": "content/docs/reference/core",
   "plugin": ["typedoc-plugin-markdown"],
   "readme": "none",
   "skipErrorChecking": true,

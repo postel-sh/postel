@@ -1,0 +1,129 @@
+---
+title: Signing schemes
+description: What verify() actually checks, the v1 (HMAC-SHA256) and v1a (Ed25519) signature schemes, and why constant-time comparison matters.
+---
+
+A signed webhook is an HTTP request carrying three extra headers. The receiver's job is to reject any request that doesn't match a small, well-defined set of conditions — and to do so without leaking timing information. This page is the deep dive on those checks.
+
+## The three headers
+
+| Header | Purpose |
+|---|---|
+| `webhook-id` | Stable, unique message identifier. Used as the dedup key and (in JWKS mode) for `kid` lookup. |
+| `webhook-timestamp` | Unix epoch seconds, as a string. Rejected outside a configurable window (default ±5 minutes). |
+| `webhook-signature` | One or more space-separated `<version>,<base64>` tokens. A request is accepted if **any** token verifies against **any** configured verifier. |
+
+The signed content string is:
+
+```
+${webhook-id}.${webhook-timestamp}.${body-bytes}
+```
+
+`${body-bytes}` is the **raw request body** — byte-identical to what the producer sent. If anything between the network and `verify` mutates those bytes (a JSON middleware re-serializes, a proxy adds a trailing newline), the signature won't match. See [Raw bytes](/docs/inbound/raw-bytes) — it's the single most common silent failure.
+
+## What `verify` checks, in order
+
+```ts
+import { Postel, Secret } from "@postel/core";
+
+const postel = Postel({
+  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+});
+
+const { event, matchedVerifierIndex } = await postel.inbound.vendor.verify(body, headers);
+```
+
+Under the hood, for each configured verifier (in order):
+
+1. **Header presence and shape.** All three headers exist and parse. The signature header carries at least one well-formed `<version>,<base64>` token. Any failure throws `MalformedHeader`.
+2. **Timestamp window.** Reject if `|now - webhook-timestamp| > toleranceSeconds` (default 300). Throws `TimestampTooOld` — this short-circuits the entire verifier array, since timestamp validity is independent of which key signed.
+3. **Key lookup** (JWKS mode only). If the current verifier is a `Keyset(...)`, extract the `kid` from the message id and look up the matching public key. A miss throws `UnknownKeyId`; the next verifier (if any) is tried.
+4. **Signature comparison.** Compute the expected signature for this verifier and compare it in **constant time** to one of the tokens in the header. A match wins immediately. If no token matches and there are more verifiers, try the next. If every verifier exhausts without a match, throws `SignatureInvalid`.
+5. **Body parse.** Once a verifier matches, the verified raw bytes are parsed as JSON; the event is returned. Parse failures throw `SignatureInvalid` — a parse error *after* a successful signature check almost always indicates downstream tampering, not a producer bug.
+
+The return value names which verifier matched (`matchedVerifierIndex`) so callers can detect when a producer is still using a deprecated key. First match wins; the only thing ordering controls is which `matchedVerifierIndex` you observe.
+
+## The signature schemes
+
+### `v1` — HMAC-SHA256 (Standard Webhooks default)
+
+```
+webhook-signature: v1,base64(HMAC-SHA256(signed-content, secret))
+```
+
+Symmetric: producer and receiver share the same secret. Cheap (~µs per verification). Default for Standard Webhooks producers.
+
+The secret format is the Standard Webhooks convention: `whsec_<base64>` — a 32-byte random key, base64-encoded. The `whsec_` prefix is a hint to humans and to leak-scanners; the verifier strips it before computing the HMAC.
+
+### `v1a` — Ed25519 (Postel extension)
+
+```
+webhook-signature: v1a,base64(Ed25519(signed-content, private-key))
+```
+
+Asymmetric: the producer signs with a private key, the receiver verifies with the corresponding public key. Slightly slower (~tens of µs) but unlocks **public-key distribution** — receivers never hold signing material. Pairs naturally with JWKS.
+
+`v1a` is a Postel extension on top of Standard Webhooks. Byte-compatible with the v1 envelope: a request can carry both `v1,...` and `v1a,...` tokens in the same header, and the receiver accepts on first match.
+
+## Multi-verifier composition
+
+Each source's `verify` slot accepts a single `Verifier` or a `ReadonlyArray<Verifier>`. Arrays are tried in order; first match wins:
+
+```ts
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: [
+        Secret(process.env.WEBHOOK_SECRET_CURRENT!),
+        Secret(process.env.WEBHOOK_SECRET_PREVIOUS!),
+      ],
+    },
+  },
+});
+
+const { matchedVerifierIndex } = await postel.inbound.vendor.verify(body, headers);
+
+if (matchedVerifierIndex > 0) {
+  log.warn("webhook signed with deprecated verifier", { matchedVerifierIndex });
+}
+```
+
+Mixed-scheme arrays are supported — e.g. `[Secret(LEGACY_HMAC), Keyset({ jwksUri: NEW_JWKS })]` for an HMAC → Ed25519 migration window. The same `matchedVerifierIndex` signal works for both same-scheme rotation and cross-scheme migration. See [Key rotation](/docs/inbound/key-rotation).
+
+## Constant-time comparison
+
+The signature check uses Web Crypto's constant-time comparison (or an equivalent constant-time XOR-and-OR when the platform doesn't ship it). Naive `===` leaks information about which byte differs — an attacker observing response timing can mount a byte-by-byte chosen-plaintext attack on the signature.
+
+The [compliance suite](https://github.com/postel-sh/postel/tree/main/compliance) includes a timing vector: two equal-length signatures that differ at byte 0 vs. byte 31 must verify in indistinguishable time.
+
+## Structured errors
+
+`verify` never returns a boolean. Failures are typed:
+
+```ts
+import {
+  SignatureInvalid,
+  TimestampTooOld,
+  MalformedHeader,
+  UnknownKeyId,
+  RawBytesMismatchDetected,
+} from "@postel/core";
+
+try {
+  const { event } = await postel.inbound.vendor.verify(body, headers);
+} catch (err) {
+  if (err instanceof SignatureInvalid)        // no verifier matched
+  else if (err instanceof TimestampTooOld)    // outside the window — replay or clock skew
+  else if (err instanceof MalformedHeader)    // a required header is missing
+  else if (err instanceof UnknownKeyId)       // JWKS: kid not in the keyset
+  else if (err instanceof RawBytesMismatchDetected)  // framework adapter detected mutation
+}
+```
+
+Each subclass carries a stable SCREAMING_SNAKE `code` (`'SIGNATURE_INVALID'`, `'TIMESTAMP_TOO_OLD'`, …) for log filters and cross-port JSON contracts. Error messages are safe to log — they never contain the secret or the signature bytes.
+
+## What's next
+
+- [Key rotation](/docs/inbound/key-rotation) — the multi-secret window and JWKS.
+- [Raw bytes](/docs/inbound/raw-bytes) — why framework integration matters.
+- [Deduplication](/docs/inbound/deduplication) — at-least-once delivery and the dedup helper.

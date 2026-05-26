@@ -1,0 +1,112 @@
+---
+title: Key rotation
+description: Multi-secret overlap windows, JWKS publication, and rotating a leaked secret without a flag day.
+---
+
+Webhook secrets leak. Sometimes from a misconfigured log, sometimes from an exposed env var, sometimes from a former employee's laptop. The window between *"we should rotate this"* and *"the rotation is done"* is the most operationally painful part of any webhook integration if the library doesn't help.
+
+Postel handles rotation two ways, depending on whether your producers and receivers share a secret directly (HMAC) or coordinate through public keys (Ed25519 + JWKS).
+
+## Multi-verifier overlap (HMAC)
+
+Each inbound source's `verify` slot accepts a single `Verifier` or a `ReadonlyArray<Verifier>`. During rotation, configure the source with both new and old — producers can sign with either, and the receiver accepts both for the duration of the overlap window.
+
+```ts
+import { Postel, Secret } from "@postel/core";
+
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: [
+        Secret(process.env.WEBHOOK_SECRET_CURRENT!),  // new
+        Secret(process.env.WEBHOOK_SECRET_PREVIOUS!), // grace-window
+      ],
+    },
+  },
+});
+
+const { matchedVerifierIndex } = await postel.inbound.vendor.verify(body, headers);
+
+if (matchedVerifierIndex > 0) {
+  metrics.increment("postel.verify.legacy_verifier_hit", { index: matchedVerifierIndex });
+}
+```
+
+`matchedVerifierIndex` tells you which one matched. Watch the metric: when legacy-verifier hits drop to zero across all producers, remove the entry and finalize the rotation.
+
+### Safe rotation playbook
+
+1. **Issue the new secret.** Add it to your secrets store. Configure the source with `verify: [Secret(NEW), Secret(OLD)]`. Deploy.
+2. **Roll the producer.** Update producers one at a time to sign with the new secret. The receiver continues to accept the old one for the duration of the rollout.
+3. **Watch for legacy hits.** Once `matchedVerifierIndex > 0` stops firing for some agreed-upon window (typically 7–30 days), the old secret is no longer in use.
+4. **Remove the old secret.** Reconfigure with `verify: Secret(NEW)`. Revoke `OLD` from the secrets store. Done.
+
+No flag day, no coordinated deploys, no requests dropped during the cutover.
+
+### Why an array, not a "primary + fallback"
+
+The `Verifier | ReadonlyArray<Verifier>` shape is deliberate. Postel makes no distinction between "primary" and "fallback" — both are valid at any moment. A producer that signed with the third entry in the array is just as accepted as one that signed with the first. The order only controls which `matchedVerifierIndex` you observe.
+
+This generalizes beyond same-scheme rotation in two ways:
+
+- **Cross-scheme migration.** Mix HMAC and Ed25519: `verify: [Secret(LEGACY_HMAC), Keyset({ jwksUri: NEW_JWKS })]`. During the window the receiver accepts either; once `matchedVerifierIndex === 0` stops firing the HMAC path can be removed.
+- **Multi-tenant receivers.** Pass a per-tenant array assembled at request time; the same composition logic applies.
+
+## JWKS — asymmetric rotation without secret sharing
+
+For Ed25519 signing (`v1a`), receivers verify with a public key — they never hold signing material. The producer publishes its public keys at a JWKS endpoint (commonly `/.well-known/webhooks-keys`); the receiver fetches and caches them.
+
+```ts
+import { Postel, Keyset } from "@postel/core";
+
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: Keyset({
+        jwksUri: "https://producer.example.com/.well-known/webhooks-keys",
+        refreshEvery: 60 * 60,   // refetch every hour
+        cacheTtl: 24 * 60 * 60,  // keep keys cached for 24h
+      }),
+    },
+  },
+});
+
+export async function POST(req: Request) {
+  const body = new Uint8Array(await req.arrayBuffer());
+  const { event } = await postel.inbound.vendor.verify(body, Object.fromEntries(req.headers));
+  // ...
+}
+```
+
+The `Keyset(...)` strategy returns a cached, auto-refreshing keyset. The receiver looks up the public key by `kid` (extracted from the `webhook-id` header), so rotation is just *"add a new key to the JWKS, mark the old one's `not_after`, and the receiver picks it up on the next refresh."*
+
+### Publishing a JWKS (producer side)
+
+If you're on the producing side, mounting a JWKS endpoint is one line:
+
+```ts title="app/.well-known/webhooks-keys/route.ts"
+import { jwksHandler } from "@postel/core";
+
+export const GET = jwksHandler({ keys: PUBLIC_JWKS });
+```
+
+`PUBLIC_JWKS` is your set of public keys in the standard JWKS shape — only public key material, never private. The handler refuses to serve a key that includes `d` (the Ed25519 private scalar). Wire it into whichever HTTP layer you use; the handler returns a `Response`.
+
+> Note: the JWKS handler ships today. The producer-side **signing** side (issuing keys, rotating them automatically, recording them) lands with the [outbound](/docs/outbound) release.
+
+### When to choose JWKS over multi-secret
+
+- **You operate the producer and the receiver.** Use HMAC + multi-secret. Simpler, faster, no extra endpoint to monitor.
+- **You operate the producer; third parties receive.** Use JWKS. Receivers verify without ever holding signing material — leaks at the receiver don't compromise future signatures.
+- **You operate the receiver; third parties produce.** The third party chooses. Postel verifies both.
+
+## Ephemeral keys
+
+JWKS unlocks **ephemeral signing keys**: the producer rotates a new keypair every N hours, publishes the public half, drops the old private key. Receivers pick up rotations automatically as long as they refetch the JWKS. The compromise window for any leaked private key shrinks from *"until manual rotation"* to *"until the next auto-rotation."*
+
+Postel ships the consumer side of this today (the `Keyset({...})` strategy). The producer-side auto-rotation lands with the v0.2.0 sender release.
+
+## What's next
+
+- [Deduplication](/docs/inbound/deduplication) — handling at-least-once.
+- [Raw bytes](/docs/inbound/raw-bytes) — the silent killer of signature verification.

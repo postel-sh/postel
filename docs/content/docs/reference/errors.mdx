@@ -1,0 +1,113 @@
+---
+title: Errors
+description: Every PostelError subclass — code, meaning, when it's thrown, how to recover.
+---
+
+`@postel/core` never returns `false` for a failed verification. Every failure is a typed `PostelError` subclass with a stable SCREAMING_SNAKE `code`. The `code` is the cross-port discriminator; the class identity (`instanceof X`) is the TypeScript-side ergonomic.
+
+Error messages are safe to log — they never contain the secret or the signature bytes.
+
+## The hierarchy
+
+```
+Error
+└── PostelError                      (abstract)
+    ├── MalformedHeader              code: "MALFORMED_HEADER"
+    ├── TimestampTooOld              code: "TIMESTAMP_TOO_OLD"
+    ├── SignatureInvalid             code: "SIGNATURE_INVALID"
+    ├── UnknownKeyId                 code: "UNKNOWN_KEY_ID"
+    └── RawBytesMismatchDetected     code: "RAW_BYTES_MISMATCH_DETECTED"
+
+Error
+└── NotImplementedError              code: "NOT_IMPLEMENTED"
+```
+
+`NotImplementedError` is **not** a `PostelError` subclass on purpose — it signals a v0.1-vs-v0.2 boundary, not a verification outcome. Don't try to catch it as part of normal flow; it means you're calling outbound code before v0.2 has shipped.
+
+## Class reference
+
+### `MalformedHeader`
+
+**Code:** `MALFORMED_HEADER`
+**Thrown by:** `postel.inbound.<source>.verify` — step 1.
+**When:** A required webhook header (`webhook-id`, `webhook-timestamp`, `webhook-signature`) is missing or doesn't parse. Also thrown when the `verify` slot is configured with an empty array of verifiers (configuration error caught at first call).
+
+**Recovery:** `400 Bad Request`. The producer's request is malformed; retrying won't help.
+
+```ts
+if (err instanceof MalformedHeader) {
+  return new Response("malformed headers", { status: 400 });
+}
+```
+
+### `TimestampTooOld`
+
+**Code:** `TIMESTAMP_TOO_OLD`
+**Thrown by:** `postel.inbound.<source>.verify` — step 2.
+**When:** `|now - webhook-timestamp| > toleranceSeconds`. Default tolerance is 300 seconds (±5 minutes). Short-circuits the verifier array — timestamp validity is independent of which key signed.
+
+**Recovery:** `401 Unauthorized`. Most often clock skew on the producer side or a replay attempt. Retrying won't help unless the producer fixes their clock.
+
+```ts
+if (err instanceof TimestampTooOld) {
+  return new Response("timestamp out of window", { status: 401 });
+}
+```
+
+### `SignatureInvalid`
+
+**Code:** `SIGNATURE_INVALID`
+**Thrown by:** `postel.inbound.<source>.verify` — step 4 / step 5.
+**When:** No configured verifier matched the request's signature. Also thrown if the body fails to JSON-parse after a successful signature check (which almost always means downstream tampering).
+
+**Recovery:** `401 Unauthorized`. The single most common cause is [body re-serialization](/docs/inbound/raw-bytes). Check `RawBytesMismatchDetected` first; if that didn't fire, you have a real secret mismatch or a different signing scheme.
+
+```ts
+if (err instanceof SignatureInvalid) {
+  return new Response("bad signature", { status: 401 });
+}
+```
+
+### `UnknownKeyId`
+
+**Code:** `UNKNOWN_KEY_ID`
+**Thrown by:** `postel.inbound.<source>.verify` — step 3 (JWKS mode only).
+**When:** The `kid` in the request's `webhook-id` header doesn't appear in the cached keyset. The next verifier in the array is tried; if every verifier exhausts, the final error is `SignatureInvalid`.
+
+**Recovery:** Usually transient — the producer rotated keys faster than your keyset cache TTL. Check that your `refreshEvery` and `cacheTtl` settings match the producer's rotation cadence. See [Key rotation → JWKS](/docs/inbound/key-rotation#jwks--asymmetric-rotation-without-secret-sharing).
+
+### `RawBytesMismatchDetected`
+
+**Code:** `RAW_BYTES_MISMATCH_DETECTED`
+**Thrown by:** Framework adapters (when they implement detection).
+**When:** The body bytes look like they were JSON-re-encoded between receipt and verify — whitespace patterns, key ordering, number formatting all suggest mutation.
+
+**Recovery:** Best-effort safety net. Fix the underlying re-serialization (don't catch and ignore). See [Raw bytes](/docs/inbound/raw-bytes).
+
+### `NotImplementedError`
+
+**Code:** `NOT_IMPLEMENTED`
+**Thrown by:** Any `postel.outbound.*` method, in v0.1.
+**When:** You called `postel.outbound.send(...)`, `postel.outbound.replay(...)`, `postel.outbound.endpoints.create(...)`, or any other outbound runtime method. The outbound runtime lands in v0.2.
+
+**Recovery:** Wait for v0.2. Until then, write your outbound code against the types (TypeScript catches shape mistakes) but don't deploy outbound-using code.
+
+## Discriminating by code
+
+If you're not on TypeScript, or you're filtering logs:
+
+```ts
+import { PostelError } from "@postel/core";
+
+try {
+  await postel.inbound.vendor.verify(body, headers);
+} catch (err) {
+  if (err instanceof PostelError) {
+    log.warn("verify failed", { code: err.code, message: err.message });
+    return new Response("rejected", { status: err.code === "MALFORMED_HEADER" ? 400 : 401 });
+  }
+  throw err;
+}
+```
+
+The `code` string is part of the [CONTRACT](/docs/reference/specs) — every port (Go, Python, Rust, …) must emit the same codes for the same conditions. The class hierarchy is TypeScript-specific.

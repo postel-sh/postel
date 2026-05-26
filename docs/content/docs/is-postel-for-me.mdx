@@ -1,0 +1,60 @@
+---
+title: Is Postel for me?
+description: A six-line decision gate. Run through this before you spend more time evaluating.
+---
+
+Webhook libraries are not interchangeable. The right one depends on what you're building, where it runs, and what trade-offs hurt least. This page is a fast filter — not marketing, not positioning. Read it before the rest of the docs.
+
+## Is *receiving* webhooks all you need? (today)
+
+If you only need to verify incoming webhooks from another service (Stripe, GitHub, Linear, your vendor's API), Postel's receiver is feature-complete in v0.1 and worth a look.
+
+- ✅ Standard Webhooks compliant (verifies any producer that follows the spec).
+- ✅ Multi-secret rotation, JWKS, structured errors, idempotency dedup.
+- ✅ Zero runtime dependencies in the core package; tree-shakes.
+- ⚠️ Production-ready code, but the v0.1.0 release tag isn't cut yet — packages are at `0.0.0`. Wait for the tagged release if you need npm-installable.
+
+If yes, go to [Quickstart](/docs/quickstart).
+
+## Is *sending* webhooks part of what you need? (today)
+
+If you need to deliver webhooks to your customers' endpoints — outbox, retries, replay, fanout — **Postel does not ship that yet.** It's planned for v0.2.0. The API surface is designed and typed; nothing runs.
+
+Until v0.2 ships, your options are:
+
+- [Svix](https://www.svix.com/) (or Hookdeck Outpost) if webhooks are *the* product.
+- A hand-rolled Sidekiq / BullMQ / Oban worker if you're patient and your team owns the operational risk.
+- Wait for Postel v0.2 and follow the [Outbound](/docs/outbound) section, which documents what's coming.
+
+## Does your stack match?
+
+The library has a narrow scope on purpose.
+
+| Property | Postel today | Postel v1.0 plan |
+|---|---|---|
+| Runtime | Node, Bun, Deno | Same + Go, Python, Rust (each at its own cadence) |
+| Database | Postgres, SQLite (via standalone adapters) | Postgres, MySQL, SQLite, … — anything the Drizzle / Kysely / Prisma ORM adapters reach, on top of the same `Storage` interface |
+| Broker / queue | **None required.** Uses your existing DB transaction. | Same. Will stay broker-free forever ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). |
+| Framework adapters | Hono (others: factory pattern works directly) | Express, Fastify, Next.js, Bun, Deno, SvelteKit, Astro, Nitro |
+| Hosting model | Embedded in your app | Same. Never a hosted service. |
+
+If you need Redis-backed queues, a separate dispatcher service, multi-region replication, or a customer-facing webhook portal as a packaged product — Postel won't grow into any of those. Use Svix or Hookdeck Outpost.
+
+## The six-line filter
+
+Answer YES or NO to each. Mostly YES → Postel is a strong fit.
+
+1. My app is on Node, Bun, or Deno (and I can wait for Go/Python/Rust ports). **YES / NO**
+2. My data store is a relational database — Postgres, MySQL, SQLite, or anything else the Drizzle / Kysely / Prisma adapters reach. **YES / NO**
+3. I want webhooks to be a *feature* of my product, not the product itself. **YES / NO**
+4. I want the receiver and (eventually) the sender to share the same transaction as my business writes. **YES / NO**
+5. I'm fine with the receiver shipping today and the sender shipping in v0.2 (with timeline not yet committed). **YES / NO**
+6. I prefer a library I configure in code over a DSL or a hosted dashboard. **YES / NO**
+
+If most of those are NO, you'll be happier with [Svix](https://www.svix.com/), [Hookdeck Outpost](https://hookdeck.com/outpost), or a hand-rolled queue worker.
+
+## Read next
+
+- [Why Postel](/docs/why) — the full positioning, design choices, and what 1.0 means.
+- [Quickstart](/docs/quickstart) — verify your first webhook.
+- [Polyglot](/docs/polyglot) — language-port roadmap.

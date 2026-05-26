@@ -31,7 +31,7 @@ const PACKAGES = [
 ];
 
 for (const pkg of PACKAGES) {
-  const outDir = resolve(docsRoot, `content/docs/api/${pkg.name}`);
+  const outDir = resolve(docsRoot, `content/docs/reference/${pkg.name}`);
   rmSync(outDir, { recursive: true, force: true });
 
   const typedoc = spawnSync(
