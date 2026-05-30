@@ -15,8 +15,8 @@ import type { RetryStrategy } from "./strategies/retry.js";
 import type { SigningStrategy } from "./strategies/signing.js";
 import type { WorkerStrategy } from "./strategies/workers.js";
 
-export interface OutboundConfig {
-  readonly storage: Storage;
+export interface OutboundConfig<TTx = unknown> {
+  readonly storage: Storage<TTx>;
   readonly signing?: SigningStrategy;
   readonly retryPolicy?: RetryStrategy;
   readonly workers?: WorkerStrategy;
@@ -81,8 +81,8 @@ export interface SendEvent<TData = unknown> {
   readonly tenantId?: string;
 }
 
-export interface SendOptions {
-  readonly tx?: unknown;
+export interface SendOptions<TTx = unknown> {
+  readonly tx?: TTx;
 }
 
 export interface EndpointCreateOptions {
@@ -115,9 +115,9 @@ export interface Endpoint {
   readonly metadata?: Record<string, unknown>;
 }
 
-export interface RotateSecretOptions {
+export interface RotateSecretOptions<TTx = unknown> {
   readonly keepPreviousFor: number | string;
-  readonly tx?: unknown;
+  readonly tx?: TTx;
 }
 
 export interface AsymmetricKeypair {
@@ -125,13 +125,13 @@ export interface AsymmetricKeypair {
   readonly public: string;
 }
 
-export interface SetRateLimitOptions {
+export interface SetRateLimitOptions<TTx = unknown> {
   readonly perSecond: number;
-  readonly tx?: unknown;
+  readonly tx?: TTx;
 }
 
-export type ReplayOptions =
-  | { readonly messageId: string; readonly freshWebhookId: boolean; readonly tx?: unknown }
+export type ReplayOptions<TTx = unknown> =
+  | { readonly messageId: string; readonly freshWebhookId: boolean; readonly tx?: TTx }
   | {
       readonly endpointId: string;
       readonly since: Date | string;
@@ -139,52 +139,52 @@ export type ReplayOptions =
       readonly types?: ReadonlyArray<string>;
       readonly replayThroughput?: number;
       readonly freshWebhookId: boolean;
-      readonly tx?: unknown;
+      readonly tx?: TTx;
     }
   | {
       readonly filter: (msg: unknown) => boolean;
       readonly replayThroughput?: number;
       readonly freshWebhookId: boolean;
-      readonly tx?: unknown;
+      readonly tx?: TTx;
     };
 
 export interface ReplayResult {
   readonly enqueued: number;
 }
 
-export interface ReconcileOptions {
+export interface ReconcileOptions<TTx = unknown> {
   readonly endpointId: string;
   readonly since: Date | string;
-  readonly tx?: unknown;
+  readonly tx?: TTx;
 }
 
-export interface OutboundApi {
-  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions): Promise<MessageId>;
+export interface OutboundApi<TTx = unknown> {
+  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<MessageId>;
   endpoints: {
-    create(opts: EndpointCreateOptions, runtime?: { tx?: unknown }): Promise<Endpoint>;
-    update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: unknown }): Promise<Endpoint>;
-    delete(id: string, opts?: { purgeAttempts?: boolean; tx?: unknown }): Promise<void>;
-    list(opts?: { tenantId?: string; tx?: unknown }): Promise<ReadonlyArray<Endpoint>>;
-    get(id: string, opts?: { tx?: unknown }): Promise<Endpoint>;
-    disable(id: string, opts?: { tx?: unknown }): Promise<void>;
-    rotateSecret(id: string, opts: RotateSecretOptions): Promise<void>;
+    create(opts: EndpointCreateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
+    update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
+    delete(id: string, opts?: { purgeAttempts?: boolean; tx?: TTx }): Promise<void>;
+    list(opts?: { tenantId?: string; tx?: TTx }): Promise<ReadonlyArray<Endpoint>>;
+    get(id: string, opts?: { tx?: TTx }): Promise<Endpoint>;
+    disable(id: string, opts?: { tx?: TTx }): Promise<void>;
+    rotateSecret(id: string, opts: RotateSecretOptions<TTx>): Promise<void>;
   };
   keys: {
     generateSymmetric(): string;
     generateAsymmetric(): Promise<AsymmetricKeypair>;
   };
   tenants: {
-    setRateLimit(tenantId: string, opts: SetRateLimitOptions): Promise<void>;
-    delete(tenantId: string, opts?: { tx?: unknown }): Promise<void>;
+    setRateLimit(tenantId: string, opts: SetRateLimitOptions<TTx>): Promise<void>;
+    delete(tenantId: string, opts?: { tx?: TTx }): Promise<void>;
   };
-  replay(opts: ReplayOptions): Promise<ReplayResult>;
-  reconcile(opts: ReconcileOptions): Promise<ReadonlyArray<MessageId>>;
+  replay(opts: ReplayOptions<TTx>): Promise<ReplayResult>;
+  reconcile(opts: ReconcileOptions<TTx>): Promise<ReadonlyArray<MessageId>>;
 }
 
-export interface OutboundRuntime {
-  readonly api: OutboundApi;
+export interface OutboundRuntime<TTx = unknown> {
+  readonly api: OutboundApi<TTx>;
   readonly pool: WorkerPool;
-  readonly storage: Storage;
+  readonly storage: Storage<TTx>;
   readonly clock: Clock;
   readonly emitter: PostelEventEmitter;
 }
@@ -193,7 +193,9 @@ function notImplemented(symbol: string): never {
   throw new NotImplementedError(symbol);
 }
 
-export function buildOutboundRuntime(config: OutboundConfig): OutboundRuntime {
+export function buildOutboundRuntime<TTx = unknown>(
+  config: OutboundConfig<TTx>,
+): OutboundRuntime<TTx> {
   const clock: Clock = config.clock ?? systemClock;
   const emitter = new PostelEventEmitter();
   const concurrency = config.workers?.kind === "in-process" ? config.workers.concurrency : 4;
@@ -232,8 +234,8 @@ export function buildOutboundRuntime(config: OutboundConfig): OutboundRuntime {
         }
       : {},
   );
-  const api: OutboundApi = {
-    async send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions) {
+  const api: OutboundApi<TTx> = {
+    async send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>) {
       return sendImpl(
         { storage: config.storage, clock, defaultTenantId: config.defaultTenantId ?? null },
         event,
@@ -297,6 +299,6 @@ export function buildOutboundRuntime(config: OutboundConfig): OutboundRuntime {
   return { api, pool, storage: config.storage, clock, emitter };
 }
 
-export function buildOutboundApi(config: OutboundConfig): OutboundApi {
+export function buildOutboundApi<TTx = unknown>(config: OutboundConfig<TTx>): OutboundApi<TTx> {
   return buildOutboundRuntime(config).api;
 }

@@ -77,7 +77,7 @@ function newId(prefix: string): string {
   return `${prefix}_${s}`;
 }
 
-export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage {
+export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<InMemoryTx> {
   const clock: Clock = options.clock ?? systemClock;
 
   const messages = new Map<MessageId, MessageRow>();
@@ -708,7 +708,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage {
       });
     },
 
-    async transaction<R>(cb: (tx: unknown) => Promise<R>): Promise<R> {
+    async transaction<R>(cb: (tx: InMemoryTx) => Promise<R>): Promise<R> {
       const tx: InMemoryTx = createTx();
       try {
         const result = await cb(tx);

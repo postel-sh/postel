@@ -6,6 +6,7 @@ import {
   buildOutboundRuntime,
 } from "./outbound.js";
 import { type EventHandler, type PostelEvent, PostelEventEmitter } from "./sender/events.js";
+import type { Storage } from "./storage/types.js";
 
 export interface ObservabilityConfig {
   readonly logger?: unknown;
@@ -36,9 +37,13 @@ export interface PostelConfig<
   readonly inbound?: TInbound;
 }
 
-export type WithOutbound<C> = C extends { readonly outbound: OutboundConfig }
-  ? { outbound: OutboundApi }
-  : object;
+export type WithOutbound<C> = C extends {
+  readonly outbound: { readonly storage: Storage<infer TTx> };
+}
+  ? { outbound: OutboundApi<TTx> }
+  : C extends { readonly outbound: OutboundConfig }
+    ? { outbound: OutboundApi }
+    : object;
 
 export type WithInbound<C> = C extends { readonly inbound: infer I }
   ? I extends Record<string, InboundSource>

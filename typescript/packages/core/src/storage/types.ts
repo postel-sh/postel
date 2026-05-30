@@ -27,8 +27,8 @@ export interface StorageCapabilities {
   readonly streaming: boolean;
 }
 
-export interface HostTxOption {
-  readonly tx?: unknown;
+export interface HostTxOption<TTx = unknown> {
+  readonly tx?: TTx;
 }
 
 export interface NewMessage {
@@ -168,16 +168,19 @@ export interface RescheduleOpts {
   readonly tx?: unknown;
 }
 
-export interface Storage {
+export interface Storage<TTx = unknown> {
   readonly capabilities: StorageCapabilities;
 
   schemaVersion(): Promise<number>;
 
-  insertMessage(msg: NewMessage, opts?: HostTxOption): Promise<MessageId>;
-  insertOrReuseByIdempotencyKey(msg: NewMessage, opts?: HostTxOption): Promise<InsertOrReuseResult>;
+  insertMessage(msg: NewMessage, opts?: HostTxOption<TTx>): Promise<MessageId>;
+  insertOrReuseByIdempotencyKey(
+    msg: NewMessage,
+    opts?: HostTxOption<TTx>,
+  ): Promise<InsertOrReuseResult>;
 
   reserveBatch(opts: ReserveBatchOpts): Promise<ReadonlyArray<ReservedMessage>>;
-  recordAttempt(attempt: NewAttempt, opts?: HostTxOption): Promise<void>;
+  recordAttempt(attempt: NewAttempt, opts?: HostTxOption<TTx>): Promise<void>;
   renewLease(
     messageId: MessageId,
     workerId: WorkerId,
@@ -268,10 +271,10 @@ export interface Storage {
 
   dedup(
     messageId: string,
-    opts: { readonly ttlSeconds: number; readonly tx?: unknown },
+    opts: { readonly ttlSeconds: number; readonly tx?: TTx },
   ): Promise<{ readonly duplicate: boolean }>;
 
-  transaction<R>(cb: (tx: unknown) => Promise<R>): Promise<R>;
+  transaction<R>(cb: (tx: TTx) => Promise<R>): Promise<R>;
 
   notify?(channel: string, payload?: string): Promise<void>;
   subscribe?(channel: string, handler: (payload: string) => void): Unsubscribe;
