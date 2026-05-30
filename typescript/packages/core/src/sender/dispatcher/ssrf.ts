@@ -60,25 +60,31 @@ export async function ssrfCheck(
 ): Promise<ResolvedTarget> {
   const parsed = new URL(url);
   const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
-  let ip: string;
-  let family: 4 | 6;
+  const candidates: Array<{ ip: string; family: 4 | 6 }> = [];
   if (isIPv4(hostname)) {
-    ip = hostname;
-    family = 4;
+    candidates.push({ ip: hostname, family: 4 });
   } else if (isIPv6(hostname)) {
-    ip = hostname;
-    family = 6;
+    candidates.push({ ip: hostname, family: 6 });
   } else {
-    const lookupRes = await lookup(hostname);
-    ip = lookupRes.address;
-    family = lookupRes.family === 6 ? 6 : 4;
+    // Validate every resolved address, not just the first — a host with
+    // multiple A/AAAA records where any one points at a private range must be
+    // refused. (Full connection-time pinning of the validated address is the
+    // separate undici-Agent work tracked for the DNS-rebinding requirement.)
+    const resolved = await lookup(hostname, { all: true });
+    for (const entry of resolved) {
+      candidates.push({ ip: entry.address, family: entry.family === 6 ? 6 : 4 });
+    }
+  }
+  if (candidates.length === 0) {
+    const detail = `${hostname} did not resolve to any address`;
+    if (mode === "create") throw new EndpointValidation(`ENDPOINT_VALIDATION: DNS: ${detail}`);
+    throw new SsrfBlocked(`SSRF_BLOCKED: ${detail}`);
   }
   if (policy.blockPrivateRanges) {
-    const ipFamily = family === 4 ? "ipv4" : "ipv6";
-    const blocked = PRIVATE.check(ip, ipFamily);
-    if (blocked) {
-      const allowed = buildAllowedList(policy.allowedRanges).check(ip, ipFamily);
-      if (!allowed) {
+    const allowList = buildAllowedList(policy.allowedRanges);
+    for (const { ip, family } of candidates) {
+      const ipFamily = family === 4 ? "ipv4" : "ipv6";
+      if (PRIVATE.check(ip, ipFamily) && !allowList.check(ip, ipFamily)) {
         const detail = `${hostname} -> ${ip} is in a blocked range`;
         if (mode === "create") {
           throw new EndpointValidation(`ENDPOINT_VALIDATION: SSRF: ${detail}`);
@@ -87,5 +93,6 @@ export async function ssrfCheck(
       }
     }
   }
-  return { hostname, ip, family };
+  const first = candidates[0] as { ip: string; family: 4 | 6 };
+  return { hostname, ip: first.ip, family: first.family };
 }

@@ -98,6 +98,12 @@ export interface EndpointRecord {
   readonly http: unknown | null;
   readonly circuitBreaker: unknown | null;
   readonly autoDisable: unknown | null;
+  // Code-side filter / transform callbacks. These are JS functions, not
+  // serializable data — adapters that own a real DB (Postgres, SQLite, …)
+  // hold them in a code-side registry keyed by endpoint id; the in-memory
+  // adapter stores them directly on the row.
+  readonly filter: ((event: unknown) => boolean) | null;
+  readonly transform: ((event: unknown) => unknown) | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -117,6 +123,11 @@ export interface EndpointWithSecrets {
   readonly endpoint: EndpointRecord;
   readonly secrets: ReadonlyArray<EndpointSecretRecord>;
 }
+
+// Insert shape for endpoints. `filter` / `transform` are optional code-side
+// callbacks; adapters default them to null when omitted.
+export type NewEndpoint = Omit<EndpointRecord, "createdAt" | "updatedAt" | "filter" | "transform"> &
+  Partial<Pick<EndpointRecord, "filter" | "transform">>;
 
 export interface ReserveBatchOpts {
   readonly workerId: WorkerId;
@@ -211,10 +222,7 @@ export interface Storage<TTx = unknown> {
   };
 
   endpoints: {
-    readonly create: (
-      rec: Omit<EndpointRecord, "createdAt" | "updatedAt">,
-      opts?: HostTxOption,
-    ) => Promise<EndpointRecord>;
+    readonly create: (rec: NewEndpoint, opts?: HostTxOption) => Promise<EndpointRecord>;
     readonly update: (
       id: EndpointId,
       patch: Partial<EndpointRecord>,

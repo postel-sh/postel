@@ -1,7 +1,35 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { type Clock, Postel } from "@postel/core";
+import {
+  type Clock,
+  ExponentialBackoff,
+  LinearBackoff,
+  Postel,
+  PostelError,
+  type RetryStrategy,
+} from "@postel/core";
 import { InMemoryStorage } from "@postel/memory";
+
+function normalizeRetryPolicy(raw: unknown): RetryStrategy | undefined {
+  if (raw === null || typeof raw !== "object") return undefined;
+  const obj = raw as {
+    schedule?: ReadonlyArray<string | number>;
+    step?: string | number;
+    jitter?: number;
+    maxAttempts?: number;
+  };
+  if (Array.isArray(obj.schedule)) {
+    return ExponentialBackoff({
+      schedule: obj.schedule,
+      ...(obj.jitter !== undefined ? { jitter: obj.jitter } : {}),
+      ...(obj.maxAttempts !== undefined ? { maxAttempts: obj.maxAttempts } : {}),
+    });
+  }
+  if (obj.step !== undefined && obj.maxAttempts !== undefined) {
+    return LinearBackoff({ step: obj.step, maxAttempts: obj.maxAttempts });
+  }
+  return undefined;
+}
 
 interface SenderHost {
   postel: ReturnType<typeof Postel<{ outbound: { storage: ReturnType<typeof InMemoryStorage> } }>>;
@@ -108,11 +136,12 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
             tenantId?: string;
             as?: string;
           };
+          const retryPolicy = normalizeRetryPolicy(body.retryPolicy);
           const ep = await host.postel.outbound.endpoints.create({
             url: body.url,
             ...(body.types !== undefined ? { types: body.types } : {}),
             ...(body.channels !== undefined ? { channels: body.channels } : {}),
-            ...(body.retryPolicy !== undefined ? { retryPolicy: body.retryPolicy as never } : {}),
+            ...(retryPolicy !== undefined ? { retryPolicy } : {}),
             ...(body.headers !== undefined ? { headers: body.headers } : {}),
             ...(body.allowHttp !== undefined ? { allowHttp: body.allowHttp } : {}),
             ...(body.tenantId !== undefined ? { tenantId: body.tenantId } : {}),
@@ -209,6 +238,13 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
 
         send(res, 404, { error: "not_found" });
       } catch (err) {
+        if (err instanceof PostelError) {
+          // Validation / protocol failures map to a 4xx the runner classifies as
+          // a structured reject — not an internal server error.
+          res.setHeader("X-Postel-Verify-Error", err.code);
+          send(res, 422, { error_code: err.code, error: err.message });
+          return;
+        }
         send(res, 500, { error: (err as Error).message });
       }
     })();

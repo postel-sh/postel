@@ -70,7 +70,15 @@ export function buildHttpDispatcher(deps: HttpDispatcherDeps): DispatchOne {
   ): Promise<DispatchOutcome> => {
     const startedAt = ctx.clock.now();
     const endpoint = endpointWithSecrets.endpoint;
-    const filterResult = evaluateFilter(endpoint, msg);
+    const filterFn =
+      typeof endpoint.filter === "function"
+        ? (endpoint.filter as (event: unknown) => boolean)
+        : undefined;
+    const transformFn =
+      typeof endpoint.transform === "function"
+        ? (endpoint.transform as (event: unknown) => unknown)
+        : undefined;
+    const filterResult = evaluateFilter(endpoint, msg, filterFn);
     if (filterResult.mode === "filtered") {
       return { status: "filtered", responseCode: null, latencyMs: 0, error: null };
     }
@@ -82,7 +90,7 @@ export function buildHttpDispatcher(deps: HttpDispatcherDeps): DispatchOne {
         error: `FILTER_THREW: ${filterResult.error ?? "unknown"}`,
       };
     }
-    const transformResult = evaluateTransform(msg);
+    const transformResult = evaluateTransform(msg, transformFn);
     if (transformResult.error !== undefined) {
       return {
         status: "failed",
@@ -188,6 +196,9 @@ export function buildHttpDispatcher(deps: HttpDispatcherDeps): DispatchOne {
       responseCode: response.status,
       latencyMs,
       error: decision.status === "success" ? null : `HTTP_${response.status}`,
+      ...(decision.retryAfterSeconds !== undefined
+        ? { retryAfterSeconds: decision.retryAfterSeconds }
+        : {}),
     };
   };
 }

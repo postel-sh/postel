@@ -92,7 +92,7 @@ export function buildRetryDispatcher(
       const decision = nextSchedule(
         policy,
         msg.attemptNumber,
-        undefined,
+        outcome.retryAfterSeconds,
         deps.clock.now(),
         deps.jitterRng ?? Math.random,
       );

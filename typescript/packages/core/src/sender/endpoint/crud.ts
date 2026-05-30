@@ -1,8 +1,15 @@
 import { bytesToBase64 } from "../../internal/base64.js";
-import type { Endpoint, EndpointCreateOptions, EndpointUpdateOptions } from "../../outbound.js";
+import type {
+  Endpoint,
+  EndpointCreateOptions,
+  EndpointUpdateOptions,
+  HttpDefaults,
+} from "../../outbound.js";
 import type { EndpointRecord, EndpointState, Storage } from "../../storage/types.js";
 import { DEFAULT_SSRF_POLICY, type SsrfPolicy } from "../dispatcher/ssrf.js";
 import { validateEndpointUrl } from "./url-validation.js";
+
+type SsrfOverride = HttpDefaults["ssrf"];
 
 export interface EndpointDefaults {
   readonly ssrf?: SsrfPolicy;
@@ -39,18 +46,17 @@ export function buildEndpointApi(
   disable(id: string, opts?: { tx?: unknown }): Promise<void>;
 } {
   const ssrfDefault = defaults.ssrf ?? DEFAULT_SSRF_POLICY;
+  const resolveSsrfPolicy = (override: SsrfOverride): SsrfPolicy => {
+    if (!override) return ssrfDefault;
+    return {
+      blockPrivateRanges: override.blockPrivateRanges ?? ssrfDefault.blockPrivateRanges,
+      allowedRanges: override.allowedRanges ?? ssrfDefault.allowedRanges,
+    };
+  };
   return {
     async create(opts, runtime) {
       const allowHttp = opts.allowHttp === true;
-      const ssrfPolicy = ((): SsrfPolicy => {
-        const base = ssrfDefault;
-        const perEndpoint = opts.http?.ssrf;
-        if (!perEndpoint) return base;
-        return {
-          blockPrivateRanges: perEndpoint.blockPrivateRanges ?? base.blockPrivateRanges,
-          allowedRanges: perEndpoint.allowedRanges ?? base.allowedRanges,
-        };
-      })();
+      const ssrfPolicy = resolveSsrfPolicy(opts.http?.ssrf);
       await validateEndpointUrl({ url: opts.url, allowHttp, ssrfPolicy });
       const rec = await storage.endpoints.create(
         {
@@ -69,12 +75,29 @@ export function buildEndpointApi(
           http: opts.http ?? null,
           circuitBreaker: opts.circuitBreaker ?? null,
           autoDisable: opts.autoDisable ?? null,
+          filter: opts.filter ?? null,
+          transform: opts.transform ?? null,
         },
         runtime,
       );
       return toPublicEndpoint(rec);
     },
     async update(id, opts, runtime) {
+      // URL-affecting fields must re-run create-time validation against the
+      // effective (post-patch) values, otherwise a safe HTTPS endpoint could be
+      // downgraded to a cleartext or SSRF-eligible URL.
+      if (opts.url !== undefined || opts.allowHttp !== undefined || opts.http !== undefined) {
+        const current = await storage.endpoints.get(id, runtime);
+        if (!current) throw new Error(`endpoint not found: ${id}`);
+        const effectiveUrl = opts.url ?? current.url;
+        const effectiveAllowHttp = opts.allowHttp ?? current.allowHttp;
+        const effectiveHttp = opts.http ?? (current.http as HttpDefaults | null) ?? undefined;
+        await validateEndpointUrl({
+          url: effectiveUrl,
+          allowHttp: effectiveAllowHttp,
+          ssrfPolicy: resolveSsrfPolicy(effectiveHttp?.ssrf),
+        });
+      }
       const patch: { -readonly [K in keyof EndpointRecord]?: EndpointRecord[K] } = {};
       if (opts.url !== undefined) patch.url = opts.url;
       if (opts.types !== undefined) patch.types = opts.types;
@@ -89,6 +112,8 @@ export function buildEndpointApi(
       if (opts.circuitBreaker !== undefined) patch.circuitBreaker = opts.circuitBreaker;
       if (opts.autoDisable !== undefined) patch.autoDisable = opts.autoDisable;
       if (opts.tenantId !== undefined) patch.tenantId = opts.tenantId;
+      if (opts.filter !== undefined) patch.filter = opts.filter;
+      if (opts.transform !== undefined) patch.transform = opts.transform;
       const rec = await storage.endpoints.update(id, patch, runtime);
       return toPublicEndpoint(rec);
     },

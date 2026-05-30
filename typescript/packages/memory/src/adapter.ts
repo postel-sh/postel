@@ -449,7 +449,13 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
     endpoints: {
       async create(rec, opts) {
         const now = clock.now();
-        const full: EndpointRecord = { ...rec, createdAt: now, updatedAt: now };
+        const full: EndpointRecord = {
+          ...rec,
+          filter: rec.filter ?? null,
+          transform: rec.transform ?? null,
+          createdAt: now,
+          updatedAt: now,
+        };
         await writeLock.run(async () => {
           inTx(opts, () => {
             endpoints.set(full.id, full);
