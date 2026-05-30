@@ -1,6 +1,6 @@
-import type { Clock } from "@postel/core";
-import { Postel } from "@postel/core";
 import { describe, expect, it } from "vitest";
+import type { Clock } from "../src/index.js";
+import { Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
 

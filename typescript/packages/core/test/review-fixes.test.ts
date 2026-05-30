@@ -1,7 +1,7 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { ExponentialBackoff, Postel } from "@postel/core";
 import { describe, expect, it } from "vitest";
+import { ExponentialBackoff, Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
 

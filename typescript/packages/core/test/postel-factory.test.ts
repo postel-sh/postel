@@ -17,7 +17,7 @@ import {
   SignatureInvalid,
   signFixture,
 } from "../src/index.js";
-import { StorageStub } from "./_storage-stub.js";
+import { InMemoryStorage } from "../src/index.js";
 
 const TEST_SECRET_A = "whsec_ZGVtby1zZWNyZXQtYS1mb3ItcG9zdGVsLXRlc3Q=";
 const TEST_SECRET_B = "whsec_ZGVtby1zZWNyZXQtYi1mb3ItcG9zdGVsLXRlc3Q=";
@@ -31,7 +31,7 @@ const PAYLOAD = {
 describe("Postel factory returns the library instance", () => {
   it("Type inference for the outbound surface", () => {
     const postel = Postel({
-      outbound: { storage: StorageStub(), signing: HmacV1() },
+      outbound: { storage: InMemoryStorage(), signing: HmacV1() },
     });
     expect(typeof postel.outbound.send).toBe("function");
     expect(typeof postel.outbound.endpoints.create).toBe("function");
@@ -67,7 +67,7 @@ describe("Public function signatures match Standard Webhooks event shape", () =>
       readonly id: string;
       readonly amount_cents: number;
     }
-    const postel = Postel({ outbound: { storage: StorageStub() } });
+    const postel = Postel({ outbound: { storage: InMemoryStorage() } });
     const id = await postel.outbound.send<OrderCreated>({
       type: "order.created",
       data: { id: "order_42", amount_cents: 1999 },
@@ -78,7 +78,7 @@ describe("Public function signatures match Standard Webhooks event shape", () =>
 
 describe("All writes accept an optional transaction parameter", () => {
   it("Transactional create: outbound.endpoints.create accepts { tx }", () => {
-    const postel = Postel({ outbound: { storage: StorageStub() } });
+    const postel = Postel({ outbound: { storage: InMemoryStorage() } });
     // The create signature is what's exercised by the type system; runtime
     // validation against a real URL lives in dispatcher.test.ts under the
     // "Endpoint CRUD" requirement description. Confirm the method shape here.
@@ -242,7 +242,7 @@ describe("Conditional optionality of outbound and inbound", () => {
   });
 
   it("Outbound-only consumer: postel.inbound is a TypeScript error", () => {
-    const postel = Postel({ outbound: { storage: StorageStub() } });
+    const postel = Postel({ outbound: { storage: InMemoryStorage() } });
     // @ts-expect-error — inbound not configured
     expect(postel.inbound).toBeUndefined();
     expect(typeof postel.outbound.send).toBe("function");
@@ -250,7 +250,7 @@ describe("Conditional optionality of outbound and inbound", () => {
 
   it("Both configured: outbound and inbound both present", () => {
     const postel = Postel({
-      outbound: { storage: StorageStub() },
+      outbound: { storage: InMemoryStorage() },
       inbound: { github: { verify: Secret(TEST_SECRET_A) } },
     });
     expect(typeof postel.outbound.send).toBe("function");
@@ -263,7 +263,7 @@ describe("Outbound defaults are overridable per endpoint", () => {
   it("Per-endpoint retry override: outbound.endpoints.create accepts retryPolicy override (type-level)", () => {
     const postel = Postel({
       outbound: {
-        storage: StorageStub(),
+        storage: InMemoryStorage(),
         retryPolicy: ExponentialBackoff(),
         workers: InProcess({ concurrency: 4 }),
         signing: Ed25519V1a(),
@@ -277,7 +277,7 @@ describe("Outbound defaults are overridable per endpoint", () => {
 
   it("Per-endpoint TLS opt-out: outbound.endpoints.create accepts http.tls override (type-level)", () => {
     const postel = Postel({
-      outbound: { storage: StorageStub(), http: { tls: { verify: true } } },
+      outbound: { storage: InMemoryStorage(), http: { tls: { verify: true } } },
     });
     expect(typeof postel.outbound.endpoints.create).toBe("function");
     const opts = { url: "https://customer.example.test/hook", http: { tls: { verify: false } } };
@@ -316,7 +316,11 @@ describe("Inbound dedup wiring", () => {
   });
 
   it("dedup threads tx through to the adapter so it can participate in host transactions", async () => {
-    let captured: { messageId?: string; ttlSeconds?: number; options?: DedupRecordOptions } = {};
+    let captured: {
+      messageId?: string;
+      ttlSeconds?: number;
+      options?: DedupRecordOptions | undefined;
+    } = {};
     const capturingAdapter: DedupAdapter = {
       async record(messageId, ttlSeconds, options) {
         captured = { messageId, ttlSeconds, options };
@@ -336,7 +340,7 @@ describe("Inbound dedup wiring", () => {
   });
 
   it("dedup passes undefined options when no tx is provided (not { tx: undefined })", async () => {
-    let captured: { options?: DedupRecordOptions } = {};
+    let captured: { options?: DedupRecordOptions | undefined } = {};
     const capturingAdapter: DedupAdapter = {
       async record(_messageId, _ttlSeconds, options) {
         captured = { options };

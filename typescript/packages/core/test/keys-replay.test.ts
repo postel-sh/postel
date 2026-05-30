@@ -1,5 +1,5 @@
-import { Postel } from "@postel/core";
 import { describe, expect, it } from "vitest";
+import { Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
 

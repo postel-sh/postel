@@ -1,7 +1,7 @@
+import { type Clock, systemClock } from "../../clock.js";
 import type {
   AttemptId,
   AttemptStatsResult,
-  Clock,
   EndpointId,
   EndpointRecord,
   EndpointSecretRecord,
@@ -22,12 +22,11 @@ import type {
   SecretAlgorithm,
   Storage,
   StorageCapabilities,
-  StorageUnsubscribe,
   TenantId,
   TenantRecord,
+  Unsubscribe,
   WorkerId,
-} from "@postel/core";
-import { systemClock } from "@postel/core";
+} from "../types.js";
 import { AsyncMutex } from "./mutex.js";
 import { type InMemoryTx, createTx, isInMemoryTx } from "./tx.js";
 
@@ -735,7 +734,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
       notifyChannel(channel, payload ?? "");
     },
 
-    subscribe(channel, handler): StorageUnsubscribe {
+    subscribe(channel, handler): Unsubscribe {
       const set = listeners.get(channel) ?? new Set<(payload: string) => void>();
       set.add(handler);
       listeners.set(channel, set);
@@ -745,13 +744,3 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
     },
   };
 }
-
-// Type-only re-exports for use in tests (avoids circular imports through @postel/core).
-export type {
-  EndpointId,
-  MessageId,
-  ReservedMessage,
-  SecretAlgorithm,
-  EndpointSecretStatus,
-  EndpointState,
-};

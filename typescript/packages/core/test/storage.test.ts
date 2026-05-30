@@ -1,5 +1,5 @@
-import type { Clock, NewMessage, ReservedMessage } from "@postel/core";
 import { describe, expect, it } from "vitest";
+import type { Clock, NewMessage, ReservedMessage } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
 

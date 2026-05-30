@@ -62,6 +62,9 @@ export type { InMemoryDedupOptions } from "./dedup.js";
 export { ttlToSeconds } from "./ttl.js";
 export { systemClock } from "./clock.js";
 export type { Clock } from "./clock.js";
+export { InMemoryStorage } from "./storage/memory/adapter.js";
+export type { InMemoryStorageOptions } from "./storage/memory/adapter.js";
+export type { InMemoryTx } from "./storage/memory/tx.js";
 export type {
   AttemptId,
   AttemptStatsResult,

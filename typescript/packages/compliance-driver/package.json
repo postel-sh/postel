@@ -31,8 +31,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@postel/core": "workspace:*",
-    "@postel/memory": "workspace:*"
+    "@postel/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "20.17.10"

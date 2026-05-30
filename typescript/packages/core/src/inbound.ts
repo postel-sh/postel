@@ -16,7 +16,7 @@ import type { Verifier } from "./strategies/verify.js";
 
 export interface InboundSource {
   readonly verify: Verifier | ReadonlyArray<Verifier>;
-  readonly dedup?: DedupAdapter;
+  readonly dedup?: DedupAdapter | undefined;
   readonly dedupTtl?: number | string;
   readonly tolerance?: number;
   readonly now?: () => Date;

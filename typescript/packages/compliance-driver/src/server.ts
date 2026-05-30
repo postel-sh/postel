@@ -3,12 +3,12 @@ import type { AddressInfo } from "node:net";
 import {
   type Clock,
   ExponentialBackoff,
+  InMemoryStorage,
   LinearBackoff,
   Postel,
   PostelError,
   type RetryStrategy,
 } from "@postel/core";
-import { InMemoryStorage } from "@postel/memory";
 
 function normalizeRetryPolicy(raw: unknown): RetryStrategy | undefined {
   if (raw === null || typeof raw !== "object") return undefined;
