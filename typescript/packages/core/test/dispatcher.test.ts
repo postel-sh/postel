@@ -402,14 +402,10 @@ describe("TLS verification by default", () => {
   });
 });
 
-describe("DNS rebinding protection", () => {
-  it("Pinned IP: same-attempt connection uses one resolved IP; mid-connection DNS changes don't redirect", () => {
-    // DNS pinning needs an undici Agent. The dispatcher resolves once per attempt
-    // and the request is sent with the URL as-is; the underlying fetch implementation
-    // owns the connection. PR-T5 wires undici properly with connect.lookup pinning.
-    expect(true).toBe(true);
-  });
-});
+// NOTE: "DNS rebinding protection" (connection-time pinning of the validated
+// IP) is deferred — the dispatcher validates all resolved addresses but does not
+// yet pin the fetch connection to a checked IP. It stays in
+// scripts/spec-drift-deferred.txt until the undici-Agent pinning lands.
 
 describe("Endpoint deletion semantics", () => {
   it("Default deletion preserves audit trail: endpoint row removed, attempts kept, final state transition recorded", async () => {

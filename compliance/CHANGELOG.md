@@ -29,9 +29,9 @@ Every test addition, modification, or removal lands here. Each entry cites:
 > - `--mock-receiver-host` (default `127.0.0.1`).
 > - `--mock-receiver-port` (default `0` = ephemeral).
 >
-> ### v0.2.0 sender vectors landing in PR-C2
+> ### v0.2.0 sender vectors
 >
-> ~30 vectors across 11 sub-categories: `sender/wire-output/*` (4), `sender/idempotency/*` (2), `sender/fanout/*` (3), `sender/ttl/*` (2), `sender/retry-schedule/*` (4), `sender/deadlines/*` (2), `sender/ssrf-tls/*` (3), `sender/dead-letter/*` (2), `sender/filtering/*` (4), `sender/late-binding/*` (2), `sender/multi-tenancy/*` (2). The PR-C1 framework PR landed two stub vectors under `sender/wire-output/hmac-v1-byte-stable.yaml` and `sender/idempotency/duplicate-key-no-dispatch.yaml`.
+> ~30 vectors across 11 sub-categories: `sender/wire-output/*` (4), `sender/idempotency/*` (2), `sender/fanout/*` (3), `sender/ttl/*` (2), `sender/retry-schedule/*` (4), `sender/deadlines/*` (2), `sender/ssrf-tls/*` (3), `sender/dead-letter/*` (2), `sender/filtering/*` (4), `sender/late-binding/*` (2), `sender/multi-tenancy/*` (2). The full corpus lands in this change alongside the runner sender-mode framework and the `@postel/compliance-driver` control plane. The Go runner's sender-mode execution engine (mock-receiver embedding + per-vector assertion) is the remaining piece tracked for a follow-up; until it lands the sender vectors validate against the schema and are driven end-to-end through the TS driver's own test suite.
 >
 > ### Out of scope at v0.2.0 (deferred to v0.3+)
 >

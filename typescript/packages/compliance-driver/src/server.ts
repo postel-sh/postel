@@ -141,6 +141,7 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
             signing?: { fixture_id?: string };
             retryPolicy?: unknown;
             headers?: Record<string, string>;
+            http?: unknown;
             allowHttp?: boolean;
             tenantId?: string;
             as?: string;
@@ -152,6 +153,7 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
             ...(body.channels !== undefined ? { channels: body.channels } : {}),
             ...(retryPolicy !== undefined ? { retryPolicy } : {}),
             ...(body.headers !== undefined ? { headers: body.headers } : {}),
+            ...(body.http !== undefined ? { http: body.http as never } : {}),
             ...(body.allowHttp !== undefined ? { allowHttp: body.allowHttp } : {}),
             ...(body.tenantId !== undefined ? { tenantId: body.tenantId } : {}),
           });
@@ -171,6 +173,35 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
           }
           if (body.as !== undefined) host.endpointAliases.set(body.as, ep.id);
           send(res, 200, { endpointId: ep.id });
+          return;
+        }
+
+        if (method === "POST" && path === "/control/endpoints/update") {
+          const body = (await readJson(req)) as {
+            target: string;
+            endpoint?: {
+              url?: string;
+              types?: string[];
+              channels?: string[];
+              retryPolicy?: unknown;
+              headers?: Record<string, string>;
+              http?: unknown;
+              allowHttp?: boolean;
+            };
+          };
+          const endpointId = host.endpointAliases.get(body.target) ?? body.target;
+          const patch = body.endpoint ?? {};
+          const retryPolicy = normalizeRetryPolicy(patch.retryPolicy);
+          await host.postel.outbound.endpoints.update(endpointId, {
+            ...(patch.url !== undefined ? { url: patch.url } : {}),
+            ...(patch.types !== undefined ? { types: patch.types } : {}),
+            ...(patch.channels !== undefined ? { channels: patch.channels } : {}),
+            ...(retryPolicy !== undefined ? { retryPolicy } : {}),
+            ...(patch.headers !== undefined ? { headers: patch.headers } : {}),
+            ...(patch.http !== undefined ? { http: patch.http as never } : {}),
+            ...(patch.allowHttp !== undefined ? { allowHttp: patch.allowHttp } : {}),
+          });
+          send(res, 200, { endpointId });
           return;
         }
 

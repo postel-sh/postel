@@ -88,9 +88,13 @@ export class Worker {
         msg,
         this.opts.dispatchOne,
       );
+      await this.opts.storage.releaseLease(msg.id, this.opts.id);
+    } catch {
+      // An unexpected dispatch error must not kill the worker loop. Leave the
+      // lease to expire so the janitor (expireStaleLeases) reclaims the message
+      // with natural backoff rather than hot-looping; another worker retries it.
     } finally {
       clearInterval(renewTimer);
-      await this.opts.storage.releaseLease(msg.id, this.opts.id);
       this.active -= 1;
     }
   }

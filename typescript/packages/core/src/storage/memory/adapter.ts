@@ -325,11 +325,27 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
       return writeLock.run(async () => {
         const row = messages.get(messageId);
         if (!row) return;
-        row.scheduledFor = opts.scheduledFor;
-        row.reservedBy = null;
-        row.reservedAt = null;
-        row.leaseExpiresAt = null;
-        row.status = "pending";
+        const prev = {
+          scheduledFor: row.scheduledFor,
+          reservedBy: row.reservedBy,
+          reservedAt: row.reservedAt,
+          leaseExpiresAt: row.leaseExpiresAt,
+          status: row.status,
+        };
+        inTx(opts, () => {
+          row.scheduledFor = opts.scheduledFor;
+          row.reservedBy = null;
+          row.reservedAt = null;
+          row.leaseExpiresAt = null;
+          row.status = "pending";
+          recordRollback(opts, () => {
+            row.scheduledFor = prev.scheduledFor;
+            row.reservedBy = prev.reservedBy;
+            row.reservedAt = prev.reservedAt;
+            row.leaseExpiresAt = prev.leaseExpiresAt;
+            row.status = prev.status;
+          });
+        });
       });
     },
 

@@ -55,4 +55,43 @@ describe("Sender-side compliance driver mechanism", () => {
     expect(res.status).toBe(200);
     await driver.stop();
   });
+
+  it("update_endpoint patches a registered endpoint by alias (late-binding support)", async () => {
+    const driver = await startDriver();
+    const created = await fetch(`${driver.url}/control/endpoints`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        url: "http://127.0.0.1:65535/h",
+        allowHttp: true,
+        types: ["evt.x"],
+        headers: { "x-config-rev": "1" },
+        as: "ep_main",
+      }),
+    });
+    const { endpointId } = (await created.json()) as { endpointId: string };
+    const updated = await fetch(`${driver.url}/control/endpoints/update`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ target: "ep_main", endpoint: { headers: { "x-config-rev": "2" } } }),
+    });
+    const body = (await updated.json()) as { endpointId: string };
+    expect(updated.status).toBe(200);
+    expect(body.endpointId).toBe(endpointId);
+    await driver.stop();
+  });
+
+  it("a private-IP endpoint is rejected at registration with a structured 422 error_code", async () => {
+    const driver = await startDriver();
+    const res = await fetch(`${driver.url}/control/endpoints`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: "http://10.0.0.5/hook", allowHttp: true, types: ["evt.x"] }),
+    });
+    expect(res.status).toBe(422);
+    expect(res.headers.get("x-postel-verify-error")).toBe("ENDPOINT_VALIDATION");
+    const body = (await res.json()) as { error_code: string };
+    expect(body.error_code).toBe("ENDPOINT_VALIDATION");
+    await driver.stop();
+  });
 });

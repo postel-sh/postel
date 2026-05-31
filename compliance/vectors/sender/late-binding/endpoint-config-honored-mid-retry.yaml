@@ -3,7 +3,11 @@ mode: sender
 requirement:
   capability: filtering-transformation
   title: Late binding at dispatch time
-description: Endpoint retry config changes between attempts are honored — the retry uses the latest values.
+description: >-
+  A custom header ADDED to the endpoint after the first failed attempt appears
+  on the retry — the dispatcher binds endpoint config at dispatch time, so a
+  header absent at send time but present after an update is honored on the next
+  attempt.
 secrets:
   - id: primary
     fixture: hmac_primary.yaml
@@ -17,17 +21,28 @@ triggers:
     endpoint:
       url: "{{mock_receiver_url}}/lb2"
       types: ["evt.x"]
-      retryPolicy: { schedule: ["200ms"], jitter: 0, maxAttempts: 2 }
+      retryPolicy: { schedule: ["1s"], jitter: 0, maxAttempts: 3 }
       signing: { fixture_id: hmac_primary }
   - op: start_workers
     concurrency: 1
   - op: send
     event: { type: evt.x }
   - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+  - op: update_endpoint
+    target: ep_lb2
+    endpoint:
+      headers: { "x-added-after-send": "yes" }
+  - op: wait_for
     request_count: 2
     timeout_ms: 4000
 expected_requests:
   - endpoint: ep_lb2
+    headers_absent: ["x-added-after-send"]
+    attempt_status: failed
   - endpoint: ep_lb2
+    headers_match: { "x-added-after-send": "yes" }
+    attempt_status: success
 expected:
   outcome: accept

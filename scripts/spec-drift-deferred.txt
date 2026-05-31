@@ -85,6 +85,13 @@ Verify latency budgets
 
 # retry-policy — sender-side (entries covered by retry.test.ts)
 
+# sender — sender-side (other entries covered by sender/dispatcher tests)
+# DNS rebinding protection: the dispatcher validates every resolved address but
+# does not yet pin the fetch connection to a checked IP, so the full
+# connection-time defense is not implemented. Deferred until the undici Agent
+# (connect.lookup pinning) lands.
+DNS rebinding protection
+
 # standard-webhooks-compliance — non-v0.1.0 extensions / wrap
 Wraps the official signing library
 Versioning extension via webhook-version header

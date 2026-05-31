@@ -1,0 +1,51 @@
+id: sender/late-binding/headers-changed-between-retries
+mode: sender
+requirement:
+  capability: filtering-transformation
+  title: Late binding at dispatch time
+description: >-
+  Endpoint config is resolved per-attempt at dispatch time, not frozen at send
+  time. The first attempt fails (503), the endpoint's custom headers are updated
+  between attempts, and the retry carries the UPDATED header value — proving the
+  dispatcher re-reads endpoint config on each attempt. (Filter/transform
+  callbacks are code-side functions and can't travel over the control plane, so
+  late binding is exercised here via the serializable custom-headers field.)
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  scripted_responses:
+    - { status: 503 }
+    - { status: 200 }
+triggers:
+  - op: register_endpoint
+    as: ep_lb
+    endpoint:
+      url: "{{mock_receiver_url}}/lb"
+      types: ["order.created"]
+      headers: { "x-config-rev": "1" }
+      retryPolicy: { schedule: ["1s"], jitter: 0, maxAttempts: 3 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: order.created, data: { v: 1 } }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+  - op: update_endpoint
+    target: ep_lb
+    endpoint:
+      headers: { "x-config-rev": "2" }
+  - op: wait_for
+    request_count: 2
+    timeout_ms: 4000
+expected_requests:
+  - endpoint: ep_lb
+    headers_match: { "x-config-rev": "1" }
+    attempt_status: failed
+  - endpoint: ep_lb
+    headers_match: { "x-config-rev": "2" }
+    attempt_status: success
+expected:
+  outcome: accept

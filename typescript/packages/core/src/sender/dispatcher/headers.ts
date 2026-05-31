@@ -15,16 +15,14 @@ export async function signAndBuildHeaders(
   input: SignedHeadersInput,
 ): Promise<Record<string, string>> {
   const tuples: string[] = [];
-  const primary = input.secrets[0];
-  if (!primary) throw new Error("endpoint has no signing secret");
+  if (input.secrets.length === 0) throw new Error("endpoint has no primary signing secret");
   const canonical = new TextEncoder().encode(
     `${input.messageId}.${input.timestampSeconds}.${input.body}`,
   );
-  const usable: EndpointSecretRecord[] = [primary];
-  for (const s of input.secrets.slice(1)) {
-    if (s.status === "primary") usable.push(s);
-  }
-  for (const sec of usable) {
+  // The caller passes only `primary` secrets (one per algorithm). Verifying /
+  // expiring secrets exist for the receiver's rotation-overlap window and MUST
+  // NOT be used for outbound signing.
+  for (const sec of input.secrets) {
     const secretString = new TextDecoder().decode(sec.encryptedValue);
     const decoded = decodeSecret(secretString);
     if (sec.algorithm === "v1" && decoded.kind === "hmac") {
@@ -36,6 +34,7 @@ export async function signAndBuildHeaders(
       tuples.push(`v1a,${sig}`);
     }
   }
+  if (tuples.length === 0) throw new Error("no usable primary signing secret");
   const headers: Record<string, string> = {
     "webhook-id": input.messageId,
     "webhook-timestamp": String(input.timestampSeconds),

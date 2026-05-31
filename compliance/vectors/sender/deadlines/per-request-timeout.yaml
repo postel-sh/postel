@@ -15,6 +15,11 @@ triggers:
     endpoint:
       url: "{{mock_receiver_url}}/hook"
       types: ["evt.slow"]
+      # Per-request timeout well under the receiver's 2000ms delay, so the
+      # request is aborted and recorded failed rather than succeeding on the
+      # 30s default.
+      http: { requestTimeout: "200ms" }
+      retryPolicy: { schedule: ["1s"], jitter: 0, maxAttempts: 1 }
       signing: { fixture_id: hmac_primary }
   - op: start_workers
     concurrency: 1

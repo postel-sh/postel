@@ -136,10 +136,13 @@ export function buildHttpDispatcher(deps: HttpDispatcherDeps): DispatchOne {
         ? transformResult.body
         : JSON.stringify(transformResult.body);
     const timestampSeconds = Math.floor(startedAt.getTime() / 1000);
-    const eligibleSecrets: EndpointSecretRecord[] = endpointWithSecrets.secrets.filter(
-      (s) => s.status !== "expiring",
-    );
-    if (eligibleSecrets.length === 0) {
+    // Outbound signing uses ONLY primary secrets (one per algorithm), ordered by
+    // priority. Verifying / expiring secrets exist for the receiver's rotation
+    // overlap window and must never sign outgoing requests.
+    const signingSecrets: EndpointSecretRecord[] = endpointWithSecrets.secrets
+      .filter((s) => s.status === "primary")
+      .sort((a, b) => a.priority - b.priority);
+    if (signingSecrets.length === 0) {
       return {
         status: "failed",
         responseCode: null,
@@ -147,16 +150,29 @@ export function buildHttpDispatcher(deps: HttpDispatcherDeps): DispatchOne {
         error: "NO_SIGNING_SECRET",
       };
     }
-    const headers: Record<string, string> = await signAndBuildHeaders({
-      messageId: msg.id,
-      timestampSeconds,
-      body: bodyString,
-      secrets: eligibleSecrets,
-      version: msg.version,
-    });
-    headers["user-agent"] = resolveUserAgent(endpoint, deps.defaults);
-    const custom = resolveCustomHeaders(endpoint, { id: msg.id, type: msg.type, data: msg.data });
-    for (const [k, v] of Object.entries(custom)) headers[k] = v;
+    // Signing and custom-header resolution can throw (malformed secret bytes, a
+    // throwing header callback). Fail closed: record a failed attempt so retry
+    // policy / dead-letter handles it, rather than letting the throw kill the worker.
+    let headers: Record<string, string>;
+    try {
+      headers = await signAndBuildHeaders({
+        messageId: msg.id,
+        timestampSeconds,
+        body: bodyString,
+        secrets: signingSecrets,
+        version: msg.version,
+      });
+      headers["user-agent"] = resolveUserAgent(endpoint, deps.defaults);
+      const custom = resolveCustomHeaders(endpoint, { id: msg.id, type: msg.type, data: msg.data });
+      for (const [k, v] of Object.entries(custom)) headers[k] = v;
+    } catch (e) {
+      return {
+        status: "failed",
+        responseCode: null,
+        latencyMs: 0,
+        error: `HEADER_BUILD_FAILED: ${(e as Error).message}`,
+      };
+    }
     const requestTimeoutMs = resolveTimeoutMs(endpoint, deps.defaults);
     const remainingMs = Math.max(0, deadlineMs - elapsed);
     const ms = Math.min(requestTimeoutMs, remainingMs);

@@ -87,9 +87,17 @@
         "properties": {
           "op": {
             "type": "string",
-            "enum": ["register_endpoint", "send", "start_workers", "advance_clock", "wait_for"]
+            "enum": [
+              "register_endpoint",
+              "update_endpoint",
+              "send",
+              "start_workers",
+              "advance_clock",
+              "wait_for"
+            ]
           },
           "as": { "type": "string" },
+          "target": { "type": "string" },
           "endpoint": { "type": "object" },
           "event": { "type": "object" },
           "concurrency": { "type": "integer", "minimum": 1 },
