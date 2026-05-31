@@ -407,7 +407,7 @@ The backward direction (every v0.1.0-scope CONTRACT requirement is covered) is e
 Some CONTRACT requirements from capability specs SHALL be deferred from the current MINOR's corpus and land in a later MINOR (or MAJOR) when the architecture for testing them is decided. As of v0.2.0 the deferred set is:
 
 - `sender` — Send participates in the host transaction (requires a host-DB hook; not trivially observable through the control plane), Send latency budget (perf benchmark harness), Worker throughput target (perf benchmark harness), Outbox poll latency (perf benchmark harness), DNS rebinding protection (the dispatcher validates resolved addresses but does not yet pin the connection to a checked IP).
-- `filtering-transformation` — Late binding at dispatch time (the config-change-between-attempts vectors need a control-plane `update_endpoint` op and an executing sender-mode runner; the new-endpoint-after-send facet is already covered by `sender/fanout/late-binding-new-endpoint`).
+- `filtering-transformation` — Late binding at dispatch time (the config-change-between-attempts vectors need a control-plane `update_endpoint` op and an executing sender-mode runner; the new-endpoint-after-send facet is already covered by `sender/fanout/late-binding-new-endpoint`), Transform produces body to send and Filter and transform errors fail closed (both are code-side host-callback behaviors — a transform/predicate is a function, not JSON, so they cannot be expressed over the HTTP control plane until a named-callback registration mechanism is designed; they remain CONTRACT and stay covered by each port's unit suite).
 - `retry-policy` — Per-endpoint circuit breaker (full state-machine assertions land in v0.3 when an `attempt_status` history endpoint stabilizes), Endpoint auto-disable (full 24-hour-window assertions need a virtual-clock-driven driver protocol that lands in v0.3).
 - `replay-reconciliation` — entire chapter deferred to v0.3.
 - `multi-tenancy` — Per-tenant rate limits, Worker fairness across tenants, Tenant deletion cascades (full assertions need storage observability the control plane doesn't expose at v0.2).
@@ -496,14 +496,12 @@ The v0.2.0 corpus SHALL cover the following CONTRACT requirements via sender-mod
 | `endpoint-management` | Endpoint state machine with audit trail |
 | `filtering-transformation` | Type filter with glob support |
 | `filtering-transformation` | Channel filter |
-| `filtering-transformation` | Transform produces body to send |
-| `filtering-transformation` | Filter and transform errors fail closed |
 | `standard-webhooks-compliance` | Compliant headers, signatures, payload structure, and prefixes by default |
 | `multi-tenancy` | Tenant-scoped persistence |
 
 The vector enumeration spans ~28 files across 10 sub-categories: `sender/wire-output/*` (4), `sender/idempotency/*` (2), `sender/fanout/*` (3), `sender/ttl/*` (2), `sender/retry-schedule/*` (4), `sender/deadlines/*` (2), `sender/ssrf-tls/*` (3), `sender/dead-letter/*` (2), `sender/filtering/*` (4), `sender/multi-tenancy/*` (2).
 
-`filtering-transformation` "Late binding at dispatch time" is intentionally NOT in this corpus: exercising a config change between attempts needs a control-plane `update_endpoint` op, which is deferred (see `Out-of-scope behaviors at the current MINOR`). The behavior remains covered by the reference port's unit suite and, at the corpus level, by `sender/fanout/late-binding-new-endpoint` (an endpoint created after `send()` is picked up at dispatch).
+The `filtering-transformation` corpus covers the two filter shapes that the wire-driven control plane can express — type-glob and channel — each with a match and a no-match vector (`sender/filtering/{type-filter-glob-match,type-filter-glob-no-match,channel-filter-match,channel-filter-no-match}`). Three `filtering-transformation` CONTRACTs are intentionally NOT in this corpus and are deferred (see `Out-of-scope behaviors at the current MINOR`): "Late binding at dispatch time" needs a control-plane `update_endpoint` op (its new-endpoint facet stays covered by `sender/fanout/late-binding-new-endpoint`); "Transform produces body to send" and "Filter and transform errors fail closed" are code-side host-callback behaviors — a transform/predicate is a function, not JSON, so neither is expressible over the control plane — and stay covered by each port's unit suite. The contract-set table lists exactly the requirements some vector's `requirement` field names, so the enumeration scenario's union check holds.
 
 #### Scenario: All v0.2.0 contracts and vectors enumerated
 

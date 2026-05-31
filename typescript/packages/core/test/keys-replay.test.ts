@@ -1,7 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { Postel } from "../src/index.js";
+import { type Clock, InMemoryStorage, Postel } from "../src/index.js";
 
-import { InMemoryStorage } from "../src/index.js";
+const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
+
+function FakeClock(
+  initial = new Date("2026-05-31T10:00:00Z"),
+): Clock & { advance(ms: number): void } {
+  let current = initial;
+  return {
+    now: () => current,
+    sleep: async (ms: number) => {
+      current = new Date(current.getTime() + ms);
+    },
+    advance: (ms: number) => {
+      current = new Date(current.getTime() + ms);
+    },
+  };
+}
+
+async function tick(ms = 150): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 describe("Symmetric secret generation", () => {
   it("Generated secret format: starts with whsec_ and carries at least 256 bits of base64 entropy", () => {
@@ -188,24 +207,124 @@ describe("Replay safety contract", () => {
 });
 
 describe("Replay attempts tagged for audit", () => {
-  it("Replay tag visible: replayed attempts inherit the replay_of audit field on attempts", async () => {
-    // The audit-tag wiring is exercised in the dispatcher path; this entry names the
-    // requirement so the spec-drift gate sees coverage.
-    expect(true).toBe(true);
+  it("Replay tag visible: replayed attempts carry replay_of referencing the original message id", async () => {
+    const storage = InMemoryStorage();
+    // Unresolvable URL → dispatch fails fast but still records an attempt, which
+    // is all we need to assert the replay_of tag flows onto attempts.
+    const ep = await storage.endpoints.create({
+      id: "ep_audit",
+      tenantId: null,
+      url: "https://does-not-resolve.invalid/hook",
+      state: "active",
+      types: ["evt.x"],
+      channels: null,
+      retryPolicy: null,
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: false,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    await storage.secrets.insert({
+      id: "sec_audit",
+      endpointId: ep.id,
+      algorithm: "v1",
+      status: "primary",
+      priority: 0,
+      encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+      notAfter: null,
+    });
+    const postel = Postel({ outbound: { storage } });
+    const originalId = await postel.outbound.send({ type: "evt.x" });
+    await storage.markMessageFinal(originalId, "dispatched");
+    await postel.outbound.replay({ messageId: originalId, freshWebhookId: true });
+
+    let freshId: string | undefined;
+    for await (const m of storage.rangeQuery({})) {
+      if (m.replayOf === originalId) freshId = m.id;
+    }
+    expect(freshId).toBeDefined();
+
+    await postel.start();
+    await tick(250);
+    await postel.stop();
+    const attempts = await storage.attempts.latestForMessage(freshId as string);
+    expect(attempts.length).toBeGreaterThan(0);
+    expect(attempts.every((a) => a.replayOf === originalId)).toBe(true);
+  });
+
+  it("Reused-id replay tags the rescheduled row's attempts with replay_of", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage } });
+    const id = await postel.outbound.send({ type: "evt.x" });
+    await storage.markMessageFinal(id, "dispatched");
+    await postel.outbound.replay({ messageId: id, freshWebhookId: false });
+    let replayOf: string | null | undefined;
+    for await (const m of storage.rangeQuery({})) {
+      if (m.id === id) replayOf = m.replayOf;
+    }
+    expect(replayOf).toBe(id);
   });
 });
 
 describe("Replay rate limiting", () => {
-  it("Throttled replay: replayThroughput option is honored when re-enqueuing", () => {
-    // The throttle gate is wired in replayImpl. End-to-end throughput verification
-    // belongs in the compliance suite when timing-sensitive vectors land.
-    expect(true).toBe(true);
+  it("Throttled replay: replayThroughput caps re-enqueue rate per second", async () => {
+    const clock = FakeClock();
+    const storage = InMemoryStorage({ clock });
+    const postel = Postel({ outbound: { storage, clock } });
+    for (let i = 0; i < 5; i++) {
+      const id = await postel.outbound.send({ type: "evt.x", data: { i } });
+      await storage.markMessageFinal(id, "dispatched");
+    }
+    const before = clock.now().getTime();
+    await postel.outbound.replay({
+      endpointId: "ep_any",
+      since: new Date(0),
+      freshWebhookId: false,
+      replayThroughput: 2,
+    });
+    // 5 re-enqueues at 2/sec ⇒ two 1s pacing sleeps on the virtual clock.
+    expect(clock.now().getTime() - before).toBeGreaterThanOrEqual(2000);
   });
 });
 
 describe("Default replay throughput", () => {
-  it("Default throttle applied: 100 replay attempts per second per endpoint by default (parameter wiring)", () => {
-    expect(true).toBe(true);
+  it("Default throttle applied: the configured default throughput paces re-enqueues when no per-call rate is given", async () => {
+    const clock = FakeClock();
+    const storage = InMemoryStorage({ clock });
+    const postel = Postel({ outbound: { storage, clock, replay: { defaultThroughput: 3 } } });
+    for (let i = 0; i < 7; i++) {
+      const id = await postel.outbound.send({ type: "evt.x", data: { i } });
+      await storage.markMessageFinal(id, "dispatched");
+    }
+    const before = clock.now().getTime();
+    await postel.outbound.replay({
+      endpointId: "ep_any",
+      since: new Date(0),
+      freshWebhookId: false,
+    });
+    // 7 re-enqueues at the configured default of 3/sec ⇒ two pacing sleeps.
+    expect(clock.now().getTime() - before).toBeGreaterThanOrEqual(2000);
+  });
+
+  it("Small replays under the 100/sec default are not paced", async () => {
+    const clock = FakeClock();
+    const storage = InMemoryStorage({ clock });
+    const postel = Postel({ outbound: { storage, clock } });
+    for (let i = 0; i < 4; i++) {
+      const id = await postel.outbound.send({ type: "evt.x", data: { i } });
+      await storage.markMessageFinal(id, "dispatched");
+    }
+    const before = clock.now().getTime();
+    await postel.outbound.replay({
+      endpointId: "ep_any",
+      since: new Date(0),
+      freshWebhookId: false,
+    });
+    expect(clock.now().getTime() - before).toBe(0);
   });
 });
 

@@ -61,7 +61,12 @@ async function startMockServer(
 async function seedEndpoint(
   storage: ReturnType<typeof InMemoryStorage>,
   url: string,
-  opts: { types?: string[]; channels?: string[] } = {},
+  opts: {
+    types?: string[];
+    channels?: string[];
+    transform?: (event: unknown) => unknown;
+    filter?: (event: unknown) => boolean;
+  } = {},
 ): Promise<void> {
   const endpoint = await storage.endpoints.create({
     id: "ep_test",
@@ -79,6 +84,8 @@ async function seedEndpoint(
     http: null,
     circuitBreaker: null,
     autoDisable: null,
+    ...(opts.transform !== undefined ? { transform: opts.transform } : {}),
+    ...(opts.filter !== undefined ? { filter: opts.filter } : {}),
   });
   await storage.secrets.insert({
     id: "sec_test",
@@ -349,9 +356,59 @@ describe("Transform produces body to send", () => {
 });
 
 describe("Filter and transform errors fail closed", () => {
-  it("Transform throws: dispatcher records the attempt as failed and skips this attempt rather than retrying infinitely", () => {
-    // Covered by the filter-transform unit logic; see evaluateTransform.
-    expect(true).toBe(true);
+  it("Transform throws: nothing is delivered and the attempt is recorded as failed (not silently sent)", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), {
+      types: ["order.created"],
+      transform: () => {
+        throw new Error("boom");
+      },
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const messageId = await postel.outbound.send({
+      type: "order.created",
+      data: { id: "ord_1" },
+    });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests()).toHaveLength(0);
+    const attempts = await storage.attempts.latestForMessage(messageId);
+    expect(attempts.length).toBeGreaterThanOrEqual(1);
+    for (const attempt of attempts) {
+      expect(attempt.status).toBe("failed");
+      expect(attempt.error).toContain("TRANSFORM_THREW");
+    }
+  });
+
+  it("Filter throws: nothing is delivered and the attempt is recorded as filtered (closed, not open)", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), {
+      filter: () => {
+        throw new Error("boom");
+      },
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const messageId = await postel.outbound.send({
+      type: "order.created",
+      data: { id: "ord_1" },
+    });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests()).toHaveLength(0);
+    const attempts = await storage.attempts.latestForMessage(messageId);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.status).toBe("filtered");
+    expect(attempts[0]?.error).toContain("FILTER_THREW");
   });
 });
 

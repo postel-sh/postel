@@ -12,6 +12,23 @@ export interface ReplayContext {
   readonly defaultThroughput?: number;
 }
 
+// Paces re-enqueues to at most `perSecond` per rolling 1s window so a large
+// range/predicate replay doesn't flood downstream receivers once workers pick
+// the messages up. Uses the injected clock's sleep (a no-op-but-advances under
+// FakeClock; a real wait under systemClock).
+function makeReplayPacer(perSecond: number, clock: Clock): () => Promise<void> {
+  let windowStart = clock.now().getTime();
+  let inWindow = 0;
+  return async () => {
+    inWindow += 1;
+    if (inWindow <= perSecond) return;
+    const elapsed = clock.now().getTime() - windowStart;
+    if (elapsed < 1000) await clock.sleep(1000 - elapsed);
+    windowStart = clock.now().getTime();
+    inWindow = 1;
+  };
+}
+
 async function rescheduleOne(
   storage: Storage,
   clock: Clock,
@@ -50,13 +67,18 @@ async function rescheduleOne(
         ttlSeconds: null,
         createdAt: clock.now(),
         expiresAt: original.expiresAt,
+        // Tag the fresh row so its attempts reference the original message id.
+        replayOf: originalId,
       },
       tx !== undefined ? { tx } : undefined,
     );
     return;
   }
+  // Reused id: re-deliver the same row; tag it as a replay of itself so its new
+  // attempts are distinguishable from the original delivery in the audit trail.
   await storage.rescheduleMessage(originalId, {
     scheduledFor: clock.now(),
+    replayOf: originalId,
     ...(tx !== undefined ? { tx } : {}),
   });
 }
@@ -76,11 +98,12 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
     "replayThroughput" in opts && opts.replayThroughput !== undefined
       ? opts.replayThroughput
       : (ctx.defaultThroughput ?? DEFAULT_REPLAY_THROUGHPUT);
-  void throttle;
+  const pace = makeReplayPacer(throttle, ctx.clock);
   let count = 0;
   if ("filter" in opts) {
     const predicate = opts.filter;
     for await (const m of ctx.storage.rangeQuery({ predicate })) {
+      await pace();
       await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
       count += 1;
     }
@@ -99,6 +122,7 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
   }
   if (opts.types !== undefined) filter.types = opts.types;
   for await (const m of ctx.storage.rangeQuery(filter)) {
+    await pace();
     await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
     count += 1;
   }

@@ -42,6 +42,9 @@ export interface NewMessage {
   readonly ttlSeconds: number | null;
   readonly createdAt: Date;
   readonly expiresAt: Date | null;
+  // Set on a fresh-id replay to the original message id, so attempts produced
+  // for this row are tagged as replay traffic in the audit trail.
+  readonly replayOf?: MessageId | null;
 }
 
 export interface InsertOrReuseResult {
@@ -177,6 +180,9 @@ export interface AttemptStatsResult {
 export interface RescheduleOpts {
   readonly scheduledFor: Date;
   readonly tx?: unknown;
+  // Set on a reused-id replay so the row's subsequent attempts are tagged as
+  // replay traffic (replay_of references the original message id).
+  readonly replayOf?: MessageId;
 }
 
 export interface Storage<TTx = unknown> {

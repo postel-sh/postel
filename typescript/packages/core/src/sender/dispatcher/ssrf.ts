@@ -47,6 +47,22 @@ function buildAllowedList(ranges: ReadonlyArray<string>): BlockList {
   return bl;
 }
 
+function normalizeMappedV4(ip: string, family: 4 | 6): { ip: string; family: 4 | 6 } {
+  if (family !== 6) return { ip, family };
+  const match = /^::ffff:(.+)$/i.exec(ip);
+  if (!match) return { ip, family };
+  const rest = match[1] as string;
+  if (isIPv4(rest)) return { ip: rest, family: 4 };
+  const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(rest);
+  if (hex) {
+    const hi = Number.parseInt(hex[1] as string, 16);
+    const lo = Number.parseInt(hex[2] as string, 16);
+    const dotted = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    if (isIPv4(dotted)) return { ip: dotted, family: 4 };
+  }
+  return { ip, family };
+}
+
 export interface ResolvedTarget {
   readonly hostname: string;
   readonly ip: string;
@@ -82,7 +98,11 @@ export async function ssrfCheck(
   }
   if (policy.blockPrivateRanges) {
     const allowList = buildAllowedList(policy.allowedRanges);
-    for (const { ip, family } of candidates) {
+    for (const candidate of candidates) {
+      // Collapse IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1 / ::ffff:7f00:1) to the
+      // embedded IPv4 so it's checked against the IPv4 private ranges rather than
+      // slipping past the IPv6-only checks.
+      const { ip, family } = normalizeMappedV4(candidate.ip, candidate.family);
       const ipFamily = family === 4 ? "ipv4" : "ipv6";
       if (PRIVATE.check(ip, ipFamily) && !allowList.check(ip, ipFamily)) {
         const detail = `${hostname} -> ${ip} is in a blocked range`;

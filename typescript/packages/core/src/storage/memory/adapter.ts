@@ -179,7 +179,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
         status: "pending",
         attemptNumber: 0,
         scheduledFor: null,
-        replayOf: null,
+        replayOf: msg.replayOf ?? null,
       };
       return writeLock.run(async () => {
         inTx(opts, () => {
@@ -331,6 +331,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
           reservedAt: row.reservedAt,
           leaseExpiresAt: row.leaseExpiresAt,
           status: row.status,
+          replayOf: row.replayOf,
         };
         inTx(opts, () => {
           row.scheduledFor = opts.scheduledFor;
@@ -338,12 +339,14 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
           row.reservedAt = null;
           row.leaseExpiresAt = null;
           row.status = "pending";
+          if (opts.replayOf !== undefined) row.replayOf = opts.replayOf;
           recordRollback(opts, () => {
             row.scheduledFor = prev.scheduledFor;
             row.reservedBy = prev.reservedBy;
             row.reservedAt = prev.reservedAt;
             row.leaseExpiresAt = prev.leaseExpiresAt;
             row.status = prev.status;
+            row.replayOf = prev.replayOf;
           });
         });
       });
