@@ -39,7 +39,6 @@ type VectorExpected struct {
 type VectorTrigger struct {
 	Op           string                 `yaml:"op" json:"op"`
 	As           string                 `yaml:"as,omitempty" json:"as,omitempty"`
-	Target       string                 `yaml:"target,omitempty" json:"target,omitempty"`
 	Endpoint     map[string]interface{} `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
 	Event        map[string]interface{} `yaml:"event,omitempty" json:"event,omitempty"`
 	Concurrency  int                    `yaml:"concurrency,omitempty" json:"concurrency,omitempty"`
