@@ -229,3 +229,78 @@ describe("URL validation at create time", () => {
     ).rejects.toThrow(/HTTPS-required/);
   });
 });
+
+describe("Per-message TTL", () => {
+  it("a numeric ttl is interpreted as seconds, not milliseconds", async () => {
+    const server = await startServer(() => 200);
+    const storage = InMemoryStorage();
+    const ep = await storage.endpoints.create({
+      id: "ep_ttl_secs",
+      tenantId: null,
+      url: server.url(),
+      state: "active",
+      types: ["evt.x"],
+      channels: null,
+      retryPolicy: null,
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: true,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    await insertSecret(storage, ep.id);
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    // ttl: 60 must mean 60 seconds. If it were 60ms the message would expire
+    // before the worker (which starts ~tens of ms later) ever dispatches it.
+    const id = await postel.outbound.send({ type: "evt.x", ttl: 60 });
+    await postel.start();
+    await tick(250);
+    await postel.stop();
+    await server.close();
+    expect(server.hits().length).toBe(1);
+    const attempts = await storage.attempts.latestForMessage(id);
+    expect(attempts.some((a) => a.status === "expired")).toBe(false);
+    expect(attempts.some((a) => a.status === "success")).toBe(true);
+  });
+});
+
+describe("SSRF protection on outbound delivery", () => {
+  it("an ssrf-blocked attempt is retried (message stays pending) until the schedule is exhausted", async () => {
+    const storage = InMemoryStorage();
+    // Inserted directly (bypassing create-time validation) so the block happens
+    // at dispatch. No allowlist → 10.0.0.5 is refused on every attempt.
+    const ep = await storage.endpoints.create({
+      id: "ep_ssrf_retry",
+      tenantId: null,
+      url: "http://10.0.0.5/hook",
+      state: "active",
+      types: ["evt.x"],
+      channels: null,
+      retryPolicy: ExponentialBackoff({ schedule: ["50ms"], maxAttempts: 2, jitter: 0 }),
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: true,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    await insertSecret(storage, ep.id);
+    const postel = Postel({ outbound: { storage } });
+    const id = await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(400);
+    await postel.stop();
+    const attempts = await storage.attempts.latestForMessage(id);
+    // First attempt ssrf-blocked, then a retry, then dead-letter on exhaustion —
+    // proving the message was NOT finalized after the first ssrf-blocked.
+    expect(attempts.filter((a) => a.status === "ssrf-blocked").length).toBeGreaterThanOrEqual(1);
+    expect(attempts.some((a) => a.status === "dead-letter")).toBe(true);
+  });
+});

@@ -30,8 +30,10 @@ export async function sendImpl(
   let ttlSeconds: number | null = null;
   let expiresAt: Date | null = null;
   if (event.ttl !== undefined) {
-    const ms = durationToMs(event.ttl);
-    ttlSeconds = Math.floor(ms / 1000);
+    // Numeric TTL is seconds (consistent with ttlToSeconds and the seconds-
+    // granularity messages.ttl_seconds column); string TTL is a duration.
+    const ms = typeof event.ttl === "number" ? event.ttl * 1000 : durationToMs(event.ttl);
+    ttlSeconds = Math.max(0, Math.floor(ms / 1000));
     expiresAt = new Date(createdAt.getTime() + ms);
   }
   const id = newMessageId();

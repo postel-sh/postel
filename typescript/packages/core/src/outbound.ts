@@ -250,7 +250,10 @@ export function buildOutboundRuntime<TTx = unknown>(
       get: endpointApi.get,
       disable: endpointApi.disable,
       async rotateSecret(id, opts) {
-        await rotateSecret(config.storage, clock, id, { keepPreviousFor: opts.keepPreviousFor });
+        await rotateSecret(config.storage, clock, id, {
+          keepPreviousFor: opts.keepPreviousFor,
+          ...(opts.tx !== undefined ? { tx: opts.tx } : {}),
+        });
       },
     },
     keys: {

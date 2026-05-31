@@ -108,7 +108,11 @@ export async function dispatchMessage(
     const startedAt = ctx.clock.now();
     const outcome = await dispatchOne(ctx, msg, endpoint);
     const completedAt = ctx.clock.now();
-    if (outcome.status === "failed") {
+    // The retry orchestrator reschedules both `failed` and `ssrf-blocked`
+    // outcomes (it only returns `dead-letter` once the schedule is exhausted),
+    // so the message must stay pending for either — otherwise the reschedule is
+    // immediately overwritten by markMessageFinal below.
+    if (outcome.status === "failed" || outcome.status === "ssrf-blocked") {
       anyRetryable = true;
     }
     await ctx.storage.recordAttempt({

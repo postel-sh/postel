@@ -12,6 +12,7 @@ function newSecretId(): string {
 
 export interface RotateOptions {
   readonly keepPreviousFor: number | string;
+  readonly tx?: unknown;
 }
 
 export async function rotateSecret(
@@ -24,7 +25,7 @@ export async function rotateSecret(
   const now = clock.now();
   const retention = durationToMs(opts.keepPreviousFor);
   const expiresAt = new Date(now.getTime() + retention);
-  await storage.transaction(async (tx) => {
+  const rotate = async (tx: unknown): Promise<void> => {
     for (const s of existing) {
       if (s.status === "primary") {
         await storage.secrets.setStatus(s.id, "verifying", expiresAt, { tx });
@@ -43,5 +44,12 @@ export async function rotateSecret(
       },
       { tx },
     );
-  });
+  };
+  // Honor host-transaction passthrough: when the caller supplies a tx, run the
+  // rotation writes inside it rather than opening an independent transaction.
+  if (opts.tx !== undefined) {
+    await rotate(opts.tx);
+    return;
+  }
+  await storage.transaction(rotate);
 }

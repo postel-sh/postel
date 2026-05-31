@@ -4,6 +4,7 @@ import {
   type Clock,
   ExponentialBackoff,
   InMemoryStorage,
+  InProcess,
   LinearBackoff,
   Postel,
   PostelError,
@@ -53,18 +54,26 @@ function controlClock(initial = new Date()): Clock & { advance(ms: number): void
   };
 }
 
-function newHost(): SenderHost {
-  const clock = controlClock();
-  const storage = InMemoryStorage({ clock });
-  const postel = Postel({
+function buildPostel(
+  storage: ReturnType<typeof InMemoryStorage>,
+  clock: Clock,
+  concurrency?: number,
+): SenderHost["postel"] {
+  return Postel({
     outbound: {
       storage,
       clock,
       http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } },
+      ...(concurrency !== undefined ? { workers: InProcess({ concurrency }) } : {}),
     },
   });
+}
+
+function newHost(): SenderHost {
+  const clock = controlClock();
+  const storage = InMemoryStorage({ clock });
   return {
-    postel,
+    postel: buildPostel(storage, clock),
     storage,
     endpointAliases: new Map(),
     fixtures: new Map(),
@@ -194,6 +203,12 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
 
         if (method === "POST" && path === "/control/workers/start") {
           if (!host.workersStarted) {
+            const body = (await readJson(req)) as { concurrency?: number };
+            if (body.concurrency !== undefined) {
+              // Rebuild the outbound runtime with the requested worker count over
+              // the same storage/clock (no dispatch happens until start()).
+              host.postel = buildPostel(host.storage, host.clock, body.concurrency);
+            }
             await host.postel.start();
             host.workersStarted = true;
           }

@@ -230,7 +230,14 @@
         ]
       },
       "then": {
-        "required": ["input", "signature_mode"]
+        "required": ["input", "signature_mode"],
+        "not": {
+          "anyOf": [
+            { "required": ["triggers"] },
+            { "required": ["mock_receiver"] },
+            { "required": ["expected_requests"] }
+          ]
+        }
       }
     },
     {
@@ -239,7 +246,10 @@
         "required": ["mode"]
       },
       "then": {
-        "required": ["triggers"]
+        "required": ["triggers"],
+        "not": {
+          "anyOf": [{ "required": ["input"] }, { "required": ["signature_mode"] }]
+        }
       }
     },
     {

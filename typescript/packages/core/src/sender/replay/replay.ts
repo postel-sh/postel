@@ -17,6 +17,7 @@ async function rescheduleOne(
   clock: Clock,
   originalId: MessageId,
   freshWebhookId: boolean,
+  tx: unknown,
 ): Promise<void> {
   if (freshWebhookId) {
     const records: unknown[] = [];
@@ -37,21 +38,27 @@ async function rescheduleOne(
       | undefined;
     if (!original) return;
     const newId = newMessageId();
-    await storage.insertMessage({
-      id: newId,
-      tenantId: original.tenantId,
-      type: original.type,
-      data: original.data,
-      channels: original.channels,
-      idempotencyKey: null,
-      version: original.version,
-      ttlSeconds: null,
-      createdAt: clock.now(),
-      expiresAt: original.expiresAt,
-    });
+    await storage.insertMessage(
+      {
+        id: newId,
+        tenantId: original.tenantId,
+        type: original.type,
+        data: original.data,
+        channels: original.channels,
+        idempotencyKey: null,
+        version: original.version,
+        ttlSeconds: null,
+        createdAt: clock.now(),
+        expiresAt: original.expiresAt,
+      },
+      tx !== undefined ? { tx } : undefined,
+    );
     return;
   }
-  await storage.rescheduleMessage(originalId, { scheduledFor: clock.now() });
+  await storage.rescheduleMessage(originalId, {
+    scheduledFor: clock.now(),
+    ...(tx !== undefined ? { tx } : {}),
+  });
 }
 
 export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promise<ReplayResult> {
@@ -60,8 +67,9 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
       "ENDPOINT_VALIDATION: replay requires explicit freshWebhookId (true|false) — no implicit default",
     );
   }
+  const tx = opts.tx;
   if ("messageId" in opts) {
-    await rescheduleOne(ctx.storage, ctx.clock, opts.messageId, opts.freshWebhookId);
+    await rescheduleOne(ctx.storage, ctx.clock, opts.messageId, opts.freshWebhookId, tx);
     return { enqueued: 1 };
   }
   const throttle =
@@ -73,7 +81,7 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
   if ("filter" in opts) {
     const predicate = opts.filter;
     for await (const m of ctx.storage.rangeQuery({ predicate })) {
-      await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId);
+      await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
       count += 1;
     }
     return { enqueued: count };
@@ -91,7 +99,7 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
   }
   if (opts.types !== undefined) filter.types = opts.types;
   for await (const m of ctx.storage.rangeQuery(filter)) {
-    await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId);
+    await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
     count += 1;
   }
   return { enqueued: count };
