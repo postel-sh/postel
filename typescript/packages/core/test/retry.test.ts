@@ -264,6 +264,29 @@ describe("Per-endpoint circuit breaker", () => {
     expect(transitions.some((t) => t.reason === "circuit-open")).toBe(true);
   });
 
+  it("Circuit-open message is not dropped: it stays pending and delivers after the breaker cools down", async () => {
+    const server = await startServerWithSequence([503, 200]);
+    const storage = InMemoryStorage();
+    const endpointId = await seedEndpoint(storage, server.url(), {
+      retryPolicy: ExponentialBackoff({ schedule: ["20ms"], maxAttempts: 5, jitter: 0 }),
+      circuitBreaker: { threshold: 1, cooldown: "100ms" },
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const id = await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(800);
+    await postel.stop();
+    await server.close();
+    // First attempt 503 opens the breaker; the circuit-open skip must NOT
+    // finalize the message — it reschedules past the cooldown and the second
+    // attempt (after the breaker closes) delivers successfully.
+    expect(server.requests().length).toBeGreaterThanOrEqual(2);
+    const attempts = await storage.attempts.latestForMessage(id);
+    expect(attempts.some((a) => a.status === "success")).toBe(true);
+  });
+
   it("Circuit state is keyed unambiguously by tenant: null and empty-string tenants do not share a breaker", async () => {
     const storage = InMemoryStorage();
     const endpointId = await seedEndpoint(storage, "https://example.test/hook");

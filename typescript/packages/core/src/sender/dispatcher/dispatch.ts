@@ -18,6 +18,11 @@ export interface DispatchOutcome {
   readonly latencyMs: number;
   readonly error: string | null;
   readonly retryAfterSeconds?: number;
+  // Set when a non-failed outcome must still keep the message pending for a
+  // later reservation (e.g. a circuit-open `skipped`, which the orchestrator has
+  // already rescheduled past the cooldown). Without this the message would be
+  // finalized and the delivery permanently dropped.
+  readonly keepPending?: boolean;
 }
 
 const TERMINAL_PER_ENDPOINT: ReadonlySet<NewAttempt["status"]> = new Set([
@@ -119,11 +124,17 @@ export async function dispatchMessage(
     const startedAt = ctx.clock.now();
     const outcome = await dispatchOne(ctx, msg, endpoint);
     const completedAt = ctx.clock.now();
-    // The retry orchestrator reschedules both `failed` and `ssrf-blocked`
-    // outcomes (it only returns `dead-letter` once the schedule is exhausted),
-    // so the message must stay pending for either — otherwise the reschedule is
-    // immediately overwritten by markMessageFinal below.
-    if (outcome.status === "failed" || outcome.status === "ssrf-blocked") {
+    // The retry orchestrator reschedules `failed`, `ssrf-blocked`, and
+    // circuit-open (`keepPending`) outcomes (it only returns `dead-letter` once
+    // the schedule is exhausted), so the message must stay pending for any of
+    // them — otherwise the reschedule is immediately overwritten by
+    // markMessageFinal below and the delivery is dropped. This runs before the
+    // dedup `continue` so a deduped circuit-open skip still keeps the message.
+    if (
+      outcome.status === "failed" ||
+      outcome.status === "ssrf-blocked" ||
+      outcome.keepPending === true
+    ) {
       anyRetryable = true;
     }
     // Collapse a run of identical non-delivery outcomes (e.g. an endpoint that

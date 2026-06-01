@@ -9,6 +9,7 @@ import type {
 import type { RetryStrategy } from "../../strategies/retry.js";
 import type { DispatchContext, DispatchOne, DispatchOutcome } from "../dispatcher/dispatch.js";
 import type { PostelEventEmitter } from "../events.js";
+import { durationToMs } from "../internal/duration.js";
 import { evaluateAutoDisable } from "./auto-disable.js";
 import { CircuitBreakerRegistry } from "./circuit.js";
 import { nextSchedule, resolveStrategy } from "./schedule.js";
@@ -52,11 +53,20 @@ export function buildRetryDispatcher(
   ): Promise<DispatchOutcome> => {
     const endpoint = endpointWithSecrets.endpoint;
     if (await circuit.isOpen(msg.tenantId, endpoint.id, endpointCircuit(endpoint))) {
+      // Don't drop the message: reschedule it past the cooldown and flag it so
+      // dispatchMessage keeps it pending. Mirrors the failed-path reschedule.
+      const cooldownMs = durationToMs(
+        endpointCircuit(endpoint)?.cooldown ?? deps.orgCircuitBreaker?.cooldown ?? "30s",
+      );
+      await deps.storage.rescheduleMessage(msg.id, {
+        scheduledFor: new Date(deps.clock.now().getTime() + cooldownMs),
+      });
       return {
         status: "skipped",
         responseCode: null,
         latencyMs: 0,
         error: "CIRCUIT_OPEN",
+        keepPending: true,
       };
     }
     const outcome = await baseDispatcher(ctx, msg, endpointWithSecrets);

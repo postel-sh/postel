@@ -75,12 +75,13 @@ export class Worker {
   private async processOne(msg: ReservedMessage): Promise<void> {
     this.active += 1;
     const renewTimer = setInterval(() => {
-      void this.opts.storage.renewLease(
-        msg.id,
-        this.opts.id,
-        this.opts.leaseMs,
-        this.opts.clock.now(),
-      );
+      this.opts.storage
+        .renewLease(msg.id, this.opts.id, this.opts.leaseMs, this.opts.clock.now())
+        .catch(() => {
+          // Swallow transient renew failures: the lease simply expires and the
+          // janitor reclaims the message. An unhandled rejection from a storage
+          // adapter here could otherwise crash the worker process.
+        });
     }, this.opts.renewIntervalMs);
     try {
       await dispatchMessage(

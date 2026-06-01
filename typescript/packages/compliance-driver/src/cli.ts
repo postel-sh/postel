@@ -11,12 +11,19 @@ async function main(): Promise<void> {
   }
   const driver = await startDriver({ port });
   process.stdout.write(`${JSON.stringify({ port: driver.port, pid: process.pid })}\n`);
-  process.on("SIGTERM", () => {
-    void driver.stop().then(() => process.exit(0));
-  });
-  process.on("SIGINT", () => {
-    void driver.stop().then(() => process.exit(0));
-  });
+  const shutdown = (): void => {
+    driver.stop().then(
+      () => process.exit(0),
+      (err) => {
+        // A failed shutdown must still exit (non-zero) rather than leaving an
+        // unhandled rejection and a process that never terminates.
+        process.stderr.write(`compliance-driver-ts: shutdown failed: ${(err as Error).message}\n`);
+        process.exit(1);
+      },
+    );
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
 main().catch((err) => {
