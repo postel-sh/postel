@@ -152,8 +152,16 @@ func assertSenderExpectations(
 		obsByPath[r.Path] = append(obsByPath[r.Path], r)
 	}
 	expByPath := map[string][]VectorExpectedRequest{}
+	pathOwner := map[string]string{}
 	for _, e := range v.ExpectedRequests {
-		expByPath[endpointPaths[e.Endpoint]] = append(expByPath[endpointPaths[e.Endpoint]], e)
+		path := endpointPaths[e.Endpoint]
+		// Two distinct endpoints resolving to the same mock path would merge into
+		// one bucket and silently weaken the per-endpoint assertions — reject it.
+		if owner, ok := pathOwner[path]; ok && owner != e.Endpoint {
+			return fmt.Sprintf("ambiguous expected_requests: endpoints %q and %q share mock path %q", owner, e.Endpoint, path)
+		}
+		pathOwner[path] = e.Endpoint
+		expByPath[path] = append(expByPath[path], e)
 	}
 	for path, exps := range expByPath {
 		obs := obsByPath[path]

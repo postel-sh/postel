@@ -55,7 +55,9 @@ Six-month deprecation period
 Wire format spec versioning
 Spec-test traceability is enforced in CI
 
-# endpoint-management — sender-side (covered by dispatcher.test.ts + retry.test.ts)
+# endpoint-management — sender-side. Most entries are covered by dispatcher.test.ts
+# + retry.test.ts; the queue-depth cap below is genuinely NOT implemented yet (no
+# back-pressure path) and is deferred until the scheduler work lands.
 Per-endpoint queue depth cap
 
 # filtering-transformation — sender-side (`Late binding at dispatch time` covered in sender.test.ts)

@@ -22,7 +22,7 @@ Error
 └── NotImplementedError              code: "NOT_IMPLEMENTED"
 ```
 
-`NotImplementedError` is **not** a `PostelError` subclass on purpose — it signals a v0.1-vs-v0.2 boundary, not a verification outcome. Don't try to catch it as part of normal flow; it means you're calling outbound code before v0.2 has shipped.
+`NotImplementedError` is **not** a `PostelError` subclass on purpose — it signals a not-yet-implemented configuration option (a worker strategy without an adapter), not a verification outcome. Don't try to catch it as part of normal flow; it means a config slot you selected has no runtime yet.
 
 ## Class reference
 
@@ -87,10 +87,10 @@ if (err instanceof SignatureInvalid) {
 ### `NotImplementedError`
 
 **Code:** `NOT_IMPLEMENTED`
-**Thrown by:** Any `postel.outbound.*` method, in v0.1.
-**When:** You called `postel.outbound.send(...)`, `postel.outbound.replay(...)`, `postel.outbound.endpoints.create(...)`, or any other outbound runtime method. The outbound runtime lands in v0.2.
+**Thrown by:** Configuring a worker strategy that has no runtime yet.
+**When:** You set `outbound.workers` to a non-in-process strategy — `BullMQ(...)`, `PgBoss(...)`, or `External(...)`. The outbound runtime itself ships in v0.2.0; `send`, `replay`, `endpoints.*`, `keys.*`, and `tenants.*` all work against the in-process `InMemoryStorage` adapter. Only the external job-queue strategies are config slots without an adapter today.
 
-**Recovery:** Wait for v0.2. Until then, write your outbound code against the types (TypeScript catches shape mistakes) but don't deploy outbound-using code.
+**Recovery:** Use the in-process worker pool (`InProcess(...)`, the default) until the BullMQ / PgBoss adapters ship. Failing fast here is deliberate — it stops a queue-backed config from silently running in-process.
 
 ## Discriminating by code
 

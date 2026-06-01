@@ -18,7 +18,7 @@ If yes, go to [Quickstart](/docs/quickstart).
 
 ## Is *sending* webhooks part of what you need? (today)
 
-If you need to deliver webhooks to your customers' endpoints — outbox, retries, replay, fanout — **Postel does not ship that yet.** It's planned for v0.2.0. The API surface is designed and typed; nothing runs.
+If you need to deliver webhooks to your customers' endpoints — outbox, retries, replay, fanout — **that ships in v0.2.0**, today against the in-process `InMemoryStorage` adapter (database-backed storage adapters land next; bring your own `Storage` implementation in the meantime).
 
 Until v0.2 ships, your options are:
 

@@ -493,9 +493,3 @@ describe("Endpoint state machine with audit trail", () => {
     expect(target?.actor).toBe("system");
   });
 });
-
-describe("Per-endpoint queue depth cap", () => {
-  it("queue depth at cap: per-endpoint cap deferral path is wired (full deferral semantics land with the scheduler PR)", () => {
-    expect(true).toBe(true);
-  });
-});

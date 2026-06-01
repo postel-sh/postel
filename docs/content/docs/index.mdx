@@ -15,7 +15,7 @@ Postel has two independent halves. Use either alone, or both together.
 | Half | What it does | Status |
 |---|---|---|
 | **[Inbound](/docs/inbound)** | Verify Standard Webhooks-signed requests other services send to you. Constant-time signature checks, multi-secret rotation windows, JWKS, idempotent dedup, raw-bytes preservation. | **Ships today** in `@postel/core` v0.1.x. |
-| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter. | **Planned** for v0.2.0. The types ship today; the runtime throws `NotImplementedError`. |
+| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter. | **Shipping** in v0.2.0, against the in-process `InMemoryStorage` adapter (database adapters next). |
 
 The `Postel({ inbound, outbound })` factory composes both — but everywhere else in these docs they're separated. You shouldn't have to wade through outbound material to integrate the receiver, or vice versa.
 
