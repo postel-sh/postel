@@ -28,19 +28,19 @@ export interface HttpDispatcherDeps {
 function resolvePolicy(endpoint: EndpointRecord, defaults: HttpDefaults): SsrfPolicy {
   const fromEndpoint = (endpoint.http as HttpDefaults | null)?.ssrf;
   const fromDefaults = defaults.ssrf;
-  if (fromEndpoint) {
-    return {
-      blockPrivateRanges: fromEndpoint.blockPrivateRanges ?? DEFAULT_SSRF_POLICY.blockPrivateRanges,
-      allowedRanges: fromEndpoint.allowedRanges ?? [],
-    };
-  }
-  if (fromDefaults) {
-    return {
-      blockPrivateRanges: fromDefaults.blockPrivateRanges ?? DEFAULT_SSRF_POLICY.blockPrivateRanges,
-      allowedRanges: fromDefaults.allowedRanges ?? [],
-    };
-  }
-  return DEFAULT_SSRF_POLICY;
+  // Merge per field — endpoint over org over the built-in default — so a partial
+  // endpoint override (e.g. only blockPrivateRanges) does not silently drop the
+  // org-configured allow-list.
+  return {
+    blockPrivateRanges:
+      fromEndpoint?.blockPrivateRanges ??
+      fromDefaults?.blockPrivateRanges ??
+      DEFAULT_SSRF_POLICY.blockPrivateRanges,
+    allowedRanges:
+      fromEndpoint?.allowedRanges ??
+      fromDefaults?.allowedRanges ??
+      DEFAULT_SSRF_POLICY.allowedRanges,
+  };
 }
 
 function resolveTimeoutMs(endpoint: EndpointRecord, defaults: HttpDefaults): number {

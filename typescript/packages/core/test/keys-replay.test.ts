@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type Clock, InMemoryStorage, Postel } from "../src/index.js";
+import {
+  type Clock,
+  External,
+  InMemoryStorage,
+  NotImplementedError,
+  Postel,
+} from "../src/index.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -465,12 +471,14 @@ describe("Naming convention for tenant scoping", () => {
 });
 
 describe("Adapter mode for external job queues", () => {
-  it("BullMQ adapter: External(adapter) strategy declares the adapter slot (full job-handoff wiring lands when the BullMQ wrapper ships)", () => {
-    // The strategy slot exists in OutboundConfig.workers; the External(adapter)
-    // tagged config is consumed at runtime when the worker pool chooses its
-    // dispatch path. PR-T5 keeps the in-process default; the BullMQ wrapper
-    // wraps a Queue into an ExternalWorkerAdapter post-v0.2 per the plan.
-    expect(true).toBe(true);
+  it("External(adapter) fails fast with NotImplementedError — in-process is the only worker runtime in this release", () => {
+    // The strategy slot exists in OutboundConfig.workers, but there is no
+    // external/bullmq/pg-boss dispatch path yet, so configuring one must throw
+    // rather than silently fall back to the in-process pool.
+    const storage = InMemoryStorage();
+    expect(() => Postel({ outbound: { storage, workers: External({}) } })).toThrow(
+      NotImplementedError,
+    );
   });
 });
 

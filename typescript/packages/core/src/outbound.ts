@@ -198,6 +198,12 @@ export function buildOutboundRuntime<TTx = unknown>(
 ): OutboundRuntime<TTx> {
   const clock: Clock = config.clock ?? systemClock;
   const emitter = new PostelEventEmitter();
+  if (config.workers && config.workers.kind !== "in-process") {
+    // Only the in-process worker pool ships in this release. BullMQ / PgBoss /
+    // external-adapter strategies are tagged config slots with no runtime yet —
+    // fail fast rather than silently running them in-process.
+    notImplemented(`Worker strategy '${config.workers.kind}' (only 'in-process' is supported)`);
+  }
   const concurrency = config.workers?.kind === "in-process" ? config.workers.concurrency : 4;
   const fetchImpl = config.http?.fetch ?? globalThis.fetch;
   const httpDispatcher = buildHttpDispatcher({

@@ -277,15 +277,16 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
   return {
     port: finalPort,
     url: `http://${bindHost}:${finalPort}`,
-    stop: () =>
-      new Promise<void>((resolve, reject) => {
-        if (host.workersStarted) {
-          void host.postel.stop().then(() => {
-            server.close((err) => (err ? reject(err) : resolve()));
-          });
-        } else {
-          server.close((err) => (err ? reject(err) : resolve()));
-        }
-      }),
+    stop: async () => {
+      // Always close the HTTP server, even if stopping the workers rejects, so
+      // stop() can't hang or leak an unhandled rejection; surface either failure.
+      try {
+        if (host.workersStarted) await host.postel.stop();
+      } finally {
+        await new Promise<void>((resolve, reject) =>
+          server.close((err) => (err ? reject(err) : resolve())),
+        );
+      }
+    },
   };
 }

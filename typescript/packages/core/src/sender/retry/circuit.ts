@@ -19,7 +19,10 @@ export class CircuitBreakerRegistry {
   ) {}
 
   private key(tenantId: TenantId | null, endpointId: EndpointId): string {
-    return `${tenantId ?? ""}|${endpointId}`;
+    // Unambiguous encoding: a template like `${tenantId ?? ""}|${endpointId}`
+    // collides for tenantId null vs "" (and for ids containing the separator),
+    // which would share circuit state across distinct tenants.
+    return JSON.stringify([tenantId, endpointId]);
   }
 
   private getState(tenantId: TenantId | null, endpointId: EndpointId): CircuitState {

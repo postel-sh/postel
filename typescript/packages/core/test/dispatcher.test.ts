@@ -66,6 +66,7 @@ async function seedEndpoint(
     channels?: string[];
     transform?: (event: unknown) => unknown;
     filter?: (event: unknown) => boolean;
+    http?: unknown;
   } = {},
 ): Promise<void> {
   const endpoint = await storage.endpoints.create({
@@ -81,7 +82,7 @@ async function seedEndpoint(
     metadata: null,
     allowHttp: true,
     maxInflight: null,
-    http: null,
+    http: (opts.http ?? null) as never,
     circuitBreaker: null,
     autoDisable: null,
     ...(opts.transform !== undefined ? { transform: opts.transform } : {}),
@@ -272,6 +273,26 @@ describe("SSRF protection on outbound delivery", () => {
     expect(attempts.some((a) => a.status === "ssrf-blocked")).toBe(true);
     const ssrf = attempts.find((a) => a.status === "ssrf-blocked");
     expect(ssrf?.error).toMatch(/^SSRF_BLOCKED:/);
+  });
+
+  it("Endpoint override merges with org defaults: a partial endpoint policy keeps the org allow-list", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    // Endpoint sets only blockPrivateRanges; the org allow-list (127.0.0.0/8)
+    // must survive the merge, otherwise the loopback mock server is blocked.
+    await seedEndpoint(storage, server.url(), {
+      types: ["evt.x"],
+      http: { ssrf: { blockPrivateRanges: true } },
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(1);
   });
 });
 

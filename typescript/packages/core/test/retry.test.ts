@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { type Clock, ExponentialBackoff, LinearBackoff, Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
+import { CircuitBreakerRegistry } from "../src/sender/retry/circuit.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -261,6 +262,20 @@ describe("Per-endpoint circuit breaker", () => {
     await server.close();
     const transitions = await storage.endpoints.listStateTransitions(endpointId);
     expect(transitions.some((t) => t.reason === "circuit-open")).toBe(true);
+  });
+
+  it("Circuit state is keyed unambiguously by tenant: null and empty-string tenants do not share a breaker", async () => {
+    const storage = InMemoryStorage();
+    const endpointId = await seedEndpoint(storage, "https://example.test/hook");
+    const registry = new CircuitBreakerRegistry(storage, FakeClock(), {
+      threshold: 1,
+      cooldown: "5s",
+    });
+    await registry.recordOutcome(null, endpointId, false);
+    expect(await registry.isOpen(null, endpointId)).toBe(true);
+    // A distinct (empty-string) tenant id must not inherit the null tenant's
+    // open breaker — the previous `${tenantId ?? ""}` key collapsed them.
+    expect(await registry.isOpen("", endpointId)).toBe(false);
   });
 });
 
