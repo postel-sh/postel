@@ -9,32 +9,36 @@ The outbound half of Postel delivers Standard Webhooks to your customers' HTTP e
 
 If you're verifying webhooks that other services send to you — that's the [inbound half](/docs/inbound), and it ships today.
 
-## What v0.2 will deliver
+## What ships in v0.2.0
 
-| Feature | Why it matters |
-|---|---|
-| **Transactional outbox** | `send()` writes an outbox row inside *your* business transaction. The webhook is queued only if your business write commits — no orphaned events, no "we charged the card but never told the customer." |
-| **Retries with backoff** | Exponential or linear backoff, configurable per endpoint, with circuit breakers and auto-disable on persistent failure. |
-| **Replay as a first-class verb** | `postel.outbound.replay({ messageId })` or `replay({ endpointId, since })`. No queue surgery, no manual SQL. |
-| **Fanout** | One `send()` → N endpoints, filtered by event type, channel, or arbitrary predicate. |
-| **Endpoint lifecycle** | `endpoints.create/update/delete/list/get/disable`, with `rotateSecret({ keepPreviousFor })` for overlap-window rotation. |
-| **Key management** | Symmetric (`generateSymmetric`) and asymmetric (`generateAsymmetric`) key generation. JWKS publication via the inbound [`jwksHandler`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side). |
-| **Multi-tenancy** | Per-tenant rate limits, isolated noisy-neighbor scheduling. |
-| **Worker strategies** | In-process workers by default; pluggable for BullMQ, pg-boss, or external workers. |
-| **KMS integration** | Sign with AWS KMS, GCP KMS, Vault — secrets never leave the boundary. |
-| **Observability** | OpenTelemetry instrumentation across the send pipeline. |
+✅ = available now · ⏳ = config slot present, adapter/runtime lands later.
+
+| Feature | Status | Notes |
+|---|---|---|
+| **Transactional outbox** | ✅ | `send()` writes an outbox row inside *your* business transaction. The webhook is queued only if your business write commits — no orphaned events, no "we charged the card but never told the customer." |
+| **Retries, circuit breaker, dead-letter, auto-disable** | ✅ | Exponential or linear backoff, configurable per endpoint, with circuit breakers and auto-disable on persistent failure. |
+| **Replay as a first-class verb** | ✅ | `replay({ messageId })`, `replay({ endpointId, since })`, or `replay({ filter })`. No queue surgery, no manual SQL. |
+| **Fanout** | ✅ | One `send()` → N endpoints, filtered by event type, channel, or arbitrary predicate. |
+| **Endpoint lifecycle** | ✅ | `endpoints.create/update/delete/list/get/disable`, with `rotateSecret({ keepPreviousFor })` for overlap-window rotation. |
+| **Signing** | ✅ | HMAC (`HmacV1()`) or Ed25519 (`Ed25519V1a()`). Asymmetric signing pairs with JWKS publication so receivers verify without a shared secret. |
+| **Key management** | ✅ | Symmetric (`generateSymmetric`) and asymmetric (`generateAsymmetric`) generation; `rotateSecret` preserves the endpoint's algorithm. JWKS publication via the inbound [`jwksHandler`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side). |
+| **Storage** | ✅ in-memory · ⏳ DB | `InMemoryStorage()` ships now; Postgres / SQLite / ORM adapters land later, or implement the `Storage` interface against your own database. |
+| **Multi-tenancy** | ✅ scoping · ⏳ limits | Tenant-scoped fanout and persistence ship; per-tenant rate-limit *enforcement* and fair-scheduling land later (the config persists today). |
+| **Worker strategies** | ✅ in-process · ⏳ queues | The in-process worker pool ships and is the default; `BullMQ` / `PgBoss` / `External` are config slots that throw `NotImplementedError` until their adapters ship. |
+| **KMS integration** | ⏳ later | `PlaintextKms` only today; AWS KMS / GCP KMS / Vault adapters land later. |
+| **Observability** | ⏳ later | OpenTelemetry instrumentation is deferred. |
 
 ## The mental model
 
 The same `Postel({...})` factory accepts an `outbound` config alongside `inbound`. The two are independent — configure one, both, or neither.
 
 ```ts
-import { Postel, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
+import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
 
 const postel = Postel({
   outbound: {
-    storage: /* your DB connection / ORM, plugged via a storage adapter */,
-    signing: HmacV1(),
+    storage: InMemoryStorage(),    // or a DB-backed Storage adapter in production
+    signing: HmacV1(),             // or Ed25519V1a() for asymmetric signing
     retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
     workers: InProcess({ concurrency: 4 }),
   },

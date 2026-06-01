@@ -12,11 +12,16 @@ Error messages are safe to log — they never contain the secret or the signatur
 ```
 Error
 └── PostelError                      (abstract)
-    ├── MalformedHeader              code: "MALFORMED_HEADER"
-    ├── TimestampTooOld              code: "TIMESTAMP_TOO_OLD"
-    ├── SignatureInvalid             code: "SIGNATURE_INVALID"
-    ├── UnknownKeyId                 code: "UNKNOWN_KEY_ID"
-    └── RawBytesMismatchDetected     code: "RAW_BYTES_MISMATCH_DETECTED"
+    ├── MalformedHeader              code: "MALFORMED_HEADER"            (inbound)
+    ├── TimestampTooOld              code: "TIMESTAMP_TOO_OLD"           (inbound)
+    ├── SignatureInvalid             code: "SIGNATURE_INVALID"           (inbound)
+    ├── UnknownKeyId                 code: "UNKNOWN_KEY_ID"              (inbound)
+    ├── RawBytesMismatchDetected     code: "RAW_BYTES_MISMATCH_DETECTED" (inbound)
+    ├── EndpointValidation           code: "ENDPOINT_VALIDATION"         (outbound)
+    ├── SsrfBlocked                  code: "SSRF_BLOCKED"                (outbound)
+    ├── IdempotencyKeyConflict       code: "IDEMPOTENCY_KEY_CONFLICT"    (reserved)
+    ├── EndpointDisabled             code: "ENDPOINT_DISABLED"           (reserved)
+    └── MigrationRequired            code: "MIGRATION_REQUIRED"          (reserved)
 
 Error
 └── NotImplementedError              code: "NOT_IMPLEMENTED"
@@ -83,6 +88,32 @@ if (err instanceof SignatureInvalid) {
 **When:** The body bytes look like they were JSON-re-encoded between receipt and verify — whitespace patterns, key ordering, number formatting all suggest mutation.
 
 **Recovery:** Best-effort safety net. Fix the underlying re-serialization (don't catch and ignore). See [Raw bytes](/docs/inbound/raw-bytes).
+
+### `EndpointValidation`
+
+**Code:** `ENDPOINT_VALIDATION`
+**Thrown by:** `postel.outbound.endpoints.create(...)` / `endpoints.update(...)` (outbound).
+**When:** The endpoint URL is rejected at create/update time — unparseable, not `http(s)`, plain `http://` without `allowHttp`, resolves to an SSRF-eligible (private / loopback / link-local) address, or does not resolve at all (DNS failure). Validation runs before the endpoint is persisted.
+
+**Recovery:** `4xx` from your admin surface. The URL or `allowHttp` flag is wrong; fix it and retry. This is the create-time half of SSRF defense (the dispatch-time half is `SsrfBlocked`, below).
+
+```ts
+if (err instanceof EndpointValidation) {
+  return new Response(err.message, { status: 422 });
+}
+```
+
+### `SsrfBlocked`
+
+**Code:** `SSRF_BLOCKED`
+**Raised by:** the dispatcher, at delivery time (outbound).
+**When:** An endpoint URL that passed create-time validation resolves into a blocked range *at dispatch* (e.g. DNS rebinding, or a record that changed since creation). The dispatcher catches it internally and records the attempt with status `ssrf-blocked` — it is **not** thrown back to the `send()` caller (delivery happens asynchronously in a worker). You observe it on the attempt, not in a `try/catch` around `send()`.
+
+**Recovery:** The target now resolves to a private address; the delivery is held (treated as a retryable failure) rather than sent. Point the endpoint at a public address.
+
+### Reserved codes (defined, not yet emitted by the v0.2 runtime)
+
+`IdempotencyKeyConflict` (`IDEMPOTENCY_KEY_CONFLICT`), `EndpointDisabled` (`ENDPOINT_DISABLED`), and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the v0.2 TypeScript runtime does not throw them yet: idempotent `send` reuses the existing message id rather than conflicting, a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the in-memory storage adapter has no migration step. They become live when strict-idempotency conflict reporting and the database-backed storage adapters land.
 
 ### `NotImplementedError`
 
