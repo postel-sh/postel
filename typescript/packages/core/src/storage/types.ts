@@ -177,9 +177,9 @@ export interface AttemptStatsResult {
   readonly failureCount: number;
 }
 
-export interface RescheduleOpts {
+export interface RescheduleOpts<TTx = unknown> {
   readonly scheduledFor: Date;
-  readonly tx?: unknown;
+  readonly tx?: TTx;
   // Set on a reused-id replay so the row's subsequent attempts are tagged as
   // replay traffic (replay_of references the original message id).
   readonly replayOf?: MessageId;
@@ -207,7 +207,9 @@ export interface Storage<TTx = unknown> {
   releaseLease(messageId: MessageId, workerId: WorkerId): Promise<void>;
   expireStaleLeases(now: Date): Promise<number>;
   markMessageFinal(messageId: MessageId, status: "dispatched" | "expired"): Promise<void>;
-  rescheduleMessage(messageId: MessageId, opts: RescheduleOpts): Promise<void>;
+  // Resolves to true when the row existed and was rescheduled, false when no
+  // row matched the id (so callers like replay can report an accurate count).
+  rescheduleMessage(messageId: MessageId, opts: RescheduleOpts<TTx>): Promise<boolean>;
 
   loadEndpointsForMessage(messageId: MessageId): Promise<ReadonlyArray<EndpointWithSecrets>>;
 
@@ -227,60 +229,60 @@ export interface Storage<TTx = unknown> {
     readonly latestForMessage: (messageId: MessageId) => Promise<ReadonlyArray<NewAttempt>>;
   };
 
+  // The endpoints / secrets / tenants sub-APIs use method-shorthand (not arrow
+  // properties) so their `tx` parameters are checked bivariantly — that keeps
+  // `Storage<SpecificTx>` assignable to `Storage<unknown>` for internal
+  // consumers while still threading the adapter's transaction type through.
   endpoints: {
-    readonly create: (rec: NewEndpoint, opts?: HostTxOption) => Promise<EndpointRecord>;
-    readonly update: (
+    create(rec: NewEndpoint, opts?: HostTxOption<TTx>): Promise<EndpointRecord>;
+    update(
       id: EndpointId,
       patch: Partial<EndpointRecord>,
-      opts?: HostTxOption,
-    ) => Promise<EndpointRecord>;
-    readonly delete: (
+      opts?: HostTxOption<TTx>,
+    ): Promise<EndpointRecord>;
+    delete(
       id: EndpointId,
-      opts?: { readonly purgeAttempts?: boolean; readonly tx?: unknown },
-    ) => Promise<void>;
-    readonly list: (opts?: {
+      opts?: { readonly purgeAttempts?: boolean; readonly tx?: TTx },
+    ): Promise<void>;
+    list(opts?: {
       readonly tenantId?: TenantId;
-      readonly tx?: unknown;
-    }) => Promise<ReadonlyArray<EndpointRecord>>;
-    readonly get: (id: EndpointId, opts?: HostTxOption) => Promise<EndpointRecord | undefined>;
-    readonly transitionState: (
+      readonly tx?: TTx;
+    }): Promise<ReadonlyArray<EndpointRecord>>;
+    get(id: EndpointId, opts?: HostTxOption<TTx>): Promise<EndpointRecord | undefined>;
+    transitionState(
       id: EndpointId,
       to: EndpointState | null,
       reason: string,
       actor: string | null,
       metadata?: Readonly<Record<string, unknown>>,
-      opts?: HostTxOption,
-    ) => Promise<EndpointStateTransition>;
-    readonly listStateTransitions: (
-      id: EndpointId,
-    ) => Promise<ReadonlyArray<EndpointStateTransition>>;
+      opts?: HostTxOption<TTx>,
+    ): Promise<EndpointStateTransition>;
+    listStateTransitions(id: EndpointId): Promise<ReadonlyArray<EndpointStateTransition>>;
   };
 
   secrets: {
-    readonly insert: (
+    insert(
       rec: Omit<EndpointSecretRecord, "createdAt">,
-      opts?: HostTxOption,
-    ) => Promise<EndpointSecretRecord>;
-    readonly listForEndpoint: (
-      endpointId: EndpointId,
-    ) => Promise<ReadonlyArray<EndpointSecretRecord>>;
-    readonly setStatus: (
+      opts?: HostTxOption<TTx>,
+    ): Promise<EndpointSecretRecord>;
+    listForEndpoint(endpointId: EndpointId): Promise<ReadonlyArray<EndpointSecretRecord>>;
+    setStatus(
       secretId: string,
       status: EndpointSecretStatus,
       notAfter: Date | null,
-      opts?: HostTxOption,
-    ) => Promise<void>;
-    readonly deleteExpired: (now: Date) => Promise<number>;
+      opts?: HostTxOption<TTx>,
+    ): Promise<void>;
+    deleteExpired(now: Date): Promise<number>;
   };
 
   tenants: {
-    readonly upsert: (
+    upsert(
       tenantId: TenantId,
       metadata: Readonly<Record<string, unknown>> | null,
-      opts?: HostTxOption,
-    ) => Promise<TenantRecord>;
-    readonly get: (tenantId: TenantId) => Promise<TenantRecord | undefined>;
-    readonly delete: (tenantId: TenantId, opts?: HostTxOption) => Promise<void>;
+      opts?: HostTxOption<TTx>,
+    ): Promise<TenantRecord>;
+    get(tenantId: TenantId): Promise<TenantRecord | undefined>;
+    delete(tenantId: TenantId, opts?: HostTxOption<TTx>): Promise<void>;
   };
 
   dedup(

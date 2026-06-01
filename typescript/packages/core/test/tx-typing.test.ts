@@ -38,6 +38,34 @@ describe("All writes accept an optional transaction parameter", () => {
     expect(typeof postel.outbound.send).toBe("function");
   });
 
+  it("storage sub-API writes thread the adapter tx type, not unknown", () => {
+    const storage = InMemoryStorage();
+
+    // Positive: the tx from storage.transaction flows into the endpoints /
+    // secrets / tenants sub-APIs without a cast.
+    void (async () =>
+      storage.transaction(async (tx: InMemoryTx) => {
+        await storage.tenants.upsert("t_1", null, { tx });
+      }));
+
+    // Negative: a foreign tx handle is a compile error (regression guard — these
+    // sub-APIs previously typed `tx` as `unknown` and accepted anything).
+    void (() =>
+      storage.endpoints.create(
+        {} as never,
+        // @ts-expect-error tx must be InMemoryTx
+        { tx: 123 },
+      ));
+    void (() =>
+      storage.secrets.insert(
+        {} as never,
+        // @ts-expect-error tx must be InMemoryTx
+        { tx: "nope" },
+      ));
+
+    expect(typeof storage.endpoints.create).toBe("function");
+  });
+
   it("endpoints + tenants writes carry the same tx type", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });

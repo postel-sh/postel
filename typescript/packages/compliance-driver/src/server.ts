@@ -41,15 +41,17 @@ interface SenderHost {
   clock: Clock & { advance(ms: number): void };
 }
 
-function controlClock(initial = new Date()): Clock & { advance(ms: number): void } {
-  let current = initial;
+// Wall-clock plus a control-plane offset: real time passes by default so a
+// scheduled retry becomes due on its own (retry-schedule vectors assert the
+// real inter-request gap via `arrived_within_ms`), while `/control/clock/advance`
+// fast-forwards long waits (TTL expiry, overall deadlines) deterministically.
+function controlClock(): Clock & { advance(ms: number): void } {
+  let offsetMs = 0;
   return {
-    now: () => current,
-    sleep: async (ms: number) => {
-      current = new Date(current.getTime() + ms);
-    },
+    now: () => new Date(Date.now() + offsetMs),
+    sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     advance: (ms: number) => {
-      current = new Date(current.getTime() + ms);
+      offsetMs += ms;
     },
   };
 }

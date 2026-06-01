@@ -137,6 +137,21 @@ describe("Replay a single message", () => {
     const result = await postel.outbound.replay({ messageId: id, freshWebhookId: false });
     expect(result.enqueued).toBe(1);
   });
+
+  it("Replay of an unknown message id reports enqueued: 0, not a phantom enqueue", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage } });
+    const reused = await postel.outbound.replay({
+      messageId: "msg_does_not_exist",
+      freshWebhookId: false,
+    });
+    expect(reused.enqueued).toBe(0);
+    const fresh = await postel.outbound.replay({
+      messageId: "msg_does_not_exist",
+      freshWebhookId: true,
+    });
+    expect(fresh.enqueued).toBe(0);
+  });
 });
 
 describe("Replay a range", () => {

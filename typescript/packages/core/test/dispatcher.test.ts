@@ -224,6 +224,14 @@ describe("URL validation at create time", () => {
       }),
     ).rejects.toThrow(/SSRF/);
   });
+
+  it("Reject unresolvable host: a DNS failure surfaces as ENDPOINT_VALIDATION, not a 500", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage } });
+    await expect(
+      postel.outbound.endpoints.create({ url: "https://nonexistent.invalid/hook" }),
+    ).rejects.toThrow(/ENDPOINT_VALIDATION/);
+  });
 });
 
 describe("SSRF protection on outbound delivery", () => {

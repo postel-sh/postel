@@ -324,7 +324,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
     async rescheduleMessage(messageId, opts: RescheduleOpts) {
       return writeLock.run(async () => {
         const row = messages.get(messageId);
-        if (!row) return;
+        if (!row) return false;
         const prev = {
           scheduledFor: row.scheduledFor,
           reservedBy: row.reservedBy,
@@ -349,6 +349,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
             row.replayOf = prev.replayOf;
           });
         });
+        return true;
       });
     },
 
@@ -508,6 +509,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
           const purge = opts?.purgeAttempts === true;
           const removedAttempts: NewAttempt[] = [];
           const removedTransitions: EndpointStateTransition[] = [];
+          let addedTransitionId: string | null = null;
           if (purge) {
             for (const [aid, a] of attempts) {
               if (a.endpointId === id) {
@@ -522,9 +524,9 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
               }
             }
           } else {
-            const transitionId = newId("trans");
-            stateTransitions.set(transitionId, {
-              id: transitionId,
+            addedTransitionId = newId("trans");
+            stateTransitions.set(addedTransitionId, {
+              id: addedTransitionId,
               endpointId: id,
               fromState: prev.state,
               toState: null,
@@ -540,6 +542,9 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
             for (const s of removedSecrets) secrets.set(s.id, s);
             for (const a of removedAttempts) attempts.set(a.id, a);
             for (const t of removedTransitions) stateTransitions.set(t.id, t);
+            // Undo the deletion audit transition added above, else a rolled-back
+            // delete leaves a phantom `deleted` transition on a live endpoint.
+            if (addedTransitionId !== null) stateTransitions.delete(addedTransitionId);
           });
         });
       },

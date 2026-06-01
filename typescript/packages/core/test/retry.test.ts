@@ -342,6 +342,50 @@ describe("Endpoint auto-disable", () => {
     expect(transitions.some((t) => t.reason === "auto-disable")).toBe(true);
   });
 
+  it("Triggering attempt counts toward the window: minAttempts trips on the failing attempt itself", async () => {
+    const server = await startServerWithSequence([500]);
+    const storage = InMemoryStorage();
+    const endpointId = await seedEndpoint(storage, server.url(), {
+      retryPolicy: ExponentialBackoff({ schedule: ["10ms"], maxAttempts: 0, jitter: 0 }),
+      circuitBreaker: { threshold: 100, cooldown: "5s" },
+    });
+    // Seed only minAttempts - 1 prior failures: the endpoint can auto-disable
+    // only if the current, not-yet-persisted attempt is folded into the window.
+    for (let i = 0; i < 2; i++) {
+      await storage.recordAttempt({
+        id: `att_seed_${i}`,
+        messageId: `msg_seed_${i}`,
+        endpointId,
+        tenantId: null,
+        attemptNumber: 1,
+        status: "failed",
+        scheduledFor: null,
+        startedAt: new Date(),
+        completedAt: new Date(),
+        responseCode: 500,
+        responseHeaders: null,
+        responseBody: null,
+        latencyMs: 1,
+        error: "HTTP_500",
+        replayOf: null,
+      });
+    }
+    const postel = Postel({
+      outbound: {
+        storage,
+        autoDisable: { failureRate: 1.0, minAttempts: 3 },
+        http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } },
+      },
+    });
+    await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    const transitions = await storage.endpoints.listStateTransitions(endpointId);
+    expect(transitions.some((t) => t.reason === "auto-disable")).toBe(true);
+  });
+
   it("Below minimum-attempt floor: endpoint stays active when stats.count < minAttempts", async () => {
     const server = await startServerWithSequence([500]);
     const storage = InMemoryStorage();

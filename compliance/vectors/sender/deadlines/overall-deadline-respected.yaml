@@ -19,7 +19,10 @@ triggers:
     endpoint:
       url: "{{mock_receiver_url}}/hook"
       types: ["evt.x"]
-      retryPolicy: { schedule: ["100ms"], jitter: 0, maxAttempts: 5 }
+      # Long retry delay: under the driver's wall-clock the retry must not fire
+      # on its own before the test advances past the overall deadline — the
+      # per-endpoint schedule still has budget, so it's the deadline that cuts it.
+      retryPolicy: { schedule: ["30s"], jitter: 0, maxAttempts: 5 }
       http: { overallDeadline: "5m" }
       signing: { fixture_id: hmac_primary }
   - op: start_workers

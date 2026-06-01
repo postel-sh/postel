@@ -175,6 +175,37 @@ describe("Host transaction passthrough", () => {
     for await (const m of storage.rangeQuery({})) ids.push(m.id);
     expect(ids).toContain("msg_tx_commit_1");
   });
+
+  it("Endpoint delete inside a rolled-back transaction leaves no phantom deleted transition", async () => {
+    const storage = InMemoryStorage();
+    const ep = await storage.endpoints.create({
+      id: "ep_rollback",
+      tenantId: null,
+      url: "https://example.com/hook",
+      state: "active",
+      types: null,
+      channels: null,
+      retryPolicy: null,
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: false,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    await expect(
+      storage.transaction(async (tx) => {
+        await storage.endpoints.delete(ep.id, { tx });
+        throw new Error("rollback");
+      }),
+    ).rejects.toThrow("rollback");
+    // The endpoint is restored AND the deletion audit transition is undone.
+    expect(await storage.endpoints.get(ep.id)).toBeDefined();
+    const transitions = await storage.endpoints.listStateTransitions(ep.id);
+    expect(transitions.some((t) => t.reason === "deleted")).toBe(false);
+  });
 });
 
 describe("Workers drain the outbox safely under concurrency", () => {

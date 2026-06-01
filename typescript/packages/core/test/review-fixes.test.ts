@@ -119,6 +119,65 @@ describe("Late-binding fanout", () => {
     expect(okAttempts[0]?.status).toBe("success");
   });
 
+  it("a filtered endpoint records one attempt, not one per sibling retry", async () => {
+    const flakySrv = await startServer(() => 503);
+    const storage = InMemoryStorage();
+    const epFiltered = await storage.endpoints.create({
+      id: "ep_filtered",
+      tenantId: null,
+      url: flakySrv.url(),
+      state: "active",
+      types: ["other.event"],
+      channels: null,
+      retryPolicy: null,
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: true,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    await insertSecret(storage, epFiltered.id);
+    const epFlaky = await storage.endpoints.create({
+      id: "ep_flaky",
+      tenantId: null,
+      url: flakySrv.url(),
+      state: "active",
+      types: ["evt.x"],
+      channels: null,
+      retryPolicy: ExponentialBackoff({ schedule: ["50ms"], maxAttempts: 3, jitter: 0 }),
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: true,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    await insertSecret(storage, epFlaky.id);
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const id = await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(400);
+    await postel.stop();
+    await flakySrv.close();
+
+    const attempts = await storage.attempts.latestForMessage(id);
+    const filtered = attempts.filter(
+      (a) => a.endpointId === epFiltered.id && a.status === "filtered",
+    );
+    // The flaky sibling forced several reservations; the filtered endpoint must
+    // be re-evaluated each time but recorded only once.
+    expect(filtered.length).toBe(1);
+    const flakyAttempts = attempts.filter((a) => a.endpointId === epFlaky.id);
+    expect(flakyAttempts.length).toBeGreaterThan(1);
+  });
+
   it("a disabled endpoint receives no HTTP delivery and records a skipped attempt", async () => {
     const server = await startServer(() => 200);
     const storage = InMemoryStorage();

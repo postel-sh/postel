@@ -86,9 +86,20 @@ export async function ssrfCheck(
     // multiple A/AAAA records where any one points at a private range must be
     // refused. (Full connection-time pinning of the validated address is the
     // separate undici-Agent work tracked for the DNS-rebinding requirement.)
-    const resolved = await lookup(hostname, { all: true });
-    for (const entry of resolved) {
-      candidates.push({ ip: entry.address, family: entry.family === 6 ? 6 : 4 });
+    try {
+      const resolved = await lookup(hostname, { all: true });
+      for (const entry of resolved) {
+        candidates.push({ ip: entry.address, family: entry.family === 6 ? 6 : 4 });
+      }
+    } catch (e) {
+      // Create-time: an unresolvable host is a validation failure, not a 500.
+      // Dispatch-time: re-throw so the dispatcher records a retryable `failed`
+      // (a DNS hiccup may be transient).
+      if (mode === "create") {
+        const detail = `${hostname} could not be resolved (${(e as Error).message})`;
+        throw new EndpointValidation(`ENDPOINT_VALIDATION: DNS: ${detail}`);
+      }
+      throw e;
     }
   }
   if (candidates.length === 0) {

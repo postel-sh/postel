@@ -29,13 +29,15 @@ function makeReplayPacer(perSecond: number, clock: Clock): () => Promise<void> {
   };
 }
 
+// Returns the number of rows actually enqueued (1) or 0 when the message id is
+// not found, so the caller never reports a replay that did not happen.
 async function rescheduleOne(
   storage: Storage,
   clock: Clock,
   originalId: MessageId,
   freshWebhookId: boolean,
   tx: unknown,
-): Promise<void> {
+): Promise<number> {
   if (freshWebhookId) {
     const records: unknown[] = [];
     for await (const m of storage.rangeQuery({})) {
@@ -53,7 +55,7 @@ async function rescheduleOne(
           expiresAt: Date | null;
         }
       | undefined;
-    if (!original) return;
+    if (!original) return 0;
     const newId = newMessageId();
     await storage.insertMessage(
       {
@@ -72,15 +74,16 @@ async function rescheduleOne(
       },
       tx !== undefined ? { tx } : undefined,
     );
-    return;
+    return 1;
   }
   // Reused id: re-deliver the same row; tag it as a replay of itself so its new
   // attempts are distinguishable from the original delivery in the audit trail.
-  await storage.rescheduleMessage(originalId, {
+  const rescheduled = await storage.rescheduleMessage(originalId, {
     scheduledFor: clock.now(),
     replayOf: originalId,
     ...(tx !== undefined ? { tx } : {}),
   });
+  return rescheduled ? 1 : 0;
 }
 
 export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promise<ReplayResult> {
@@ -91,8 +94,14 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
   }
   const tx = opts.tx;
   if ("messageId" in opts) {
-    await rescheduleOne(ctx.storage, ctx.clock, opts.messageId, opts.freshWebhookId, tx);
-    return { enqueued: 1 };
+    const enqueued = await rescheduleOne(
+      ctx.storage,
+      ctx.clock,
+      opts.messageId,
+      opts.freshWebhookId,
+      tx,
+    );
+    return { enqueued };
   }
   const throttle =
     "replayThroughput" in opts && opts.replayThroughput !== undefined
@@ -104,8 +113,7 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
     const predicate = opts.filter;
     for await (const m of ctx.storage.rangeQuery({ predicate })) {
       await pace();
-      await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
-      count += 1;
+      count += await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
     }
     return { enqueued: count };
   }
@@ -123,8 +131,7 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
   if (opts.types !== undefined) filter.types = opts.types;
   for await (const m of ctx.storage.rangeQuery(filter)) {
     await pace();
-    await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
-    count += 1;
+    count += await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
   }
   return { enqueued: count };
 }

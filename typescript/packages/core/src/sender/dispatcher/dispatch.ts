@@ -27,6 +27,15 @@ const TERMINAL_PER_ENDPOINT: ReadonlySet<NewAttempt["status"]> = new Set([
   "expired",
 ]);
 
+// `filtered` / `skipped` are non-delivery outcomes that are NOT terminal: a
+// `skipped` can come from a transiently open circuit or a temporarily disabled
+// endpoint that may recover, and a `filtered` may flip if the endpoint's filter
+// is re-bound at dispatch time. The endpoint is therefore re-evaluated on every
+// reservation, but recording an identical outcome each time a sibling retries
+// would spam the audit trail — so we record one row per consecutive run and let
+// any change of status (recovery → success/failed) be written normally.
+const NON_DELIVERY: ReadonlySet<NewAttempt["status"]> = new Set(["filtered", "skipped"]);
+
 export type DispatchOne = (
   ctx: DispatchContext,
   msg: ReservedMessage,
@@ -86,23 +95,25 @@ export async function dispatchMessage(
       continue;
     }
     if (endpoint.endpoint.state === "disabled") {
-      await ctx.storage.recordAttempt({
-        id: newAttemptId(),
-        messageId: msg.id,
-        endpointId: endpoint.endpoint.id,
-        tenantId: msg.tenantId,
-        attemptNumber: msg.attemptNumber,
-        status: "skipped",
-        scheduledFor: msg.scheduledFor,
-        startedAt: ctx.clock.now(),
-        completedAt: ctx.clock.now(),
-        responseCode: null,
-        responseHeaders: null,
-        responseBody: null,
-        latencyMs: 0,
-        error: "ENDPOINT_DISABLED",
-        replayOf: msg.replayOf,
-      });
+      if (prior !== "skipped") {
+        await ctx.storage.recordAttempt({
+          id: newAttemptId(),
+          messageId: msg.id,
+          endpointId: endpoint.endpoint.id,
+          tenantId: msg.tenantId,
+          attemptNumber: msg.attemptNumber,
+          status: "skipped",
+          scheduledFor: msg.scheduledFor,
+          startedAt: ctx.clock.now(),
+          completedAt: ctx.clock.now(),
+          responseCode: null,
+          responseHeaders: null,
+          responseBody: null,
+          latencyMs: 0,
+          error: "ENDPOINT_DISABLED",
+          replayOf: msg.replayOf,
+        });
+      }
       continue;
     }
     const startedAt = ctx.clock.now();
@@ -114,6 +125,11 @@ export async function dispatchMessage(
     // immediately overwritten by markMessageFinal below.
     if (outcome.status === "failed" || outcome.status === "ssrf-blocked") {
       anyRetryable = true;
+    }
+    // Collapse a run of identical non-delivery outcomes (e.g. an endpoint that
+    // stays filtered or circuit-open across a sibling's retries) into one row.
+    if (NON_DELIVERY.has(outcome.status) && prior === outcome.status) {
+      continue;
     }
     await ctx.storage.recordAttempt({
       id: newAttemptId(),

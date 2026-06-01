@@ -123,6 +123,9 @@ export function buildRetryDispatcher(
         endpoint.id,
         deps.orgAutoDisable,
         endpointAutoDisable(endpoint),
+        // This branch only runs for failure outcomes, so the not-yet-persisted
+        // current attempt counts toward the window as a failure.
+        { failed: true },
       );
     }
     return finalOutcome;
