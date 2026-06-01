@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
+import { base64ToBytes } from "../src/internal/base64.js";
+import { importEd25519PublicKey, verifyEd25519V1a } from "../src/internal/ed25519.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -442,10 +444,24 @@ describe("Filter and transform errors fail closed", () => {
 });
 
 describe("Late binding at dispatch time", () => {
-  it("Change transform between retries: filters/transforms are resolved at dispatch time, not send time", async () => {
-    // Coverage in the late-binding sender suite already; this entry names the requirement
-    // verbatim so the spec-drift gate is satisfied.
-    expect(true).toBe(true);
+  it("Filter resolved at dispatch: an endpoint whose types are updated after send() is evaluated with the new config", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    // Endpoint does NOT match the event at send time.
+    await seedEndpoint(storage, server.url(), { types: ["nomatch.*"] });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "evt.x" });
+    // Update the endpoint to match BEFORE the worker dispatches. If filters were
+    // bound at send time the message would stay filtered; late binding resolves
+    // the current config at dispatch, so it is delivered.
+    await storage.endpoints.update("ep_test", { types: ["evt.*"] });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(1);
   });
 });
 
@@ -475,16 +491,6 @@ describe("Per-endpoint and overall delivery deadlines", () => {
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);
     expect(attempts.some((a) => a.status === "failed")).toBe(true);
-  });
-});
-
-describe("TLS verification by default", () => {
-  it("Default TLS: dispatcher does not silently downgrade — TLS verification is the default for https URLs", () => {
-    // The dispatcher uses global fetch; Node's fetch verifies TLS by default. Per-endpoint
-    // opt-out via http.tls.verify=false would emit a warning; that path is wired but the
-    // test would require standing up a self-signed-cert HTTPS server. The contract is
-    // verifiable structurally: default is verify=true.
-    expect(true).toBe(true);
   });
 });
 
@@ -529,11 +535,60 @@ describe("Per-endpoint metadata field", () => {
 });
 
 describe("Per-endpoint signing config", () => {
-  it("Switch HMAC to Ed25519: per-endpoint algorithm is honored when signing", () => {
-    // Signing config selection by algorithm is covered by signAndBuildHeaders + the
-    // secret records' algorithm field; the integration test landed in the wire-output
-    // path above (v1 prefix).
-    expect(true).toBe(true);
+  it("Switch HMAC to Ed25519: a v1a endpoint emits an Ed25519 signature that verifies against its public key", async () => {
+    // Deterministic Ed25519 keypair (seed = 32 bytes of 0xcd) — the raw-seed
+    // `whsk_` form used across ports. This exercises the outbound signing path
+    // end-to-end (seed import -> sign -> verify), which the v1 HMAC tests don't.
+    const edPrivateSeed = "whsk_zc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc0=";
+    const edPublicKey = "whpk_/JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic=";
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    const endpoint = await storage.endpoints.create({
+      id: "ep_ed25519",
+      tenantId: null,
+      url: server.url(),
+      state: "active",
+      types: ["evt.x"],
+      channels: null,
+      retryPolicy: null,
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: true,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    await storage.secrets.insert({
+      id: "sec_ed25519",
+      endpointId: endpoint.id,
+      algorithm: "v1a",
+      status: "primary",
+      priority: 0,
+      encryptedValue: new TextEncoder().encode(edPrivateSeed),
+      notAfter: null,
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "evt.x", data: { hello: "world" } });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+
+    const first = server.requests()[0];
+    if (!first) throw new Error("no request delivered");
+    const sig = first.headers["webhook-signature"] as string;
+    expect(typeof sig).toBe("string");
+    expect(sig.startsWith("v1a,")).toBe(true);
+    const id = first.headers["webhook-id"] as string;
+    const ts = first.headers["webhook-timestamp"] as string;
+    const signingInput = new TextEncoder().encode(`${id}.${ts}.${first.body}`);
+    const pub = await importEd25519PublicKey(base64ToBytes(edPublicKey.slice("whpk_".length)));
+    const verified = await verifyEd25519V1a(pub, signingInput, sig.slice("v1a,".length));
+    expect(verified).toBe(true);
   });
 });
 

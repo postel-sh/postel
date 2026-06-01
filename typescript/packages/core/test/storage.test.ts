@@ -206,6 +206,47 @@ describe("Host transaction passthrough", () => {
     const transitions = await storage.endpoints.listStateTransitions(ep.id);
     expect(transitions.some((t) => t.reason === "deleted")).toBe(false);
   });
+
+  it("Outbox insert is isolated: an uncommitted message is not reservable mid-transaction", async () => {
+    const storage = InMemoryStorage();
+    const now = new Date();
+    await expect(
+      storage.transaction(async (tx) => {
+        await storage.insertMessage(buildMessage({ id: "msg_dirty_1" }), { tx });
+        // A concurrent poller must NOT see the row while the host tx is open —
+        // otherwise it could dispatch a webhook for a write that then rolls back.
+        const reserved = await storage.reserveBatch({
+          workerId: "w1",
+          leaseMs: 60_000,
+          batchSize: 10,
+          now,
+        });
+        expect(reserved.map((m) => m.id)).not.toContain("msg_dirty_1");
+        throw new Error("rollback");
+      }),
+    ).rejects.toThrow("rollback");
+    const afterRollback = await storage.reserveBatch({
+      workerId: "w1",
+      leaseMs: 60_000,
+      batchSize: 10,
+      now,
+    });
+    expect(afterRollback.map((m) => m.id)).not.toContain("msg_dirty_1");
+  });
+
+  it("Outbox insert becomes reservable once the host transaction commits", async () => {
+    const storage = InMemoryStorage();
+    await storage.transaction(async (tx) => {
+      await storage.insertMessage(buildMessage({ id: "msg_clean_1" }), { tx });
+    });
+    const reserved = await storage.reserveBatch({
+      workerId: "w1",
+      leaseMs: 60_000,
+      batchSize: 10,
+      now: new Date(),
+    });
+    expect(reserved.map((m) => m.id)).toContain("msg_clean_1");
+  });
 });
 
 describe("Workers drain the outbox safely under concurrency", () => {

@@ -17,9 +17,11 @@ triggers:
       types: ["evt.slow"]
       # Per-request timeout well under the receiver's 2000ms delay, so the
       # request is aborted and recorded failed rather than succeeding on the
-      # 30s default.
+      # 30s default. maxAttempts > 1 keeps this a retryable `failed` (not the
+      # exhausting `dead-letter`); the far-future retry delay means no second
+      # request arrives inside the assertion window, so the count stays 1.
       http: { requestTimeout: "200ms" }
-      retryPolicy: { schedule: ["1s"], jitter: 0, maxAttempts: 1 }
+      retryPolicy: { schedule: ["1h"], jitter: 0, maxAttempts: 2 }
       signing: { fixture_id: hmac_primary }
   - op: start_workers
     concurrency: 1

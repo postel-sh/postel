@@ -29,32 +29,39 @@ function makeReplayPacer(perSecond: number, clock: Clock): () => Promise<void> {
   };
 }
 
+interface ReplaySource {
+  readonly id: MessageId;
+  readonly tenantId: string | null;
+  readonly type: string;
+  readonly data: unknown;
+  readonly channels: ReadonlyArray<string> | null;
+  readonly version: string | null;
+  readonly createdAt: Date;
+  readonly expiresAt: Date | null;
+}
+
 // Returns the number of rows actually enqueued (1) or 0 when the message id is
-// not found, so the caller never reports a replay that did not happen.
+// not found, so the caller never reports a replay that did not happen. Callers
+// that already hold the row (range / predicate loops) pass it directly to avoid
+// an O(n) re-scan per message; the single-message form passes just the id.
 async function rescheduleOne(
   storage: Storage,
   clock: Clock,
-  originalId: MessageId,
+  source: ReplaySource | MessageId,
   freshWebhookId: boolean,
   tx: unknown,
 ): Promise<number> {
+  const originalId = typeof source === "string" ? source : source.id;
   if (freshWebhookId) {
-    const records: unknown[] = [];
-    for await (const m of storage.rangeQuery({})) {
-      if (m.id === originalId) records.push(m);
-    }
-    const original = records[0] as
-      | {
-          id: MessageId;
-          tenantId: string | null;
-          type: string;
-          data: unknown;
-          channels: ReadonlyArray<string> | null;
-          version: string | null;
-          createdAt: Date;
-          expiresAt: Date | null;
+    let original = typeof source === "string" ? undefined : source;
+    if (original === undefined) {
+      for await (const m of storage.rangeQuery({})) {
+        if (m.id === originalId) {
+          original = m;
+          break;
         }
-      | undefined;
+      }
+    }
     if (!original) return 0;
     const newId = newMessageId();
     await storage.insertMessage(
@@ -113,7 +120,7 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
     const predicate = opts.filter;
     for await (const m of ctx.storage.rangeQuery({ predicate })) {
       await pace();
-      count += await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
+      count += await rescheduleOne(ctx.storage, ctx.clock, m, opts.freshWebhookId, tx);
     }
     return { enqueued: count };
   }
@@ -131,7 +138,7 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
   if (opts.types !== undefined) filter.types = opts.types;
   for await (const m of ctx.storage.rangeQuery(filter)) {
     await pace();
-    count += await rescheduleOne(ctx.storage, ctx.clock, m.id, opts.freshWebhookId, tx);
+    count += await rescheduleOne(ctx.storage, ctx.clock, m, opts.freshWebhookId, tx);
   }
   return { enqueued: count };
 }

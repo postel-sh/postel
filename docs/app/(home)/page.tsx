@@ -46,12 +46,12 @@ export async function POST(req: Request) {
   }
 }`;
 
-const outboundSnippet = `// Planned for v0.2 — types ship today, runtime throws NotImplementedError.
-import { Postel, HmacV1, ExponentialBackoff } from "@postel/core";
+const outboundSnippet = `// Ships in v0.2 — in-memory adapter today, DB adapters next.
+import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff } from "@postel/core";
 
 const postel = Postel({
   outbound: {
-    storage: /* your DB */,
+    storage: InMemoryStorage(), // or a DB-backed Storage adapter
     signing: HmacV1(),
     retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
   },

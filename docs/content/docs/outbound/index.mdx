@@ -1,9 +1,9 @@
 ---
 title: Outbound · Overview
-description: Send Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout. Planned for v0.2.0 — typed today, runtime later.
+description: Send Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout. Shipping in v0.2.0.
 ---
 
-> **Status: planned — v0.2.0.** The outbound API is *designed* (capability specs, TypeScript types, ADRs) but **not implemented at runtime**. Calling any `postel.outbound.*` method today throws `NotImplementedError`. This section documents the *target* shape so you can evaluate whether v0.2 will solve your problem when it lands.
+> **Status: shipping in v0.2.0.** The outbound runtime is implemented and runs against the in-process `InMemoryStorage` adapter today. Database-backed storage adapters (Postgres, SQLite, …) land in a later release — until then, bring the in-memory adapter for single-process deployments and tests, or implement the `Storage` interface against your own database.
 
 The outbound half of Postel delivers Standard Webhooks to your customers' HTTP endpoints. It's the half you reach for when *your* product emits webhooks — order.created, deployment.finished, message.posted — and someone else's app is the receiver.
 
@@ -52,16 +52,18 @@ await db.tx(async (tx) => {
 
 The key insight: `send()` is just an outbox INSERT under the hood. It commits or rolls back atomically with your business write. A separate worker picks the outbox row up and does the HTTP delivery — but you, the application author, never block on the network inside your transaction.
 
-## When does it ship?
+## What ships in v0.2.0, and what's next
 
-Honest answer: no firm date. The v0.2 milestone is gated on:
+The outbound runtime is implemented and exercised end-to-end by the `@postel/compliance` sender suite. What ships now:
 
-- All sender-side capability specs (sender, retry-policy, replay-reconciliation, endpoint-management, key-management, filtering-transformation, observability) finalized — in progress.
-- The `@postel/compliance` test suite covering sender behaviors (in progress).
-- The TypeScript runtime implementing the suite end-to-end.
-- The full storage-adapter matrix (`drizzle`, `kysely`, `prisma`, plus standalone clients).
+- The sender-side capability specs (sender, retry-policy, replay-reconciliation, endpoint-management, key-management, filtering-transformation) and their TypeScript runtime.
+- The `@postel/compliance` suite driving the sender behaviors against the running runtime.
+- The in-process `InMemoryStorage` adapter — production-shaped for single-process deployments and the natural choice for tests.
 
-Until then: the API surface is stable enough that we ship the *types*. You can write code today against the types — TypeScript will catch shape mistakes — but the runtime throws `NotImplementedError`. This is intentional: it lets adopters design their integration before the runtime lands.
+Still ahead, in a later release:
+
+- The full storage-adapter matrix (`drizzle`, `kysely`, `prisma`, plus standalone Postgres / SQLite clients). Until those land, point `storage` at `InMemoryStorage()` or implement the `Storage` interface against your own database.
+- The external job-queue worker adapters (BullMQ, PgBoss) — the config slots exist but throw `NotImplementedError` today; the in-process worker pool is the supported runtime.
 
 ## Where to read next
 

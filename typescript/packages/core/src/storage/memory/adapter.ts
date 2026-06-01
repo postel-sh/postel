@@ -52,6 +52,10 @@ interface MessageRow {
   attemptNumber: number;
   scheduledFor: Date | null;
   replayOf: MessageId | null;
+  // True while the inserting host transaction is still open. Such a row is
+  // invisible to reserveBatch so a worker can't dispatch a message whose
+  // business transaction has not committed (and may yet roll back).
+  uncommitted: boolean;
 }
 
 interface DedupRow {
@@ -180,6 +184,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
         attemptNumber: 0,
         scheduledFor: null,
         replayOf: msg.replayOf ?? null,
+        uncommitted: opts?.tx !== undefined,
       };
       return writeLock.run(async () => {
         inTx(opts, () => {
@@ -192,6 +197,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
           });
         });
         recordPostCommit(opts, () => {
+          row.uncommitted = false;
           notifyChannel("postel_messages_new", `${row.tenantId ?? ""}|${row.id}`);
         });
         return row.id;
@@ -225,6 +231,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
           attemptNumber: 0,
           scheduledFor: null,
           replayOf: null,
+          uncommitted: opts?.tx !== undefined,
         };
         inTx(opts, () => {
           messages.set(row.id, row);
@@ -235,6 +242,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
           });
         });
         recordPostCommit(opts, () => {
+          row.uncommitted = false;
           notifyChannel("postel_messages_new", `${row.tenantId ?? ""}|${row.id}`);
         });
         return { id: row.id, reused: false };
@@ -246,6 +254,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
         const candidates: MessageRow[] = [];
         for (const row of messages.values()) {
           if (row.status !== "pending") continue;
+          if (row.uncommitted) continue;
           if (row.reservedBy !== null) continue;
           if (opts.tenantId !== undefined && row.tenantId !== opts.tenantId) continue;
           if (row.scheduledFor !== null && row.scheduledFor > opts.now) continue;

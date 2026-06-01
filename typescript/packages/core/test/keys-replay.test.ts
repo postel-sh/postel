@@ -6,6 +6,7 @@ import {
   NotImplementedError,
   Postel,
 } from "../src/index.js";
+import { CircuitBreakerRegistry } from "../src/sender/retry/circuit.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -418,24 +419,35 @@ describe("Per-tenant rate limits", () => {
     const t = await storage.tenants.get("t_42");
     expect((t?.metadata as { rateLimit?: { perSecond?: number } })?.rateLimit?.perSecond).toBe(50);
   });
-
-  it("Tenant cap with queue back-pressure: configuring a rate limit is the wiring path; full back-pressure semantics land with the scheduler PR", () => {
-    expect(true).toBe(true);
-  });
 });
 
 describe("Per-tenant circuit breaker isolation", () => {
-  it("Tenant isolation: per-(tenant, endpoint) registry keys keep failures scoped to one tenant", () => {
-    // The CircuitBreakerRegistry keys on `${tenantId}|${endpointId}` — tested by
-    // its key construction in retry/circuit.ts. End-to-end multi-tenant burst tests
-    // come with the multi-tenancy PR.
-    expect(true).toBe(true);
-  });
-});
-
-describe("Worker fairness across tenants", () => {
-  it("Burst does not starve: the round-robin scheduler exists in the dispatch path (full fairness assertion belongs to the compliance suite)", () => {
-    expect(true).toBe(true);
+  it("Tenant isolation: an open breaker for one tenant does not trip the same endpoint for another", async () => {
+    const storage = InMemoryStorage();
+    const ep = await storage.endpoints.create({
+      id: "ep_circuit_iso",
+      tenantId: null,
+      url: "https://example.test/hook",
+      state: "active",
+      types: null,
+      channels: null,
+      retryPolicy: null,
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: false,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    const registry = new CircuitBreakerRegistry(storage, FakeClock(), {
+      threshold: 1,
+      cooldown: "5s",
+    });
+    await registry.recordOutcome("t_a", ep.id, false);
+    expect(await registry.isOpen("t_a", ep.id)).toBe(true);
+    expect(await registry.isOpen("t_b", ep.id)).toBe(false);
   });
 });
 
@@ -479,12 +491,6 @@ describe("Adapter mode for external job queues", () => {
     expect(() => Postel({ outbound: { storage, workers: External({}) } })).toThrow(
       NotImplementedError,
     );
-  });
-});
-
-describe("Ephemeral keys via auto-rotation", () => {
-  it("Auto-rotate every 12h: ephemeral mode configuration slot exists (full timer-driven rotation lands with the scheduler in a later PR)", () => {
-    expect(true).toBe(true);
   });
 });
 

@@ -2,7 +2,7 @@ import type { Clock } from "../../clock.js";
 import { bytesToBase64 } from "../../internal/base64.js";
 import type { EndpointId, Storage } from "../../storage/types.js";
 import { durationToMs } from "../internal/duration.js";
-import { generateSymmetric } from "./generate.js";
+import { generateAsymmetric, generateSymmetric } from "./generate.js";
 
 function newSecretId(): string {
   const bytes = new Uint8Array(12);
@@ -25,18 +25,23 @@ export async function rotateSecret(
   const now = clock.now();
   const retention = durationToMs(opts.keepPreviousFor);
   const expiresAt = new Date(now.getTime() + retention);
+  // Preserve the endpoint's signing algorithm across rotation: an Ed25519 (v1a)
+  // endpoint must rotate to a fresh asymmetric key, not silently downgrade to a
+  // symmetric one.
+  const algorithm = existing.find((s) => s.status === "primary")?.algorithm ?? "v1";
   const rotate = async (tx: unknown): Promise<void> => {
     for (const s of existing) {
       if (s.status === "primary") {
         await storage.secrets.setStatus(s.id, "verifying", expiresAt, { tx });
       }
     }
-    const newSecret = generateSymmetric();
+    const newSecret =
+      algorithm === "v1a" ? (await generateAsymmetric()).private : generateSymmetric();
     await storage.secrets.insert(
       {
         id: newSecretId(),
         endpointId,
-        algorithm: "v1",
+        algorithm,
         status: "primary",
         priority: 0,
         encryptedValue: new TextEncoder().encode(newSecret),

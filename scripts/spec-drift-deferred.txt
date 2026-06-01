@@ -62,6 +62,10 @@ Per-endpoint queue depth cap
 
 # key-management — generation / rotation / KMS / ephemeral (covered by keys-replay.test.ts; KMS+ephemeral remain deferred)
 Encryption at rest with KMS adapter
+# Ephemeral keys via auto-rotation: the config slot exists but timer-driven
+# rotation is not implemented (it lands with the scheduler). Deferred rather
+# than asserted by a placeholder.
+Ephemeral keys via auto-rotation
 
 # multi-tenancy — sender / dispatch side (entries covered by keys-replay.test.ts; scheduler/circuit isolation covered in retry/circuit.ts)
 
@@ -91,6 +95,11 @@ Verify latency budgets
 # connection-time defense is not implemented. Deferred until the undici Agent
 # (connect.lookup pinning) lands.
 DNS rebinding protection
+# TLS verification by default: TLS-on is the runtime default (Node fetch), but
+# exercising it (and the per-endpoint opt-out) needs a self-signed-cert HTTPS
+# harness. Deferred with the full TLS bad-cert matrix called out in the
+# compliance spec rather than asserted by a placeholder.
+TLS verification by default
 
 # standard-webhooks-compliance — non-v0.1.0 extensions / wrap
 Wraps the official signing library

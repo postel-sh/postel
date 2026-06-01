@@ -1,20 +1,20 @@
 ---
 title: send() and the outbox
-description: The transactional outbox pattern, implemented inside the host application's database. Planned for v0.2.0.
+description: The transactional outbox pattern, implemented inside the host application's database.
 ---
 
-> **Status: planned — v0.2.0.** Types ship today; the runtime throws `NotImplementedError`. The shape below is what we're building toward.
+> **Status: shipping in v0.2.0.** The outbound runtime is implemented and runs today against the in-process `InMemoryStorage` adapter; database-backed adapters (Postgres, SQLite, …) land in a later release.
 
 `postel.outbound.send(event, options?)` is the single entry point for emitting a webhook. Under the hood it's an INSERT into a `postel_outbox` table, scoped to whichever DB transaction you pass.
 
 ## The shape
 
 ```ts
-import { Postel, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
+import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
 
 const postel = Postel({
   outbound: {
-    storage:     /* see /docs/reference/packages — storage adapters */,
+    storage:     InMemoryStorage(), // swap for a DB-backed adapter in production
     signing:     HmacV1(),
     retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
     workers:     InProcess({ concurrency: 4 }),

@@ -127,9 +127,12 @@ func executeVector(path, vectorsDir string, schemas *CompiledSchemas, opts *cliO
 		return res
 	}
 	if mode == "sender" {
-		// Sender-mode execution lands with PR-C2; this PR ships the framework + stub vectors.
-		res.Pass = true
-		res.Error = "pending: sender-mode runner execution lands with the v0.2.0 corpus PR"
+		pass, observed, errMsg := runSenderVector(v, vectorsDir, opts, client)
+		res.Pass = pass
+		res.Observed = observed
+		if errMsg != "" {
+			res.Error = errMsg
+		}
 		res.DurationMs = time.Since(started).Milliseconds()
 		return res
 	}
