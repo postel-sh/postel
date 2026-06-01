@@ -1,5 +1,8 @@
 {
   "title": "Inbound",
+  "icon": "inbox",
+  "description": "Verify Standard Webhooks sent to your app.",
+  "root": true,
   "pages": [
     "index",
     "verify",

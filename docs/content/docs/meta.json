@@ -2,13 +2,9 @@
   "title": "Documentation",
   "pages": [
     "index",
-    "quickstart",
-    "is-postel-for-me",
+    "get-started",
     "inbound",
     "outbound",
-    "---Library---",
-    "reference",
-    "polyglot",
-    "why"
+    "reference"
   ]
 }

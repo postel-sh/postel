@@ -1,0 +1,12 @@
+{
+  "title": "Get started",
+  "icon": "rocket",
+  "description": "Evaluate, install, and verify your first webhook.",
+  "root": true,
+  "pages": [
+    "quickstart",
+    "is-postel-for-me",
+    "why",
+    "polyglot"
+  ]
+}

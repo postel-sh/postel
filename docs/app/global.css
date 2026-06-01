@@ -5,9 +5,19 @@
 @source '../node_modules/fumadocs-ui/dist/**/*.js';
 
 /* Push the page canvas to true extremes: pure white in light mode, pitch
- * black in dark mode. Cards / muted surfaces keep their proportional offset
- * from the Fumadocs neutral preset (light cards are 94.7%, dark cards bumped
- * to 5% so they still elevate visibly above the new #000 canvas). */
+ * black in dark mode. The dark canvas stays #000, but every floating surface
+ * is lifted above it on a deliberate three-step elevation scale so cards,
+ * code frames, and popovers read as distinct rather than blurring into the
+ * black:
+ *
+ *   canvas   0%   (#000)        the page itself
+ *   band     ~5%  (fd-muted/40) alternating section backgrounds
+ *   card     8%   (fd-card)     cards, code frames, pillars
+ *   popover  6%   (fd-popover)  search dialog, dropdowns
+ *
+ * Borders are bumped to a solid 17% grey so card edges and section dividers
+ * stay crisp on black — the neutral preset's faint alpha border washed out
+ * against the pure-black canvas. Light mode keeps the neutral preset. */
 @theme {
   --color-fd-background: hsl(0, 0%, 100%);
   --color-fd-popover: hsl(0, 0%, 100%);
@@ -15,8 +25,9 @@
 
 html.dark {
   --color-fd-background: hsl(0, 0%, 0%);
-  --color-fd-popover: hsl(0, 0%, 0%);
-  --color-fd-card: hsl(0, 0%, 5%);
+  --color-fd-popover: hsl(0, 0%, 6%);
+  --color-fd-card: hsl(0, 0%, 8%);
+  --color-fd-border: hsl(0, 0%, 17%);
 }
 
 /* The sidebar uses bg-fd-card (which we bumped to hsl(0, 0%, 5%) so

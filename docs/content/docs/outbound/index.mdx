@@ -3,11 +3,22 @@ title: Outbound · Overview
 description: Send Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout. Available today.
 ---
 
+import { BoxIcon, RepeatIcon, HistoryIcon, LinkIcon } from "@/components/icons";
+
 > **Status: available.** The outbound runtime is implemented and runs against the in-process `InMemoryStorage` adapter today. Database-backed storage adapters (Postgres, SQLite, …) are planned — until then, bring the in-memory adapter for single-process deployments and tests, or implement the `Storage` interface against your own database.
 
 The outbound half of Postel delivers Standard Webhooks to your customers' HTTP endpoints. It's the half you reach for when *your* product emits webhooks — order.created, deployment.finished, message.posted — and someone else's app is the receiver.
 
 If you're verifying webhooks that other services send to you — that's the [inbound half](/docs/inbound), and it ships today.
+
+## Start here
+
+<Cards>
+  <Card icon={<BoxIcon />} title="Sending & the outbox" href="/docs/outbound/send" description="The transactional contract — an outbox INSERT that joins your business write." />
+  <Card icon={<RepeatIcon />} title="Retries & backoff" href="/docs/outbound/retries" description="Retry strategies, circuit breaker, auto-disable." />
+  <Card icon={<HistoryIcon />} title="Replay" href="/docs/outbound/replay" description="First-class replay verbs — by message, endpoint, or filter." />
+  <Card icon={<LinkIcon />} title="Endpoints" href="/docs/outbound/endpoints" description="Manage the receiver side of your fanout." />
+</Cards>
 
 ## What's available
 
@@ -71,8 +82,4 @@ Still ahead, in a later release:
 
 ## Where to read next
 
-- [`send()` and the outbox](/docs/outbound/send) — the transactional contract.
-- [Retries & backoff](/docs/outbound/retries) — retry strategies, circuit breaker, auto-disable.
-- [Replay](/docs/outbound/replay) — first-class replay verbs.
-- [Endpoints](/docs/outbound/endpoints) — managing the receiver side of your fanout.
-- [Why Postel](/docs/why) — the design rationale for the library-not-service shape.
+The four pages above cover the runtime. For the design rationale behind the library-not-service shape, read [Why Postel](/docs/get-started/why).

@@ -1,6 +1,13 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { codeToHtml } from "shiki";
 import { PostelMark } from "@/lib/postel-mark";
+import {
+  ArrowDownToLineIcon,
+  ArrowUpFromLineIcon,
+  CompassIcon,
+  GlobeIcon,
+} from "@/components/icons";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -22,12 +29,10 @@ function GithubIcon({ className }: { className?: string }) {
 
 const installCode = `pnpm add @postel/core`;
 
-const inboundSnippet = `import { Postel, Secret, SignatureInvalid } from "@postel/core";
+const heroInbound = `import { Postel, Secret, SignatureInvalid } from "@postel/core";
 
 const postel = Postel({
-  inbound: {
-    vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) },
-  },
+  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
 });
 
 export async function POST(req: Request) {
@@ -36,43 +41,134 @@ export async function POST(req: Request) {
 
   try {
     const { event } = await postel.inbound.vendor.verify(body, headers);
-    // event.type, event.data — parsed, signature verified, raw bytes preserved.
-    return new Response("ok");
+    return new Response("ok"); // verified · raw bytes intact · event parsed
   } catch (err) {
-    if (err instanceof SignatureInvalid) {
+    if (err instanceof SignatureInvalid)
       return new Response("bad signature", { status: 401 });
-    }
     throw err;
   }
 }`;
 
-const outboundSnippet = `// In-memory storage adapter available now; database adapters planned.
-import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff } from "@postel/core";
+const handRolledOutbound = `// Wiring an outbox by hand — plus a Redis to run it
+import { Queue, Worker } from "bullmq";
 
-const postel = Postel({
-  outbound: {
-    storage: InMemoryStorage(), // or a DB-backed Storage adapter
-    signing: HmacV1(),
-    retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
-  },
+const deliveries = new Queue("webhooks", { connection: redis });
+
+await db.tx(async (tx) => {
+  await db.orders.insert(order, { tx });
+  // Enqueue inside the tx and a crash drops the event; enqueue after
+  // commit and you can deliver an order that rolled back. Pick a race.
+  await deliveries.add("order.created", { id: order.id });
 });
 
-// Inside your business transaction:
+// A separate worker process you build, deploy, and operate:
+new Worker("webhooks", async (job) => {
+  const payload = JSON.stringify(envelope(job.data));
+  const signature = signHmac(payload, endpoint.secret); // you write this
+  const res = await fetch(endpoint.url, { method: "POST", body: payload });
+  if (!res.ok) throw new Error("retry");
+  // backoff, circuit-breaking, dead-letter, replay, key rotation,
+  // JWKS — all still yours to build, test, and keep correct.
+}, { connection: redis });`;
+
+const withPostelOutbound = `// The outbox is one INSERT in your own transaction
+import { postel } from "@/lib/postel";
+
 await db.tx(async (tx) => {
   await db.orders.insert(order, { tx });
   await postel.outbound.send(
     { type: "order.created", data: { id: order.id } },
-    { tx },                       // joins the same transaction
+    { tx }, // signing, retries, backoff, dead-letter, replay — handled
   );
 });`;
 
-interface Card {
+const inboundConfig = `import { Postel, Secret, Keyset } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    stripe: { verify: Secret(process.env.STRIPE_SECRET!) },
+    // rotate keys with zero downtime — accept either during the window
+    github: { verify: [Secret(process.env.NEW!), Secret(process.env.OLD!)] },
+    // or verify asymmetric signatures straight from a JWKS endpoint
+    partner: { verify: Keyset({ jwksUri: "https://partner.example/jwks" }) },
+  },
+});`;
+
+const outboundConfig = `import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff } from "@postel/core";
+
+export const postel = Postel({
+  outbound: {
+    storage: InMemoryStorage(), // or a DB-backed Storage adapter
+    signing: HmacV1(), // or Ed25519V1a() for asymmetric + JWKS
+    retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
+  },
+});`;
+
+const shikiOptions = {
+  lang: "typescript",
+  themes: { dark: "dark-plus", light: "light-plus" },
+  defaultColor: false,
+} as const;
+
+interface Persona {
+  readonly icon: ReactNode;
+  readonly title: string;
+  readonly body: string;
+  readonly href: string;
+}
+
+interface Pillar {
   readonly eyebrow: string;
   readonly title: string;
   readonly body: string;
 }
 
-const cards: ReadonlyArray<Card> = [
+const inboundFeatures: ReadonlyArray<string> = [
+  "HMAC v1 + Ed25519 v1a signatures",
+  "JWKS consumer — caching, auto-refresh",
+  "Multi-secret rotation windows",
+  "Idempotent dedup (Postgres / SQLite / memory)",
+  "Raw-bytes preservation",
+  "Typed errors that name the failed step",
+];
+
+const outboundFeatures: ReadonlyArray<string> = [
+  "Transactional outbox — joins your write",
+  "Retries, backoff, circuit breaker",
+  "Replay by message, endpoint, or filter",
+  "Fanout to N endpoints",
+  "Endpoint lifecycle + secret rotation",
+  "Dead-letter + auto-disable",
+];
+
+const personas: ReadonlyArray<Persona> = [
+  {
+    icon: <ArrowDownToLineIcon className="size-5" />,
+    title: "I'm receiving webhooks",
+    body: "Verify signed requests from Stripe, GitHub, or any Standard Webhooks producer — correctly, the first time.",
+    href: "/docs/inbound",
+  },
+  {
+    icon: <ArrowUpFromLineIcon className="size-5" />,
+    title: "I'm sending webhooks",
+    body: "Deliver to your customers' endpoints with a transactional outbox, retries, replay, and fanout.",
+    href: "/docs/outbound",
+  },
+  {
+    icon: <CompassIcon className="size-5" />,
+    title: "I'm evaluating",
+    body: "Run the six-line filter to see whether Postel fits your stack — or whether Svix or a queue worker fits better.",
+    href: "/docs/get-started/is-postel-for-me",
+  },
+  {
+    icon: <GlobeIcon className="size-5" />,
+    title: "I'm porting to another language",
+    body: "TypeScript ships today; Go, Python, and Rust follow. One compliance suite is the contract.",
+    href: "/docs/get-started/polyglot",
+  },
+];
+
+const pillars: ReadonlyArray<Pillar> = [
   {
     eyebrow: "Library, not service",
     title: "Uses your existing database",
@@ -90,157 +186,298 @@ const cards: ReadonlyArray<Card> = [
   },
 ];
 
+function CodeCard({
+  html,
+  file,
+  badge,
+  className,
+}: {
+  html: string;
+  file?: string;
+  badge?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`border-fd-border bg-fd-card flex min-w-0 flex-col overflow-hidden rounded-xl border shadow-sm ${className ?? ""}`}
+    >
+      <div className="border-fd-border flex items-center gap-2 border-b px-4 py-2.5">
+        <span className="flex gap-1.5" aria-hidden="true">
+          <span className="bg-fd-border size-2.5 rounded-full" />
+          <span className="bg-fd-border size-2.5 rounded-full" />
+          <span className="bg-fd-border size-2.5 rounded-full" />
+        </span>
+        {file && (
+          <span className="text-fd-muted-foreground ml-1 font-mono text-[11px]">
+            {file}
+          </span>
+        )}
+        {badge && (
+          <span className="text-fd-muted-foreground ml-auto font-mono text-[10px] uppercase tracking-wider">
+            {badge}
+          </span>
+        )}
+      </div>
+      <div
+        className="min-w-0 [&_pre]:!m-0 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:px-4 [&_pre]:py-4 [&_pre]:text-[12.5px] [&_pre]:leading-relaxed"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  );
+}
+
 export default async function HomePage() {
-  const inboundHtml = await codeToHtml(inboundSnippet, {
-    lang: "typescript",
-    themes: { dark: "dark-plus", light: "light-plus" },
-    defaultColor: false,
-  });
-  const outboundHtml = await codeToHtml(outboundSnippet, {
-    lang: "typescript",
-    themes: { dark: "dark-plus", light: "light-plus" },
-    defaultColor: false,
-  });
+  const [
+    heroHtml,
+    handRolledHtml,
+    withPostelHtml,
+    inboundConfigHtml,
+    outboundConfigHtml,
+  ] = await Promise.all([
+    codeToHtml(heroInbound, shikiOptions),
+    codeToHtml(handRolledOutbound, shikiOptions),
+    codeToHtml(withPostelOutbound, shikiOptions),
+    codeToHtml(inboundConfig, shikiOptions),
+    codeToHtml(outboundConfig, shikiOptions),
+  ]);
 
   return (
     <main className="flex flex-1 flex-col">
       {/* ── Hero ───────────────────────────────────────────── */}
-      <section className="border-fd-border relative border-b px-6 pt-20 pb-16 text-center sm:pt-28 sm:pb-24">
-        <PostelMark className="text-fd-foreground mx-auto mb-8 size-14 sm:size-16" />
-        <p className="text-fd-muted-foreground mb-6 font-mono text-[10px] tracking-[0.18em] uppercase sm:text-xs">
-          Be conservative in what you send · liberal in what you accept
-        </p>
-        <h1 className="mx-auto mb-5 max-w-4xl text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
-          Webhooks as a feature of your product.
-        </h1>
-        <p className="text-fd-muted-foreground mx-auto mb-6 max-w-2xl text-balance text-base sm:text-lg">
-          Sending and receiving webhooks is easy. Doing it reliably and securely is hard —
-          retries, replay, signing, key rotation, idempotency, raw-bytes preservation. That's
-          where Postel comes in: a polyglot library that handles those for you.
-        </p>
-        <div className="mb-10 inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-muted/40 px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-fd-muted-foreground">
-          <span className="size-1.5 rounded-full bg-amber-500" />
-          Pre-alpha · inbound + outbound
+      <section className="border-fd-border border-b px-6 py-16 sm:py-20 lg:py-24">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+          <div className="min-w-0">
+            <div className="border-fd-border bg-fd-muted/40 text-fd-muted-foreground mb-6 inline-flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-wider">
+              <span className="size-1.5 rounded-full bg-amber-500" />
+              Pre-alpha · inbound + outbound
+            </div>
+            <h1 className="mb-5 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
+              Webhooks as a feature of your product.
+            </h1>
+            <p className="text-fd-muted-foreground mb-8 max-w-xl text-balance text-base leading-relaxed sm:text-lg">
+              Sending and receiving webhooks is easy. Doing it reliably and
+              securely is hard — retries, replay, signing, key rotation,
+              idempotency, raw-bytes preservation. Postel is a polyglot library
+              that handles those for you, inside your app, against your own
+              database.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href="/docs/get-started/quickstart"
+                className="bg-fd-foreground text-fd-background hover:bg-fd-foreground/85 inline-flex h-10 items-center rounded-md px-5 text-sm font-medium transition-colors"
+              >
+                Quickstart
+                <span className="ml-2">→</span>
+              </Link>
+              <Link
+                href="/docs/get-started/is-postel-for-me"
+                className="border-fd-border text-fd-foreground hover:bg-fd-muted/60 inline-flex h-10 items-center rounded-md border px-5 text-sm font-medium transition-colors"
+              >
+                Is Postel for me?
+              </Link>
+              <Link
+                href="https://github.com/postel-sh/postel"
+                aria-label="Postel on GitHub"
+                className="text-fd-muted-foreground hover:text-fd-foreground inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors"
+              >
+                <GithubIcon className="size-5" />
+              </Link>
+            </div>
+            <div className="text-fd-muted-foreground mt-6 inline-flex items-center gap-3 font-mono text-xs">
+              <span className="text-fd-foreground">$</span>
+              <span>{installCode}</span>
+            </div>
+          </div>
+
+          <CodeCard
+            html={heroHtml}
+            file="app/api/webhooks/route.ts"
+            badge="Inbound · verify"
+            className="lg:justify-self-end lg:max-w-xl"
+          />
         </div>
-        <div className="mb-12 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href="/docs/quickstart"
-            className="bg-fd-foreground text-fd-background hover:bg-fd-foreground/85 inline-flex h-10 items-center rounded-md px-5 text-sm font-medium transition-colors"
-          >
-            Quickstart
-            <span className="ml-2">→</span>
-          </Link>
-          <Link
-            href="/docs/is-postel-for-me"
-            className="border-fd-border text-fd-foreground hover:bg-fd-muted/60 inline-flex h-10 items-center rounded-md border px-5 text-sm font-medium transition-colors"
-          >
-            Is Postel for me?
-          </Link>
-          <Link
-            href="/docs/why"
-            className="text-fd-muted-foreground hover:text-fd-foreground inline-flex h-10 items-center px-2 text-sm font-medium transition-colors"
-          >
-            Why Postel
-          </Link>
-          <Link
-            href="https://github.com/postel-sh/postel"
-            aria-label="Postel on GitHub"
-            className="text-fd-muted-foreground hover:text-fd-foreground inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors"
-          >
-            <GithubIcon className="size-5" />
-          </Link>
-        </div>
-        <div className="mx-auto inline-flex items-center gap-3 rounded-full border border-fd-border bg-fd-muted/30 px-4 py-1.5 font-mono text-xs text-fd-muted-foreground">
-          <span className="text-fd-foreground">$</span>
-          <span>{installCode}</span>
+      </section>
+
+      {/* ── Without / With ─────────────────────────────────── */}
+      <section className="border-fd-border bg-fd-muted/40 border-b px-6 py-20 sm:py-24">
+        <div className="mx-auto max-w-6xl">
+          <p className="text-fd-muted-foreground mb-3 font-mono text-xs uppercase tracking-wider">
+            The outbox, by hand vs. by Postel
+          </p>
+          <h2 className="mb-4 text-2xl font-semibold tracking-tight sm:text-3xl">
+            The queue handles retries. You reimplement everything else.
+          </h2>
+          <p className="text-fd-muted-foreground mb-12 max-w-3xl text-sm leading-relaxed sm:text-base">
+            Hand-rolling outbound delivery means a broker, a worker process, and
+            a transactional race you have to get right — before you even start
+            on signing, backoff, dead-letter, replay, and key rotation. Postel
+            collapses that into one outbox insert that commits with your write.
+          </p>
+          <div className="grid items-start gap-6 lg:grid-cols-2">
+            <div>
+              <p className="text-fd-muted-foreground mb-3 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
+                <span className="bg-fd-muted-foreground/50 size-1.5 rounded-full" />
+                Without Postel
+              </p>
+              <CodeCard html={handRolledHtml} file="hand-rolled.ts" />
+            </div>
+            <div>
+              <p className="text-fd-foreground mb-3 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                With Postel
+              </p>
+              <CodeCard
+                html={withPostelHtml}
+                file="orders.ts"
+                className="ring-fd-foreground/10 ring-1"
+              />
+            </div>
+          </div>
         </div>
       </section>
 
       {/* ── Two halves ─────────────────────────────────────── */}
-      <section className="border-fd-border border-b bg-fd-muted/10 px-6 py-20 sm:py-24">
-        <div className="mx-auto max-w-5xl">
+      <section className="border-fd-border border-b px-6 py-20 sm:py-24">
+        <div className="mx-auto max-w-6xl">
           <p className="text-fd-muted-foreground mb-3 font-mono text-xs uppercase tracking-wider">
             Two halves, one library
           </p>
           <h2 className="mb-4 text-2xl font-semibold tracking-tight sm:text-3xl">
             Receive webhooks. Send webhooks. Use either alone.
           </h2>
-          <p className="text-fd-muted-foreground mb-12 max-w-3xl text-sm sm:text-base">
-            The <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono text-sm">Postel</code>{" "}
-            factory composes both — but in these docs they are kept separate, so you never have to wade
-            through outbound material to integrate the receiver, or vice versa.
+          <p className="text-fd-muted-foreground mb-12 max-w-3xl text-sm leading-relaxed sm:text-base">
+            The{" "}
+            <code className="bg-fd-muted/60 rounded px-1.5 py-0.5 font-mono text-sm">
+              Postel
+            </code>{" "}
+            factory composes both — but in these docs they stay separate, so you
+            never wade through outbound material to integrate the receiver, or
+            vice versa.
           </p>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Inbound */}
-            <article className="border-fd-border bg-fd-background flex min-w-0 flex-col rounded-lg border">
-              <header className="border-fd-border border-b px-5 py-3">
-                <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
+            <article className="flex min-w-0 flex-col gap-5">
+              <div>
+                <p className="text-fd-muted-foreground mb-1 font-mono text-[11px] uppercase tracking-wider">
                   Inbound · receive
                 </p>
-                <h3 className="text-base font-semibold">Verify a signed webhook</h3>
-              </header>
-              <div
-                className="[&_pre]:!m-0 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:px-5 [&_pre]:py-4 [&_pre]:text-[13px] [&_pre]:leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: inboundHtml }}
-              />
-              <footer className="border-fd-border border-t px-5 py-3 text-xs text-fd-muted-foreground">
-                Multi-secret rotation, JWKS, dedup, raw-bytes preservation, structured errors.{" "}
-                <Link
-                  href="/docs/inbound"
-                  className="text-fd-foreground underline underline-offset-4 hover:text-fd-muted-foreground"
-                >
-                  Inbound section →
-                </Link>
-              </footer>
+                <h3 className="text-lg font-semibold">
+                  Configure once, per source
+                </h3>
+              </div>
+              <CodeCard html={inboundConfigHtml} file="lib/postel.ts" />
+              <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                {inboundFeatures.map((f) => (
+                  <li
+                    key={f}
+                    className="text-fd-muted-foreground flex items-start gap-2 text-sm"
+                  >
+                    <span className="text-fd-foreground/70 mt-0.5 select-none">
+                      ›
+                    </span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href="/docs/inbound"
+                className="text-fd-foreground inline-flex items-center text-sm font-medium underline underline-offset-4 hover:text-fd-muted-foreground"
+              >
+                Explore inbound
+                <span className="ml-1.5">→</span>
+              </Link>
             </article>
 
-            {/* Outbound */}
-            <article className="border-fd-border bg-fd-background flex min-w-0 flex-col rounded-lg border">
-              <header className="border-fd-border border-b px-5 py-3">
-                <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
+            <article className="flex min-w-0 flex-col gap-5">
+              <div>
+                <p className="text-fd-muted-foreground mb-1 font-mono text-[11px] uppercase tracking-wider">
                   Outbound · send
                 </p>
-                <h3 className="text-base font-semibold">Transactional outbox</h3>
-              </header>
-              <div
-                className="[&_pre]:!m-0 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:px-5 [&_pre]:py-4 [&_pre]:text-[13px] [&_pre]:leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: outboundHtml }}
-              />
-              <footer className="border-fd-border border-t px-5 py-3 text-xs text-fd-muted-foreground">
-                Retries, replay, fanout, endpoints, signing, key rotation — available against the in-memory adapter; database adapters, KMS, and observability are planned.{" "}
-                <Link
-                  href="/docs/outbound"
-                  className="text-fd-foreground underline underline-offset-4 hover:text-fd-muted-foreground"
-                >
-                  Outbound section →
-                </Link>
-              </footer>
+                <h3 className="text-lg font-semibold">
+                  Configure once, then send
+                </h3>
+              </div>
+              <CodeCard html={outboundConfigHtml} file="lib/postel.ts" />
+              <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                {outboundFeatures.map((f) => (
+                  <li
+                    key={f}
+                    className="text-fd-muted-foreground flex items-start gap-2 text-sm"
+                  >
+                    <span className="text-fd-foreground/70 mt-0.5 select-none">
+                      ›
+                    </span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href="/docs/outbound"
+                className="text-fd-foreground inline-flex items-center text-sm font-medium underline underline-offset-4 hover:text-fd-muted-foreground"
+              >
+                Explore outbound
+                <span className="ml-1.5">→</span>
+              </Link>
             </article>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Who is this for ────────────────────────────────── */}
+      <section className="border-fd-border bg-fd-muted/40 border-b px-6 py-20 sm:py-24">
+        <div className="mx-auto max-w-6xl">
+          <p className="text-fd-muted-foreground mb-3 font-mono text-xs uppercase tracking-wider">
+            Start where you are
+          </p>
+          <h2 className="mb-12 text-2xl font-semibold tracking-tight sm:text-3xl">
+            Find your path in.
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {personas.map((p) => (
+              <Link
+                key={p.title}
+                href={p.href}
+                className="group border-fd-border bg-fd-card hover:border-fd-foreground/30 flex flex-col rounded-lg border p-5 transition-colors"
+              >
+                <span className="text-fd-foreground mb-4">{p.icon}</span>
+                <h3 className="mb-2 text-sm font-semibold">{p.title}</h3>
+                <p className="text-fd-muted-foreground mb-4 flex-1 text-[13px] leading-relaxed">
+                  {p.body}
+                </p>
+                <span className="text-fd-muted-foreground group-hover:text-fd-foreground inline-flex items-center text-xs font-medium transition-colors">
+                  Read
+                  <span className="ml-1 transition-transform group-hover:translate-x-0.5">
+                    →
+                  </span>
+                </span>
+              </Link>
+            ))}
           </div>
         </div>
       </section>
 
       {/* ── Three pillars ──────────────────────────────────── */}
       <section className="border-fd-border border-b px-6 py-20 sm:py-24">
-        <div className="mx-auto grid max-w-5xl gap-6 sm:grid-cols-3">
-          {cards.map((c) => (
+        <div className="mx-auto grid max-w-6xl gap-6 sm:grid-cols-3">
+          {pillars.map((c) => (
             <article
               key={c.eyebrow}
-              className="border-fd-border bg-fd-background rounded-lg border p-6"
+              className="border-fd-border bg-fd-card rounded-lg border p-6"
             >
               <p className="text-fd-muted-foreground mb-2 font-mono text-[10px] uppercase tracking-wider">
                 {c.eyebrow}
               </p>
               <h3 className="mb-3 text-lg font-semibold">{c.title}</h3>
-              <p className="text-fd-muted-foreground text-sm leading-relaxed">{c.body}</p>
+              <p className="text-fd-muted-foreground text-sm leading-relaxed">
+                {c.body}
+              </p>
             </article>
           ))}
         </div>
       </section>
 
       {/* ── Eval CTA ───────────────────────────────────────── */}
-      <section className="px-6 py-20">
+      <section className="px-6 py-20 sm:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-fd-muted-foreground mb-3 font-mono text-xs uppercase tracking-wider">
             Evaluating?
@@ -249,19 +486,92 @@ export default async function HomePage() {
             Run the six-line filter before you read more.
           </h2>
           <p className="text-fd-muted-foreground mb-8 text-sm leading-relaxed">
-            Postel has a narrow scope on purpose. Six yes/no questions tell you whether the library
-            fits your case, your stack, and your timeline — or whether you'd be happier with Svix,
-            Hookdeck Outpost, or a hand-rolled queue worker.
+            Postel has a narrow scope on purpose. Six yes/no questions tell you
+            whether the library fits your case, your stack, and your timeline —
+            or whether you'd be happier with Svix, Hookdeck Outpost, or a
+            hand-rolled queue worker.
           </p>
           <Link
-            href="/docs/is-postel-for-me"
-            className="text-fd-foreground hover:text-fd-muted-foreground inline-flex items-center text-sm font-medium underline underline-offset-4"
+            href="/docs/get-started/is-postel-for-me"
+            className="bg-fd-foreground text-fd-background hover:bg-fd-foreground/85 inline-flex h-10 items-center rounded-md px-5 text-sm font-medium transition-colors"
           >
             Is Postel for me?
-            <span className="ml-1.5">→</span>
+            <span className="ml-2">→</span>
           </Link>
         </div>
       </section>
+
+      {/* ── Footer ─────────────────────────────────────────── */}
+      <footer className="border-fd-border bg-fd-muted/40 border-t px-6 py-14">
+        <div className="mx-auto grid max-w-6xl gap-10 sm:grid-cols-[1.5fr_1fr_1fr_1fr]">
+          <div className="min-w-0">
+            <span className="inline-flex items-center gap-2">
+              <PostelMark className="text-fd-foreground size-5" />
+              <span className="font-semibold">Postel</span>
+            </span>
+            <p className="text-fd-muted-foreground mt-3 max-w-xs text-[13px] leading-relaxed">
+              Be conservative in what you send, liberal in what you accept.
+            </p>
+          </div>
+          <FooterColumn
+            title="Docs"
+            links={[
+              { label: "Quickstart", href: "/docs/get-started/quickstart" },
+              { label: "Is Postel for me?", href: "/docs/get-started/is-postel-for-me" },
+              { label: "Why Postel", href: "/docs/get-started/why" },
+              { label: "Polyglot", href: "/docs/get-started/polyglot" },
+            ]}
+          />
+          <FooterColumn
+            title="Library"
+            links={[
+              { label: "Inbound", href: "/docs/inbound" },
+              { label: "Outbound", href: "/docs/outbound" },
+              { label: "Reference", href: "/docs/reference" },
+              { label: "Errors", href: "/docs/reference/errors" },
+            ]}
+          />
+          <FooterColumn
+            title="Project"
+            links={[
+              { label: "GitHub", href: "https://github.com/postel-sh/postel" },
+              { label: "Specs & standards", href: "/docs/reference/specs" },
+              {
+                label: "Standard Webhooks",
+                href: "https://www.standardwebhooks.com",
+              },
+            ]}
+          />
+        </div>
+      </footer>
     </main>
+  );
+}
+
+function FooterColumn({
+  title,
+  links,
+}: {
+  title: string;
+  links: ReadonlyArray<{ label: string; href: string }>;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-fd-foreground mb-3 text-xs font-semibold uppercase tracking-wider">
+        {title}
+      </p>
+      <ul className="space-y-2">
+        {links.map((l) => (
+          <li key={l.label}>
+            <Link
+              href={l.href}
+              className="text-fd-muted-foreground hover:text-fd-foreground text-[13px] transition-colors"
+            >
+              {l.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

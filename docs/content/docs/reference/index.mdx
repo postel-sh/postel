@@ -3,11 +3,15 @@ title: Reference
 description: Every export, every type, every error class, every spec. Generated from source or linked to the canonical artifact.
 ---
 
+import { PackageIcon, CodeIcon, AlertTriangleIcon, FileTextIcon } from "@/components/icons";
+
 The reference section is the source of truth. Inbound and outbound concept pages aim for *narrative*; reference pages aim for *completeness*.
 
-- **[Packages](/docs/reference/packages)** — every `@postel/*` package, what it does, what it depends on, and whether it ships today.
-- **[`@postel/core` API](/docs/reference/core)** — generated from source via TypeDoc. The `Postel({...})` factory, every Verifier strategy, every error class, every type.
-- **[Errors](/docs/reference/errors)** — every `PostelError` subclass, its code, when it's thrown, and how to recover.
-- **[Specs & standards](/docs/reference/specs)** — wire format (AsyncAPI 3.0), DB schema (SQL DDL), capability specs, ADRs, conformance levels.
+<Cards>
+  <Card icon={<PackageIcon />} title="Packages" href="/docs/reference/packages" description="Every @postel/* package — what it does, what it depends on, and whether it ships today." />
+  <Card icon={<CodeIcon />} title="@postel/core API" href="/docs/reference/core" description="Generated from source via TypeDoc. The factory, every Verifier strategy, every error class, every type." />
+  <Card icon={<AlertTriangleIcon />} title="Errors" href="/docs/reference/errors" description="Every PostelError subclass — its code, when it's thrown, and how to recover." />
+  <Card icon={<FileTextIcon />} title="Specs & standards" href="/docs/reference/specs" description="Wire format (AsyncAPI 3.0), DB schema (SQL DDL), capability specs, ADRs, conformance levels." />
+</Cards>
 
 If something is documented in narrative form elsewhere and contradicted by a reference page, the reference page wins. The reference is generated; the narrative is hand-written.
