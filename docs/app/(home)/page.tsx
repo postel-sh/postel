@@ -173,7 +173,7 @@ export default async function HomePage() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Inbound */}
-            <article className="border-fd-border bg-fd-background flex flex-col rounded-lg border">
+            <article className="border-fd-border bg-fd-background flex min-w-0 flex-col rounded-lg border">
               <header className="border-fd-border border-b px-5 py-3">
                 <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
                   Inbound · receive
@@ -196,7 +196,7 @@ export default async function HomePage() {
             </article>
 
             {/* Outbound */}
-            <article className="border-fd-border bg-fd-background flex flex-col rounded-lg border">
+            <article className="border-fd-border bg-fd-background flex min-w-0 flex-col rounded-lg border">
               <header className="border-fd-border border-b px-5 py-3">
                 <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
                   Outbound · send
