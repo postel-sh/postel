@@ -3,6 +3,8 @@ title: Welcome
 description: A polyglot library for sending and receiving webhooks reliably and securely. It does two halves — inbound and outbound — and you can use either alone.
 ---
 
+import { CompassIcon, RocketIcon, BookIcon, GlobeIcon } from "@/components/icons";
+
 Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. It runs inside your application against your existing relational database (Postgres, MySQL, SQLite, …) — no Redis, no broker, no separate dispatcher process.
 
 > Svix is for when webhooks are your **product**.
@@ -21,10 +23,12 @@ The `Postel({ inbound, outbound })` factory composes both — but everywhere els
 
 ## Picking a starting point
 
-- **You want to evaluate.** Read [Is Postel for me?](/docs/is-postel-for-me) — a six-line decision gate.
-- **You want to verify your first webhook.** Read [Quickstart](/docs/quickstart) — 60 seconds, TypeScript, Hono or framework-agnostic.
-- **You want the positioning.** Read [Why Postel](/docs/why) — the tradeoffs, comparison vs Svix, comparison vs hand-rolled.
-- **You're a port author (Go, Python, Rust).** Read [Polyglot](/docs/polyglot) — what conformance means and where the suite lives.
+<Cards>
+  <Card icon={<CompassIcon />} title="Is Postel for me?" href="/docs/get-started/is-postel-for-me" description="A six-line decision gate. Run it before you read more." />
+  <Card icon={<RocketIcon />} title="Quickstart" href="/docs/get-started/quickstart" description="60 seconds — verify your first webhook. TypeScript, Hono or framework-agnostic." />
+  <Card icon={<BookIcon />} title="Why Postel" href="/docs/get-started/why" description="The tradeoffs; comparison vs Svix, comparison vs hand-rolled." />
+  <Card icon={<GlobeIcon />} title="Polyglot" href="/docs/get-started/polyglot" description="For port authors — what conformance means and where the suite lives." />
+</Cards>
 
 ## Pre-1.0 reality check
 

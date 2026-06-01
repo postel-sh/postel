@@ -3,11 +3,17 @@ title: Quickstart
 description: Install @postel/core and verify your first signed webhook in under a minute. Node, Bun, or Deno.
 ---
 
+import { Steps, Step } from "fumadocs-ui/components/steps";
+
 This page takes you from zero to a verified webhook on your laptop. It uses only the receiver half of `@postel/core`. For the sending side, see [Outbound](/docs/outbound).
 
-Other languages (Go, Python, Rust) are on the roadmap. The TypeScript examples below are what you can run *right now*. See [Polyglot](/docs/polyglot) for port status.
+Other languages (Go, Python, Rust) are on the roadmap. The TypeScript examples below are what you can run *right now*. See [Polyglot](/docs/get-started/polyglot) for port status.
 
-## 1. Install
+<Steps>
+
+<Step>
+
+### Install
 
 ```bash
 pnpm add @postel/core
@@ -18,7 +24,11 @@ pnpm add @postel/core
 
 Zero runtime dependencies. Tree-shaking keeps outbound code paths out of receiver-only builds.
 
-## 2. Configure a `Postel` instance
+</Step>
+
+<Step>
+
+### Configure a `Postel` instance
 
 Once per process, at module scope. One entry per webhook *source* — keep them keyed by the producer name.
 
@@ -40,7 +50,11 @@ A few things worth noticing now (the [Inbound](/docs/inbound) section explains t
 - Sources are keyed by name. `postel.inbound.github` is fully typed; `postel.inbound.stripe` only exists if you configured it.
 - `postel.outbound` is *absent* on the instance type because you didn't configure `outbound`. TypeScript catches accidental use at compile time.
 
-## 3. Verify a request
+</Step>
+
+<Step>
+
+### Verify a request
 
 This is framework-agnostic — anywhere you can hand off raw bytes and headers, it works:
 
@@ -73,7 +87,11 @@ export async function POST(req: Request) {
 
 Works unmodified on Next.js Route Handlers, Bun, Deno, and any other runtime whose `Request` exposes `arrayBuffer()`. For Hono there's a dedicated adapter that puts the verified event on `c.get("postel")` — see [Framework adapters](/docs/inbound/frameworks).
 
-## 4. Try it locally
+</Step>
+
+<Step>
+
+### Try it locally
 
 You need a signed request to verify. The library ships a fixture helper for exactly this:
 
@@ -97,6 +115,10 @@ console.log(res.status); // 200
 
 `signFixture` is **for tests**, not production signing. Production signing is the sender's job (`postel.outbound.send`) — see [Outbound](/docs/outbound).
 
+</Step>
+
+</Steps>
+
 ## Where to next
 
 You have a working verifier. The next things you'll hit:
@@ -106,4 +128,4 @@ You have a working verifier. The next things you'll hit:
 - [Deduplication](/docs/inbound/deduplication) — webhooks are at-least-once; here's the atomic helper.
 - [Inbound overview](/docs/inbound) — the full receiver feature map.
 
-If you're not sure whether the library fits your case, jump to [Is Postel for me?](/docs/is-postel-for-me).
+If you're not sure whether the library fits your case, jump to [Is Postel for me?](/docs/get-started/is-postel-for-me).

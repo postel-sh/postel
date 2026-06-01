@@ -5,7 +5,7 @@ description: The positioning, the tradeoffs, and the design rationale. Why a lib
 
 Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, multi-secret windows, JWKS, raw-bytes preservation. That's where Postel comes in.
 
-If you skipped here from [Is Postel for me?](/docs/is-postel-for-me): this page is the long version of the same content. The fast filter is there; the rationale is here.
+If you skipped here from [Is Postel for me?](/docs/get-started/is-postel-for-me): this page is the long version of the same content. The fast filter is there; the rationale is here.
 
 ## The problem
 
@@ -59,7 +59,7 @@ The suite is the boundary between **CONTRACT** (everything every port must do) a
 
 ### 3. Polyglot from the start
 
-The TypeScript port ships first because Node + Postgres is the largest existing footprint and the receiver story is the smallest plausible cut. But the contract is language-agnostic: the wire format is AsyncAPI 3.0, the DB schema is SQL DDL, the capability behaviors are markdown specs, and the compliance suite drives any conformant receiver. Go, Python, and Rust ports follow on the same schedule, each gated on passing the suite. See [Polyglot](/docs/polyglot).
+The TypeScript port ships first because Node + Postgres is the largest existing footprint and the receiver story is the smallest plausible cut. But the contract is language-agnostic: the wire format is AsyncAPI 3.0, the DB schema is SQL DDL, the capability behaviors are markdown specs, and the compliance suite drives any conformant receiver. Go, Python, and Rust ports follow on the same schedule, each gated on passing the suite. See [Polyglot](/docs/get-started/polyglot).
 
 The bet: a small narrow contract enforced by the compliance suite scales further than per-port reinvention or single-language lock-in.
 
@@ -94,7 +94,7 @@ If all yes → 1.0. Otherwise it isn't done.
 
 ## Read next
 
-- [Is Postel for me?](/docs/is-postel-for-me) — the fast filter.
-- [Quickstart](/docs/quickstart) — verify your first webhook.
-- [Polyglot](/docs/polyglot) — the language-port roadmap.
+- [Is Postel for me?](/docs/get-started/is-postel-for-me) — the fast filter.
+- [Quickstart](/docs/get-started/quickstart) — verify your first webhook.
+- [Polyglot](/docs/get-started/polyglot) — the language-port roadmap.
 - [Reference → Specs & standards](/docs/reference/specs) — the source-of-truth artifacts.

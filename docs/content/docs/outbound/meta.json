@@ -1,5 +1,8 @@
 {
   "title": "Outbound",
+  "icon": "send",
+  "description": "Deliver Standard Webhooks to your customers.",
+  "root": true,
   "pages": [
     "index",
     "send",
