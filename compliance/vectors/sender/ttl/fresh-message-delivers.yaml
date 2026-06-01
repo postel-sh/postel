@@ -1,0 +1,27 @@
+id: sender/ttl/fresh-message-delivers
+mode: sender
+requirement:
+  capability: sender
+  title: Per-message TTL
+description: A message within its TTL window is delivered normally.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_main
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x, ttl: "10m" }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_main
+expected:
+  outcome: accept

@@ -1,0 +1,34 @@
+id: sender/fanout/matching-endpoints-receive-all
+mode: sender
+requirement:
+  capability: sender
+  title: Late-binding fanout
+description: Two matching endpoints both receive a copy of one send.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_a
+    endpoint:
+      url: "{{mock_receiver_url}}/a"
+      types: ["evt.x"]
+      signing: { fixture_id: hmac_primary }
+  - op: register_endpoint
+    as: ep_b
+    endpoint:
+      url: "{{mock_receiver_url}}/b"
+      types: ["evt.x"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 2
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 2
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_a
+  - endpoint: ep_b
+expected:
+  outcome: accept

@@ -1,6 +1,6 @@
 ---
 title: Framework adapters
-description: Adapter status per framework. Hono ships today; others coming alongside v0.1. The framework-agnostic factory works everywhere.
+description: Adapter status per framework. Hono ships today; others planned. The framework-agnostic factory works everywhere.
 ---
 
 `@postel/core` is framework-agnostic — anywhere you can hand it raw bytes and headers, the `Postel({...})` factory works. Framework adapters add two niceties on top:
@@ -15,12 +15,12 @@ Until your framework's adapter ships, the factory snippet from [Verify a signed 
 | Framework | Package | Ships? | Notes |
 |---|---|---|---|
 | Hono | `@postel/hono` | ✅ Today | Real implementation: `postelHono()` middleware sets `c.get("postel")`; `honoVerify()` for ad-hoc calls. |
-| Express | `@postel/express` | ⏳ Soon | Package exists as a stub; full middleware lands alongside v0.1.0. |
+| Express | `@postel/express` | ⏳ Soon | Package exists as a stub; full middleware planned. |
 | Fastify | `@postel/fastify` | ⏳ Soon | Stub today. |
 | Next.js Route Handlers | `@postel/nextjs` | ⏳ Soon | Stub today. Native `Request` works fine without an adapter; the package is for type ergonomics. |
 | Bun.serve | `@postel/bun` | ⏳ Soon | Stub today. |
 | Deno.serve | (none planned) | n/a | Use the factory directly with `req.arrayBuffer()`. |
-| SvelteKit, Astro, Nitro | (none planned for v0.1) | n/a | Use the factory directly. |
+| SvelteKit, Astro, Nitro | (none planned) | n/a | Use the factory directly. |
 
 > "Stub today" means the package is registered (`@postel/express`, etc.) but contains only a name export — no real runtime. Don't depend on these stubs in production; they exist to reserve the name in the workspace.
 

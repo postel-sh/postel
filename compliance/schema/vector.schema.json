@@ -5,11 +5,11 @@
   "description": "Canonical schema for @postel/compliance test vectors. Vectors are authored as YAML files under compliance/vectors/<category>/<id>.yaml; the in-memory structure after parsing (YAML or JSON) is what this schema validates. The schema is itself a CONTRACT artifact governed by the compliance capability spec — every conformant runner agrees on this shape. Per the spec's `Vector file schema` requirement (openspec/specs/compliance/spec.md).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "requirement", "description", "input", "signature_mode", "expected"],
+  "required": ["id", "requirement", "description", "expected"],
   "properties": {
     "id": {
       "type": "string",
-      "description": "Stable test identifier of the form <category>/<vector-id> (e.g., 'signature-v1/tampered-body').",
+      "description": "Stable test identifier of the form <category>/<vector-id> (e.g., 'signature-v1/tampered-body', 'sender/wire-output/hmac-v1-byte-stable').",
       "pattern": "^[a-z0-9][a-z0-9-]*(?:/[a-z0-9][a-z0-9-]*)+$"
     },
     "requirement": {
@@ -20,46 +20,41 @@
       "properties": {
         "capability": {
           "type": "string",
-          "description": "OpenSpec capability name (e.g., 'receiver', 'standard-webhooks-compliance', 'key-management').",
           "pattern": "^[a-z][a-z0-9-]*$"
         },
         "title": {
           "type": "string",
-          "description": "Requirement title, verbatim from the capability spec (no leading '### Requirement:' prefix).",
           "minLength": 1
         }
       }
     },
     "description": {
       "type": "string",
-      "description": "Human-readable one-line summary of the vector's intent.",
       "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "description": "Discriminator. 'receiver' (default when absent) = legacy v0.1 shape: the runner sends `input` to --target. 'sender' = the runner stands up a mock receiver, drives the sender via --sender-control, observes outgoing HTTP.",
+      "enum": ["receiver", "sender"],
+      "default": "receiver"
     },
     "input": {
       "type": "object",
-      "description": "The HTTP request the runner sends to the target.",
+      "description": "Receiver-mode: the HTTP request the runner sends to the target. REQUIRED when mode is 'receiver' or omitted; FORBIDDEN when mode is 'sender'.",
       "additionalProperties": false,
       "required": ["method", "url", "body_b64"],
       "properties": {
         "method": {
           "type": "string",
-          "description": "HTTP method (typically POST).",
           "enum": ["POST", "PUT", "PATCH", "GET", "DELETE", "HEAD", "OPTIONS"]
         },
-        "url": {
-          "type": "string",
-          "description": "Path or absolute URL. Relative paths resolve against --target. May contain {{now±duration}} time templates."
-        },
+        "url": { "type": "string" },
         "headers": {
           "type": "object",
-          "description": "Request headers. Values are strings; the runner resolves {{now±duration}} templates in each value before sending.",
-          "additionalProperties": {
-            "type": "string"
-          }
+          "additionalProperties": { "type": "string" }
         },
         "body_b64": {
           "type": "string",
-          "description": "Base64-encoded raw request body bytes. Preserves byte-exactness across runners. Empty string is allowed (sends an empty body).",
           "pattern": "^[A-Za-z0-9+/]*={0,2}$"
         }
       }
@@ -72,71 +67,156 @@
         "additionalProperties": false,
         "required": ["id", "fixture"],
         "properties": {
-          "id": {
-            "type": "string",
-            "description": "Logical name for this secret within the vector (e.g., 'primary', 'verifying'). The first entry is used to compute signatures.",
-            "minLength": 1
-          },
-          "fixture": {
-            "type": "string",
-            "description": "Filename of a key fixture under compliance/vectors/_keys/ (e.g., 'hmac_primary.yaml').",
-            "pattern": "^[a-z0-9][a-z0-9_-]*\\.ya?ml$"
-          }
+          "id": { "type": "string", "minLength": 1 },
+          "fixture": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*\\.ya?ml$" }
         }
       }
     },
     "signature_mode": {
       "type": "string",
-      "description": "'static' = the signature in input.headers.webhook-signature is pre-computed at vector-authoring time and frozen. 'computed' = the runner resolves time templates, then computes the HMAC or Ed25519 signature using the first secrets[].fixture, then injects it into the outgoing request.",
+      "description": "Receiver-mode only. 'static' or 'computed'.",
       "enum": ["static", "computed"]
+    },
+    "triggers": {
+      "type": "array",
+      "description": "Sender-mode only. Ordered control-plane operations the runner performs against the sender-under-test.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["op"],
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": ["register_endpoint", "send", "start_workers", "advance_clock", "wait_for"]
+          },
+          "as": { "type": "string" },
+          "endpoint": { "type": "object" },
+          "event": { "type": "object" },
+          "concurrency": { "type": "integer", "minimum": 1 },
+          "to": { "type": "string" },
+          "ms": { "type": "integer", "minimum": 0 },
+          "request_count": { "type": "integer", "minimum": 0 },
+          "timeout_ms": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "mock_receiver": {
+      "type": "object",
+      "description": "Sender-mode only. Scripts the embedded mock receiver's responses to inbound deliveries from the sender.",
+      "additionalProperties": false,
+      "properties": {
+        "default_response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "type": "integer" },
+            "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+            "body_b64": { "type": "string" },
+            "delay_ms": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "scripted_responses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status"],
+            "properties": {
+              "status": { "type": "integer" },
+              "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+              "body_b64": { "type": "string" },
+              "delay_ms": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "expected_requests": {
+      "type": "array",
+      "description": "Sender-mode only. Length-exact list of outgoing HTTP requests the runner expects to observe at the mock receiver.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "endpoint": { "type": "string" },
+          "method": { "type": "string", "default": "POST" },
+          "path": { "type": "string" },
+          "headers_match": { "type": "object", "additionalProperties": { "type": "string" } },
+          "headers_present": { "type": "array", "items": { "type": "string" } },
+          "headers_absent": { "type": "array", "items": { "type": "string" } },
+          "body_b64": { "type": "string" },
+          "body_json_equals": {},
+          "signature_verifies": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fixture_id"],
+            "properties": {
+              "fixture_id": { "type": "string" },
+              "scheme": { "type": "string", "enum": ["v1", "v1a"] }
+            }
+          },
+          "arrived_within_ms": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "after": { "type": "string" },
+              "min_ms": { "type": "integer", "minimum": 0 },
+              "max_ms": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "attempt_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "success",
+              "failed",
+              "failed-permanent",
+              "dead-letter",
+              "expired",
+              "filtered",
+              "skipped",
+              "ssrf-blocked"
+            ]
+          }
+        }
+      }
     },
     "expected": {
       "type": "object",
-      "description": "The verdict the runner asserts against the target's HTTP response.",
       "additionalProperties": false,
       "required": ["outcome"],
       "properties": {
         "outcome": {
           "type": "string",
-          "description": "'accept' = target HTTP 2xx with no dedup header. 'reject' = target HTTP 4xx/5xx with the structured error_code in the X-Postel-Verify-Error header or JSON body. 'duplicate' = target HTTP 2xx with response header X-Postel-Dedup-Result: duplicate (verify succeeded but dedup helper reports the message id as already seen).",
           "enum": ["accept", "reject", "duplicate"]
         },
         "error_code": {
           "type": "string",
-          "description": "Structured error code from the receiver capability spec's verify-error vocabulary. Required when outcome is 'reject'; forbidden when outcome is 'accept'.",
           "enum": [
             "SIGNATURE_INVALID",
             "TIMESTAMP_TOO_OLD",
             "MALFORMED_HEADER",
             "UNKNOWN_KEY_ID",
-            "RAW_BYTES_MISMATCH_DETECTED"
+            "RAW_BYTES_MISMATCH_DETECTED",
+            "ENDPOINT_VALIDATION",
+            "SSRF_BLOCKED",
+            "ENDPOINT_DISABLED"
           ]
         }
       },
       "allOf": [
         {
-          "if": {
-            "properties": { "outcome": { "const": "accept" } }
-          },
-          "then": {
-            "not": { "required": ["error_code"] }
-          }
+          "if": { "properties": { "outcome": { "const": "accept" } } },
+          "then": { "not": { "required": ["error_code"] } }
         },
         {
-          "if": {
-            "properties": { "outcome": { "const": "duplicate" } }
-          },
-          "then": {
-            "not": { "required": ["error_code"] }
-          }
+          "if": { "properties": { "outcome": { "const": "duplicate" } } },
+          "then": { "not": { "required": ["error_code"] } }
         },
         {
-          "if": {
-            "properties": { "outcome": { "const": "reject" } }
-          },
-          "then": {
-            "required": ["error_code"]
-          }
+          "if": { "properties": { "outcome": { "const": "reject" } } },
+          "then": { "required": ["error_code"] }
         }
       ]
     }
@@ -144,15 +224,41 @@
   "allOf": [
     {
       "if": {
-        "properties": { "signature_mode": { "const": "computed" } }
+        "anyOf": [
+          { "properties": { "mode": { "const": "receiver" } }, "required": ["mode"] },
+          { "not": { "required": ["mode"] } }
+        ]
       },
       "then": {
-        "properties": {
-          "secrets": {
-            "type": "array",
-            "minItems": 1
-          }
-        },
+        "required": ["input", "signature_mode"],
+        "not": {
+          "anyOf": [
+            { "required": ["triggers"] },
+            { "required": ["mock_receiver"] },
+            { "required": ["expected_requests"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "mode": { "const": "sender" } },
+        "required": ["mode"]
+      },
+      "then": {
+        "required": ["triggers"],
+        "not": {
+          "anyOf": [{ "required": ["input"] }, { "required": ["signature_mode"] }]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "signature_mode": { "const": "computed" } },
+        "required": ["signature_mode"]
+      },
+      "then": {
+        "properties": { "secrets": { "type": "array", "minItems": 1 } },
         "required": ["secrets"]
       }
     }

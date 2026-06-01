@@ -1,0 +1,36 @@
+id: sender/retry-schedule/5xx-then-success
+mode: sender
+requirement:
+  capability: retry-policy
+  title: Default retry schedule with jitter
+description: First dispatch gets 503; second attempt arrives roughly first-retry-interval-later and succeeds.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  scripted_responses:
+    - { status: 503 }
+    - { status: 200 }
+triggers:
+  - op: register_endpoint
+    as: ep_flaky
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["1s"], jitter: 0, maxAttempts: 3 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 2
+    timeout_ms: 5000
+expected_requests:
+  - endpoint: ep_flaky
+    attempt_status: failed
+  - endpoint: ep_flaky
+    attempt_status: success
+    arrived_within_ms: { after: "request:0", min_ms: 800, max_ms: 1500 }
+expected:
+  outcome: accept

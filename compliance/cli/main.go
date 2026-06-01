@@ -8,11 +8,14 @@ import (
 )
 
 type cliOpts struct {
-	target     string
-	format     string
-	now        time.Time
-	vectorsDir string
-	schemaDir  string
+	target            string
+	senderControl     string
+	mockReceiverHost  string
+	mockReceiverPort  int
+	format            string
+	now               time.Time
+	vectorsDir        string
+	schemaDir         string
 }
 
 func parseFlags(progName string, args []string, errOut *os.File) (*cliOpts, error) {
@@ -28,7 +31,10 @@ openspec/specs/compliance/spec.md "CLI surface" requirement.
 `, progName)
 		fs.PrintDefaults()
 	}
-	target := fs.String("target", "", "HTTP receiver URL the suite drives requests against (required)")
+	target := fs.String("target", "", "HTTP receiver URL the suite drives requests against (receiver mode; XOR with --sender-control)")
+	senderControl := fs.String("sender-control", "", "Compliance driver control-plane URL (sender mode; XOR with --target)")
+	mockReceiverHost := fs.String("mock-receiver-host", "127.0.0.1", "Bind host for the embedded mock receiver (sender mode)")
+	mockReceiverPort := fs.Int("mock-receiver-port", 0, "Bind port for the embedded mock receiver (sender mode; 0 = OS-assigned)")
 	format := fs.String("format", "text", "Output format: text|json|tap|junit")
 	nowStr := fs.String("now", "", "Baseline ISO-8601 timestamp for {{now±duration}} resolution (default: wall-clock at run start)")
 	vectorsDir := fs.String("vectors", "./vectors", "Directory containing vector YAML files (relative to current working directory)")
@@ -36,9 +42,13 @@ openspec/specs/compliance/spec.md "CLI surface" requirement.
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	if *target == "" {
+	if *target == "" && *senderControl == "" {
 		fs.Usage()
-		return nil, fmt.Errorf("--target is required")
+		return nil, fmt.Errorf("exactly one of --target or --sender-control is required")
+	}
+	if *target != "" && *senderControl != "" {
+		fs.Usage()
+		return nil, fmt.Errorf("--target and --sender-control are mutually exclusive")
 	}
 	switch *format {
 	case "text", "json", "tap", "junit":
@@ -56,11 +66,14 @@ openspec/specs/compliance/spec.md "CLI surface" requirement.
 		now = time.Now().UTC()
 	}
 	return &cliOpts{
-		target:     *target,
-		format:     *format,
-		now:        now,
-		vectorsDir: *vectorsDir,
-		schemaDir:  *schemaDir,
+		target:           *target,
+		senderControl:    *senderControl,
+		mockReceiverHost: *mockReceiverHost,
+		mockReceiverPort: *mockReceiverPort,
+		format:           *format,
+		now:              now,
+		vectorsDir:       *vectorsDir,
+		schemaDir:        *schemaDir,
 	}, nil
 }
 

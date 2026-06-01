@@ -1,0 +1,28 @@
+id: sender/filtering/channel-filter-no-match
+mode: sender
+requirement:
+  capability: filtering-transformation
+  title: Channel filter
+description: >-
+  An endpoint subscribed to channel tenant_42 receives no delivery for an event
+  whose channels do not intersect it — the negative case of the channel filter.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_ch
+    endpoint:
+      url: "{{mock_receiver_url}}/ch"
+      channels: ["tenant_42"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: order.created, channels: ["tenant_99"] }
+  - op: wait_for
+    request_count: 0
+    timeout_ms: 1000
+expected_requests: []
+expected:
+  outcome: accept

@@ -25,8 +25,6 @@
 # Everything else is listed below.
 
 # api-surface-typescript
-Structured error classes
-No string matching on errors
 Effect-TS layer
 
 # compliance — runner / suite infra (Track A owns these)
@@ -38,8 +36,10 @@ Test categorization by capability and sub-category
 Lockstep versioning with the `@postel/*` release train
 Structured changelog at compliance/CHANGELOG.md
 v0.1.0 initial test scope — receiver-side wire-format and signing behavior
-v0.1.0 explicit out-of-scope — sender-side behavior
+Out-of-scope behaviors at the current MINOR
 Test ↔ requirement traceability is enforced
+Sender-side compliance driver mechanism
+v0.2.0 sender-side initial test scope
 
 # distribution-packaging-typescript — lifecycle / policy / DB-bound
 Package map
@@ -55,40 +55,21 @@ Six-month deprecation period
 Wire format spec versioning
 Spec-test traceability is enforced in CI
 
-# endpoint-management — sender-side
-Endpoint CRUD
-Endpoint deletion semantics
-Endpoint auto-disable
-Endpoint state machine with audit trail
-URL validation at create time
-Per-endpoint metadata field
-Per-endpoint signing config
-Per-endpoint custom HTTP headers
+# endpoint-management — sender-side. Most entries are covered by dispatcher.test.ts
+# + retry.test.ts; the queue-depth cap below is genuinely NOT implemented yet (no
+# back-pressure path) and is deferred until the scheduler work lands.
 Per-endpoint queue depth cap
 
-# filtering-transformation — sender-side
-Type filter with glob support
-Channel filter
-Predicate filter
-Transform produces body to send
-Filter and transform errors fail closed
+# filtering-transformation — sender-side (`Late binding at dispatch time` covered in sender.test.ts)
 
-# key-management — generation / rotation / KMS / ephemeral
-Symmetric secret generation
-Asymmetric keypair generation
-Endpoint holds a priority-ordered secret array
-Rotation API with overlap window
+# key-management — generation / rotation / KMS / ephemeral (covered by keys-replay.test.ts; KMS+ephemeral remain deferred)
 Encryption at rest with KMS adapter
+# Ephemeral keys via auto-rotation: the config slot exists but timer-driven
+# rotation is not implemented (it lands with the scheduler). Deferred rather
+# than asserted by a placeholder.
 Ephemeral keys via auto-rotation
 
-# multi-tenancy — sender / dispatch side
-Tenancy field
-Naming convention for tenant scoping
-Tenant-scoped persistence
-Tenant-scoped row-level access in queries
-Per-tenant rate limits
-Per-tenant circuit breaker isolation
-Tenant deletion cascades
+# multi-tenancy — sender / dispatch side (entries covered by keys-replay.test.ts; scheduler/circuit isolation covered in retry/circuit.ts)
 
 # observability — sender / dispatch side
 OpenTelemetry spans on every operation
@@ -106,35 +87,20 @@ Verify latency budgets
 # compliance requirements are now covered by tests; nothing remains
 # staged across the receiver PR series.)
 
-# replay-reconciliation — operator-facing
-Replay a single message
-Replay a range
-Replay by predicate
-Replay safety contract
-Replay attempts tagged for audit
-Replay rate limiting
-Reconciliation API
-Default replay throughput
+# replay-reconciliation — operator-facing (entries covered by keys-replay.test.ts)
 
-# retry-policy — sender-side
-Default retry schedule with jitter
-Programmable per-endpoint retry policy
-Status-code-aware retry
-Per-endpoint and overall delivery deadlines
-Dead-letter event
-Per-endpoint circuit breaker
-At-least-once delivery guarantee
-Idempotent send by client-supplied key
-Per-message TTL
+# retry-policy — sender-side (entries covered by retry.test.ts)
 
-# sender — sender-side
-Send is non-blocking and returns a MessageId
-Send participates in the host transaction (outbox pattern)
-Send latency budget
-Late binding at dispatch time
-Late-binding fanout
-SSRF protection on outbound delivery
+# sender — sender-side (other entries covered by sender/dispatcher tests)
+# DNS rebinding protection: the dispatcher validates every resolved address but
+# does not yet pin the fetch connection to a checked IP, so the full
+# connection-time defense is not implemented. Deferred until the undici Agent
+# (connect.lookup pinning) lands.
 DNS rebinding protection
+# TLS verification by default: TLS-on is the runtime default (Node fetch), but
+# exercising it (and the per-endpoint opt-out) needs a self-signed-cert HTTPS
+# harness. Deferred with the full TLS bad-cert matrix called out in the
+# compliance spec rather than asserted by a placeholder.
 TLS verification by default
 
 # standard-webhooks-compliance — non-v0.1.0 extensions / wrap
@@ -144,26 +110,11 @@ IETF-alignment compatibility mode on the receiver
 Compliance test suite
 
 # storage-layer — adapter matrix / outbox
-BYO storage interface
 Adapter matrix with three categories
-Adapter mode for external job queues
-All writes accept an optional transaction parameter
-Host transaction passthrough
-Schema is a fixed set of canonical tables
 Postgres support across the adapter matrix
 SQLite support across the adapter matrix
-Optional storage capabilities
-Helpers package for adapter authors
-Workers drain the outbox safely under concurrency
-Worker lease lifecycle
-Workers run in-process by default
 Worker fairness across tenants
 Worker throughput target
-Outbox poll latency
-Graceful shutdown
-Concurrency model [PORT-SPECIFIC]
 HTTP client implementation [PORT-SPECIFIC]
-Memory and cache strategies [PORT-SPECIFIC]
 Migrations runnable from CLI and programmatic API
 Configurable retention with automatic pruning
-Attempt status enum casing

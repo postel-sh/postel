@@ -13,9 +13,33 @@ Every test addition, modification, or removal lands here. Each entry cites:
 - The release version (`X.Y.Z`) the change ships in.
 - For modifications and removals: whether the change is breaking (gates on MAJOR).
 
-## [Unreleased]
+## [Unreleased — 0.2.0]
 
-> **Planned scope for `0.1.0`** — defined by the `compliance` capability spec ([`openspec/specs/compliance/spec.md`](../openspec/specs/compliance/spec.md), requirement *"v0.1.0 initial test scope"*). The lists below mirror the spec; if they ever diverge, the spec wins and this section is the bug to fix.
+> **Planned scope for `0.2.0`** — defined by the `compliance` capability spec ([`openspec/specs/compliance/spec.md`](../openspec/specs/compliance/spec.md), requirement *"v0.2.0 sender-side initial test scope"*). This MINOR extends the suite with sender-mode capability via the HTTP control-plane mechanism (see *"Sender-side compliance driver mechanism"*). The vector schema, runner CLI, and two-layer architecture requirements grow to cover sender-mode in a strict-superset way over v0.1.0 (existing receiver-mode vectors remain valid). Lands via OpenSpec change `add-sender-side-compliance-v02`.
+>
+> ### Schema additions
+>
+> - Optional `mode: "receiver" | "sender"` discriminator (default `receiver`).
+> - Sender-mode fields: `triggers[]`, `mock_receiver{}`, `expected_requests[]`.
+> - Expected error-code enum gains `ENDPOINT_VALIDATION`, `SSRF_BLOCKED`, `ENDPOINT_DISABLED` for sender outcomes.
+>
+> ### CLI additions
+>
+> - `--sender-control <url>` flag (XOR with `--target`).
+> - `--mock-receiver-host` (default `127.0.0.1`).
+> - `--mock-receiver-port` (default `0` = ephemeral).
+>
+> ### v0.2.0 sender vectors
+>
+> ~28 vectors across 10 sub-categories: `sender/wire-output/*` (4), `sender/idempotency/*` (2), `sender/fanout/*` (3), `sender/ttl/*` (2), `sender/retry-schedule/*` (4), `sender/deadlines/*` (2), `sender/ssrf-tls/*` (3), `sender/dead-letter/*` (2), `sender/filtering/*` (4), `sender/multi-tenancy/*` (2). `sender/filtering/*` covers the two wire-expressible filter shapes — type-glob and channel — each with a match and a no-match vector (`type-filter-glob-match`, `type-filter-glob-no-match`, `channel-filter-match`, `channel-filter-no-match`). The full corpus lands in this change alongside the runner sender-mode framework and the `@postel/compliance-driver` control plane. `sender/late-binding/*` is deferred (it needs a control-plane `update_endpoint` op; the new-endpoint-after-send facet is already covered by `sender/fanout/late-binding-new-endpoint`). The Go runner's sender-mode execution engine — an embedded mock receiver, control-plane driving (reset / register / send / start-workers / advance-clock), and per-vector assertion of `expected_requests` (count, headers, body, Standard Webhooks signature verification, real-time `arrived_within_ms`, and `attempt_status` read back via `GET /control/messages/:id`) — executes all 28 sender vectors end-to-end against the `@postel/compliance-driver`. `mise run compliance:sender:ts` boots the driver and runs the corpus; a missing or mismatched delivery fails the run.
+>
+> ### Out of scope at v0.2.0 (deferred to v0.3+)
+>
+> Per the renamed *"Out-of-scope behaviors at the current MINOR"* requirement: full at-least-once crash-reclaim simulation, full per-endpoint circuit breaker state-machine assertions, full auto-disable 24-hour-window assertions, multi-tenancy fairness statistics, advanced observability, full TLS bad-cert matrix, reconciliation, replay-reconciliation chapter. Two `filtering-transformation` CONTRACTs are deferred because they are code-side host callbacks — a transform/predicate is a function, not JSON, so "Transform produces body to send" and "Filter and transform errors fail closed" cannot be expressed over the HTTP control plane until a named-callback registration mechanism is designed; they remain CONTRACT and stay covered by each port's unit suite.
+
+## [0.1.0]
+
+> Receiver-side wire-format and signing behavior corpus. Defined by the `compliance` capability spec requirement *"v0.1.0 initial test scope"*.
 
 ### Contracts covered (11 CONTRACT requirements)
 

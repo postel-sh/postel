@@ -1,0 +1,23 @@
+id: sender/ssrf-tls/ssrf-link-local-refused
+mode: sender
+requirement:
+  capability: sender
+  title: SSRF protection on outbound delivery
+description: >-
+  An endpoint URL pointing at the link-local cloud-metadata address
+  (169.254.169.254) is refused by the SSRF defense. For a statically-resolved
+  blocked IP the refusal happens at registration (ENDPOINT_VALIDATION), which is
+  the enforcement point the control plane can drive. Dispatch-time enforcement
+  for hosts that resolve public at create and private at dispatch (DNS rebinding)
+  is exercised by the TypeScript unit suite and lands in the runner once
+  connection-time IP pinning ships (see the `DNS rebinding protection` requirement).
+triggers:
+  - op: register_endpoint
+    as: ep_metadata
+    endpoint:
+      url: "http://169.254.169.254/hook"
+      types: ["evt.x"]
+      allowHttp: true
+expected:
+  outcome: reject
+  error_code: ENDPOINT_VALIDATION

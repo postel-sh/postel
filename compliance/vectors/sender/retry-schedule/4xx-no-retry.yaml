@@ -1,0 +1,32 @@
+id: sender/retry-schedule/4xx-no-retry
+mode: sender
+requirement:
+  capability: retry-policy
+  title: Status-code-aware retry
+description: A 400 response marks the attempt failed-permanent and prevents further retries.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  scripted_responses:
+    - { status: 400 }
+triggers:
+  - op: register_endpoint
+    as: ep_perm
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["100ms", "100ms", "100ms"], jitter: 0, maxAttempts: 3 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 2000
+expected_requests:
+  - endpoint: ep_perm
+    attempt_status: failed-permanent
+expected:
+  outcome: accept

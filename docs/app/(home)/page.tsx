@@ -46,12 +46,12 @@ export async function POST(req: Request) {
   }
 }`;
 
-const outboundSnippet = `// Planned for v0.2 — types ship today, runtime throws NotImplementedError.
-import { Postel, HmacV1, ExponentialBackoff } from "@postel/core";
+const outboundSnippet = `// In-memory storage adapter available now; database adapters planned.
+import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff } from "@postel/core";
 
 const postel = Postel({
   outbound: {
-    storage: /* your DB */,
+    storage: InMemoryStorage(), // or a DB-backed Storage adapter
     signing: HmacV1(),
     retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
   },
@@ -120,7 +120,7 @@ export default async function HomePage() {
         </p>
         <div className="mb-10 inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-muted/40 px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-fd-muted-foreground">
           <span className="size-1.5 rounded-full bg-amber-500" />
-          Pre-alpha · receiver works today · sender v0.2
+          Pre-alpha · inbound + outbound
         </div>
         <div className="mb-12 flex flex-wrap items-center justify-center gap-3">
           <Link
@@ -174,17 +174,11 @@ export default async function HomePage() {
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Inbound */}
             <article className="border-fd-border bg-fd-background flex min-w-0 flex-col rounded-lg border">
-              <header className="border-fd-border flex items-center justify-between border-b px-5 py-3">
-                <div>
-                  <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
-                    Inbound · receive
-                  </p>
-                  <h3 className="text-base font-semibold">Verify a signed webhook</h3>
-                </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                  <span className="size-1.5 rounded-full bg-emerald-500" />
-                  Ships v0.1
-                </span>
+              <header className="border-fd-border border-b px-5 py-3">
+                <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
+                  Inbound · receive
+                </p>
+                <h3 className="text-base font-semibold">Verify a signed webhook</h3>
               </header>
               <div
                 className="[&_pre]:!m-0 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:px-5 [&_pre]:py-4 [&_pre]:text-[13px] [&_pre]:leading-relaxed"
@@ -203,24 +197,18 @@ export default async function HomePage() {
 
             {/* Outbound */}
             <article className="border-fd-border bg-fd-background flex min-w-0 flex-col rounded-lg border">
-              <header className="border-fd-border flex items-center justify-between border-b px-5 py-3">
-                <div>
-                  <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
-                    Outbound · send
-                  </p>
-                  <h3 className="text-base font-semibold">Transactional outbox</h3>
-                </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                  <span className="size-1.5 rounded-full bg-amber-500" />
-                  Planned v0.2
-                </span>
+              <header className="border-fd-border border-b px-5 py-3">
+                <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
+                  Outbound · send
+                </p>
+                <h3 className="text-base font-semibold">Transactional outbox</h3>
               </header>
               <div
                 className="[&_pre]:!m-0 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:px-5 [&_pre]:py-4 [&_pre]:text-[13px] [&_pre]:leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: outboundHtml }}
               />
               <footer className="border-fd-border border-t px-5 py-3 text-xs text-fd-muted-foreground">
-                Retries, replay, fanout, endpoints, KMS, OTel — all designed; runtime lands in v0.2.{" "}
+                Retries, replay, fanout, endpoints, signing, key rotation — available against the in-memory adapter; database adapters, KMS, and observability are planned.{" "}
                 <Link
                   href="/docs/outbound"
                   className="text-fd-foreground underline underline-offset-4 hover:text-fd-muted-foreground"

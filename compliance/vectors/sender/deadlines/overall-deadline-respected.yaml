@@ -1,0 +1,46 @@
+id: sender/deadlines/overall-deadline-respected
+mode: sender
+requirement:
+  capability: sender
+  title: Per-endpoint and overall delivery deadlines
+description: >-
+  The first attempt fails (503); after the overall deadline elapses no further
+  retries are attempted even though the per-endpoint schedule still has budget.
+  The clock is advanced only AFTER the first request is observed, so the deadline
+  check is deterministic: exactly one request, then no retry.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  default_response: { status: 503 }
+triggers:
+  - op: register_endpoint
+    as: ep_deadline
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      # Long retry delay: under the driver's wall-clock the retry must not fire
+      # on its own before the test advances past the overall deadline — the
+      # per-endpoint schedule still has budget, so it's the deadline that cuts it.
+      retryPolicy: { schedule: ["30s"], jitter: 0, maxAttempts: 5 }
+      http: { overallDeadline: "5m" }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  # Observe the first attempt BEFORE advancing the clock, so the worker can't
+  # see the advanced clock before its first dispatch and skip the request.
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+  - op: advance_clock
+    ms: 600000
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 2000
+expected_requests:
+  - endpoint: ep_deadline
+    attempt_status: failed
+expected:
+  outcome: accept

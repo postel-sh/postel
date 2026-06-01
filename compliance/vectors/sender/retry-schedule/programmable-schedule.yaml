@@ -1,0 +1,35 @@
+id: sender/retry-schedule/programmable-schedule
+mode: sender
+requirement:
+  capability: retry-policy
+  title: Programmable per-endpoint retry policy
+description: Per-endpoint retryPolicy with a custom 2-attempt schedule is honored.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  scripted_responses:
+    - { status: 500 }
+    - { status: 500 }
+triggers:
+  - op: register_endpoint
+    as: ep_x
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["500ms", "500ms"], jitter: 0, maxAttempts: 2 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 2
+    timeout_ms: 4000
+expected_requests:
+  - endpoint: ep_x
+    attempt_status: failed
+  - endpoint: ep_x
+    attempt_status: dead-letter
+expected:
+  outcome: accept

@@ -11,7 +11,7 @@ Postel is a polyglot library by design. The wire format is AsyncAPI 3.0. The DB 
 
 | Port | Status | Repo | Notes |
 |---|---|---|---|
-| **TypeScript** | Receiver: shipping (`0.0.0`). Sender: planned v0.2. | [`postel-sh/postel`](https://github.com/postel-sh/postel) (this repo, `typescript/`) | Reference implementation. The other ports gate on passing the same compliance suite at the same version. |
+| **TypeScript** | Receiver: available (`0.0.0`, no release tag yet). Sender: available against the in-memory adapter; DB adapters planned. | [`postel-sh/postel`](https://github.com/postel-sh/postel) (this repo, `typescript/`) | Reference implementation. The other ports gate on passing the same compliance suite at the same version. |
 | **Go** | Roadmap | (not yet) | Receiver first, then sender. Target package: `github.com/postel-sh/postel-go`. |
 | **Python** | Roadmap | (not yet) | Receiver first. Target package: `postel` on PyPI. |
 | **Rust** | Roadmap | (not yet) | Receiver first. Target package: `postel` on crates.io. |
@@ -133,7 +133,7 @@ A new language port is added by implementing the wire format, DB schema, and cap
 
 1. Port implements receiver capabilities first (smaller surface, immediate value).
 2. Port passes `@postel/compliance@X.Y.*` against its local HTTP receiver.
-3. Port is announced as a v0.X release.
+3. Port is announced as a pre-1.0 release at the matching `MAJOR.MINOR`.
 
 The contract is the suite — not prose, not promises. See [Reference → Specs & standards](/docs/reference/specs).
 

@@ -71,6 +71,22 @@ description = "Run go vet on the compliance runner"
 dir = "compliance/cli"
 run = "go vet ./..."
 
+[tasks."compliance:sender:ts"]
+description = "Run the v0.2.0 sender corpus against the TS @postel/compliance-driver"
+run = """
+# Build the runner and the TS driver, then exercise the sender corpus.
+# pnpm runs with -C typescript because the workspace lives there (the repo
+# root has no package.json / pnpm-workspace.yaml).
+mise run compliance:build
+pnpm -C typescript --filter @postel/compliance-driver build
+node typescript/packages/compliance-driver/dist/cli.js --port 0 > /tmp/postel-driver.json &
+DRIVER_PID=$!
+trap "kill $DRIVER_PID 2>/dev/null" EXIT
+sleep 1
+PORT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/postel-driver.json','utf8')).port)")
+./bin/compliance --sender-control "http://127.0.0.1:$PORT" --vectors compliance/vectors --schema-dir compliance/schema --format json
+"""
+
 # Documentation site (Fumadocs / Next.js) — thin delegations into docs/.
 # Standalone Node install at docs/, not part of the typescript/ workspace
 # (cross-cutting like compliance/, per decisions/0006-monorepo-layout.md).

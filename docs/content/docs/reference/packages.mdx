@@ -5,36 +5,37 @@ description: Every @postel/* package, what it does, and whether it ships today.
 
 Postel is a workspace of focused packages. Pick the ones you need; the rest don't get installed.
 
-## Ships today (v0.1)
+## Available today
 
 | Package | Used for | Notes |
 |---|---|---|
-| **`@postel/core`** | [Inbound](/docs/inbound) — the `Postel({ inbound })` factory and primitives | Zero runtime dependencies. The outbound API surface is typed but throws `NotImplementedError` until v0.2. |
+| **`@postel/core`** | [Inbound](/docs/inbound) and [Outbound](/docs/outbound) — the `Postel({ inbound, outbound })` factory and primitives | Zero runtime dependencies. The outbound runtime is available, including the in-process `InMemoryStorage` adapter (`import { InMemoryStorage } from "@postel/core"`). |
 | **`@postel/hono`** | [Hono](/docs/inbound/frameworks) framework adapter | `postelHono()` middleware + `honoVerify()` helper. |
 | **`@postel/standalone-pg`** | [Postgres dedup adapter](/docs/inbound/deduplication) | Plug into `inbound.<source>.dedup` at factory time. |
 | **`@postel/standalone-sqlite`** | [SQLite dedup adapter](/docs/inbound/deduplication) | Same shape as the Postgres adapter; uses `better-sqlite3`. |
 
 ## Stubs today (name reserved, no runtime yet)
 
-| Package | Will be | When |
+| Package | Will be | Status |
 |---|---|---|
-| `@postel/express` | Express framework adapter (raw-body middleware) | v0.1.x — alongside the v0.1.0 cut |
-| `@postel/fastify` | Fastify framework adapter | v0.1.x |
-| `@postel/nextjs` | Next.js Route Handler ergonomics | v0.1.x |
-| `@postel/bun` | Bun.serve adapter | v0.1.x |
+| `@postel/express` | Express framework adapter (raw-body middleware) | Planned |
+| `@postel/fastify` | Fastify framework adapter | Planned |
+| `@postel/nextjs` | Next.js Route Handler ergonomics | Planned |
+| `@postel/bun` | Bun.serve adapter | Planned |
 
 Each "stub" package exports only `__postelPackage` today. Don't depend on them in production yet — the framework-agnostic [factory recipe](/docs/inbound/verify) works directly against each runtime's native `Request`.
 
-## Planned (v0.2 — outbound)
+## Planned (database & queue adapters)
+
+The `postel.outbound.*` runtime (`send`, `replay`, `endpoints.*`, `keys.*`, `tenants.*`) is available inside `@postel/core`, against the in-process `InMemoryStorage` adapter. The database-backed storage adapters and external job-queue adapters are planned:
 
 | Package | Will be |
 |---|---|
-| (inside `@postel/core`) | `postel.outbound.*` runtime — `send`, `replay`, `endpoints.*`, `keys.*`, `tenants.*` |
 | `@postel/drizzle` | Drizzle ORM storage adapter — wires the outbound `Storage` interface against a Drizzle schema |
 | `@postel/kysely` | Kysely query-builder storage adapter |
 | `@postel/prisma` | Prisma storage adapter |
 
-The storage adapter matrix is per [ADR 0007](https://github.com/postel-sh/postel/blob/main/decisions/0007-storage-strategy.md) — Postgres / SQLite as the canonical first-class databases, ORM-specific adapters in their own packages.
+The storage adapter matrix is per [ADR 0007](https://github.com/postel-sh/postel/blob/main/decisions/0007-storage-strategy.md) — Postgres / SQLite as the canonical first-class databases, ORM-specific adapters in their own packages. The external worker strategies (`BullMQ`, `PgBoss`) are likewise config slots today and throw `NotImplementedError` until their adapters ship; the in-process worker pool is the supported runtime.
 
 ## Polyglot ports (Go, Python, Rust)
 
@@ -44,7 +45,8 @@ Out of scope for the npm registry. See [Polyglot](/docs/polyglot) for the per-la
 
 | Package | What it is | Status |
 |---|---|---|
-| `@postel/compliance` | The executable behavioral oracle. Vendor-neutral test suite for any Standard Webhooks producer/receiver. A port version `X.Y.Z` claims conformance by passing `@postel/compliance@X.Y.*`. | In progress — receiver vectors landing first. |
+| `@postel/compliance` | The executable behavioral oracle. Vendor-neutral test suite for any Standard Webhooks producer/receiver. A port version `X.Y.Z` claims conformance by passing `@postel/compliance@X.Y.*`. | Receiver + sender; the sender corpus executes end-to-end against `@postel/compliance-driver`. |
+| `@postel/compliance-driver` | The HTTP control-plane the compliance runner drives in sender mode — it wraps a real `Postel` outbound instance so the cross-port runner can reset state, register endpoints, send, advance the clock, and observe outgoing deliveries. | Workspace-internal harness for the suite; not a production dependency. |
 | `@postel/test` | Workspace-internal test fixtures (signed payload generators, vector builders). | Internal — not published. |
 
 ## Reference: every export

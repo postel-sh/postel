@@ -3,7 +3,12 @@ export type PostelErrorCode =
   | "TIMESTAMP_TOO_OLD"
   | "MALFORMED_HEADER"
   | "UNKNOWN_KEY_ID"
-  | "RAW_BYTES_MISMATCH_DETECTED";
+  | "RAW_BYTES_MISMATCH_DETECTED"
+  | "ENDPOINT_DISABLED"
+  | "IDEMPOTENCY_KEY_CONFLICT"
+  | "MIGRATION_REQUIRED"
+  | "ENDPOINT_VALIDATION"
+  | "SSRF_BLOCKED";
 
 export abstract class PostelError extends Error {
   abstract readonly code: PostelErrorCode;
@@ -34,12 +39,32 @@ export class RawBytesMismatchDetected extends PostelError {
   readonly code = "RAW_BYTES_MISMATCH_DETECTED" as const;
 }
 
+export class EndpointDisabled extends PostelError {
+  readonly code = "ENDPOINT_DISABLED" as const;
+}
+
+export class IdempotencyKeyConflict extends PostelError {
+  readonly code = "IDEMPOTENCY_KEY_CONFLICT" as const;
+}
+
+export class MigrationRequired extends PostelError {
+  readonly code = "MIGRATION_REQUIRED" as const;
+}
+
+export class EndpointValidation extends PostelError {
+  readonly code = "ENDPOINT_VALIDATION" as const;
+}
+
+export class SsrfBlocked extends PostelError {
+  readonly code = "SSRF_BLOCKED" as const;
+}
+
 export class NotImplementedError extends Error {
   override readonly name = "NotImplementedError" as const;
   readonly code = "NOT_IMPLEMENTED" as const;
   constructor(symbol: string) {
     super(
-      `${symbol} is not implemented in @postel/core v0.x. The outbound (sender) runtime lands in v0.2.0+; until then, the types are present but calling outbound methods throws this error. See VISION.md and the project roadmap for delivery details.`,
+      `${symbol} is not implemented in @postel/core v0.x. The relevant types are present, but invoking this feature throws until it ships. See VISION.md and the project roadmap for delivery details.`,
     );
   }
 }

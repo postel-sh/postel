@@ -1,0 +1,27 @@
+id: sender/fanout/late-binding-new-endpoint
+mode: sender
+requirement:
+  capability: sender
+  title: Late-binding fanout
+description: An endpoint registered between send() and dispatch still receives the message.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: send
+    event: { type: evt.x }
+  - op: register_endpoint
+    as: ep_late
+    endpoint:
+      url: "{{mock_receiver_url}}/late"
+      types: ["evt.x"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_late
+expected:
+  outcome: accept

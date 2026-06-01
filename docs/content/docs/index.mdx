@@ -14,8 +14,8 @@ Postel has two independent halves. Use either alone, or both together.
 
 | Half | What it does | Status |
 |---|---|---|
-| **[Inbound](/docs/inbound)** | Verify Standard Webhooks-signed requests other services send to you. Constant-time signature checks, multi-secret rotation windows, JWKS, idempotent dedup, raw-bytes preservation. | **Ships today** in `@postel/core` v0.1.x. |
-| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter. | **Planned** for v0.2.0. The types ship today; the runtime throws `NotImplementedError`. |
+| **[Inbound](/docs/inbound)** | Verify Standard Webhooks-signed requests other services send to you. Constant-time signature checks, multi-secret rotation windows, JWKS, idempotent dedup, raw-bytes preservation. | **Available** in `@postel/core`. |
+| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter. | **Available** against the in-process `InMemoryStorage` adapter (database adapters planned). |
 
 The `Postel({ inbound, outbound })` factory composes both — but everywhere else in these docs they're separated. You shouldn't have to wade through outbound material to integrate the receiver, or vice versa.
 
@@ -28,8 +28,8 @@ The `Postel({ inbound, outbound })` factory composes both — but everywhere els
 
 ## Pre-1.0 reality check
 
-Postel is pre-alpha. The receiver is feature-complete for what the v0.1 spec calls out, but no `@postel/*` package has cut a numbered release yet — they all sit at `0.0.0` in the workspace. The receiver works; you can clone and use it. We don't recommend production deployment until v0.1.0 ships on npm.
+Postel is pre-alpha. The receiver is feature-complete against its capability specs, but no `@postel/*` package has cut a numbered release yet — they all sit at `0.0.0` in the workspace. The receiver works; you can clone and use it. We don't recommend production deployment until a tagged release ships on npm.
 
-The sender is *designed* (types, capability specs, ADRs) but the runtime is not implemented. Pages under [Outbound](/docs/outbound) describe the target shape, not what's currently callable. Every such page banners that.
+The sender runtime is available too — `send`, the transactional outbox, retries, replay, fanout, and signing all run against the in-process `InMemoryStorage` adapter. Database-backed storage adapters are planned; until they land, bring the in-memory adapter or implement the `Storage` interface against your own database. Pages under [Outbound](/docs/outbound) note what's available now versus planned.
 
 This documentation site is the public surface of that work. If something here suggests behavior that isn't in the source — call it out in an issue.

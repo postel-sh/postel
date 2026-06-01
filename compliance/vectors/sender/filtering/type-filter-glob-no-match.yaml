@@ -1,0 +1,26 @@
+id: sender/filtering/type-filter-glob-no-match
+mode: sender
+requirement:
+  capability: filtering-transformation
+  title: Type filter with glob support
+description: Endpoint with types [user.*] does NOT receive order.created.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_users_only
+    endpoint:
+      url: "{{mock_receiver_url}}/u"
+      types: ["user.*"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: order.created }
+  - op: wait_for
+    request_count: 0
+    timeout_ms: 1000
+expected_requests: []
+expected:
+  outcome: accept

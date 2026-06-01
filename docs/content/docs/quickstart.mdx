@@ -3,7 +3,7 @@ title: Quickstart
 description: Install @postel/core and verify your first signed webhook in under a minute. Node, Bun, or Deno.
 ---
 
-This page takes you from zero to a verified webhook on your laptop. It uses only what ships today in `@postel/core` v0.1 — the receiver half. The sender lands in v0.2; see [Outbound](/docs/outbound) for the planned API.
+This page takes you from zero to a verified webhook on your laptop. It uses only the receiver half of `@postel/core`. For the sending side, see [Outbound](/docs/outbound).
 
 Other languages (Go, Python, Rust) are on the roadmap. The TypeScript examples below are what you can run *right now*. See [Polyglot](/docs/polyglot) for port status.
 
@@ -95,7 +95,7 @@ const res = await fetch("http://localhost:3000/api/webhooks/github", {
 console.log(res.status); // 200
 ```
 
-`signFixture` is **for tests**, not production signing. Production signing is the sender's job (`postel.outbound.send`), which lands in v0.2.
+`signFixture` is **for tests**, not production signing. Production signing is the sender's job (`postel.outbound.send`) — see [Outbound](/docs/outbound).
 
 ## Where to next
 

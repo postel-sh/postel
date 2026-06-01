@@ -68,9 +68,9 @@ The `receiver/raw-bytes/*` vectors in [`@postel/compliance`](https://github.com/
 
 If you're building a port or a custom adapter, this is the single most important behavior to get right. Every other receiver requirement is downstream of this one being correct.
 
-## Producer side (v0.2+)
+## Producer side
 
-The same rule applies in reverse on the sender. The signed-content string is built once at signing time; if the body is mutated between signing and sending (a proxy re-serializes JSON, a transformer adds a trailing newline), the receiver will reject. Postel's v0.2 sender signs the bytes immediately before writing them to the network and stamps the signature in the outgoing headers — nothing in the pipeline touches the body after the signature is computed.
+The same rule applies in reverse on the sender. The signed-content string is built once at signing time; if the body is mutated between signing and sending (a proxy re-serializes JSON, a transformer adds a trailing newline), the receiver will reject. Postel's sender signs the bytes immediately before writing them to the network and stamps the signature in the outgoing headers — nothing in the pipeline touches the body after the signature is computed.
 
 ## What's next
 

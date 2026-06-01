@@ -45,3 +45,6 @@ coverage/
 /bin/
 compliance/cli/compliance
 compliance/cli/compliance.exe
+
+# Go build artifact when running `go build .` inside the package dir
+/compliance/cli/cli

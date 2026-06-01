@@ -1,9 +1,9 @@
 ---
 title: Retries & backoff
-description: Retry strategies, circuit breakers, and auto-disable for persistently failing endpoints. Planned for v0.2.0.
+description: Retry strategies, circuit breakers, and auto-disable for persistently failing endpoints.
 ---
 
-> **Status: planned — v0.2.0.** Types ship today; the runtime throws `NotImplementedError`. This page documents the *target* shape.
+> **Status: available.** Implemented and runs against the in-process `InMemoryStorage` adapter today; database-backed adapters are planned.
 
 A webhook delivery is at-least-once, which means it sometimes fails and gets retried. The relevant questions are: *how many times*, *with what delay*, and *what happens when an endpoint stays broken*.
 

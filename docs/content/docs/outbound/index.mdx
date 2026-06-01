@@ -1,40 +1,44 @@
 ---
 title: Outbound · Overview
-description: Send Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout. Planned for v0.2.0 — typed today, runtime later.
+description: Send Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout. Available today.
 ---
 
-> **Status: planned — v0.2.0.** The outbound API is *designed* (capability specs, TypeScript types, ADRs) but **not implemented at runtime**. Calling any `postel.outbound.*` method today throws `NotImplementedError`. This section documents the *target* shape so you can evaluate whether v0.2 will solve your problem when it lands.
+> **Status: available.** The outbound runtime is implemented and runs against the in-process `InMemoryStorage` adapter today. Database-backed storage adapters (Postgres, SQLite, …) are planned — until then, bring the in-memory adapter for single-process deployments and tests, or implement the `Storage` interface against your own database.
 
 The outbound half of Postel delivers Standard Webhooks to your customers' HTTP endpoints. It's the half you reach for when *your* product emits webhooks — order.created, deployment.finished, message.posted — and someone else's app is the receiver.
 
 If you're verifying webhooks that other services send to you — that's the [inbound half](/docs/inbound), and it ships today.
 
-## What v0.2 will deliver
+## What's available
 
-| Feature | Why it matters |
-|---|---|
-| **Transactional outbox** | `send()` writes an outbox row inside *your* business transaction. The webhook is queued only if your business write commits — no orphaned events, no "we charged the card but never told the customer." |
-| **Retries with backoff** | Exponential or linear backoff, configurable per endpoint, with circuit breakers and auto-disable on persistent failure. |
-| **Replay as a first-class verb** | `postel.outbound.replay({ messageId })` or `replay({ endpointId, since })`. No queue surgery, no manual SQL. |
-| **Fanout** | One `send()` → N endpoints, filtered by event type, channel, or arbitrary predicate. |
-| **Endpoint lifecycle** | `endpoints.create/update/delete/list/get/disable`, with `rotateSecret({ keepPreviousFor })` for overlap-window rotation. |
-| **Key management** | Symmetric (`generateSymmetric`) and asymmetric (`generateAsymmetric`) key generation. JWKS publication via the inbound [`jwksHandler`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side). |
-| **Multi-tenancy** | Per-tenant rate limits, isolated noisy-neighbor scheduling. |
-| **Worker strategies** | In-process workers by default; pluggable for BullMQ, pg-boss, or external workers. |
-| **KMS integration** | Sign with AWS KMS, GCP KMS, Vault — secrets never leave the boundary. |
-| **Observability** | OpenTelemetry instrumentation across the send pipeline. |
+✅ = available now · ⏳ = config slot present, adapter/runtime planned.
+
+| Feature | Status | Notes |
+|---|---|---|
+| **Transactional outbox** | ✅ | `send()` writes an outbox row inside *your* business transaction. The webhook is queued only if your business write commits — no orphaned events, no "we charged the card but never told the customer." |
+| **Retries, circuit breaker, dead-letter, auto-disable** | ✅ | Exponential or linear backoff, configurable per endpoint, with circuit breakers and auto-disable on persistent failure. |
+| **Replay as a first-class verb** | ✅ | `replay({ messageId })`, `replay({ endpointId, since })`, or `replay({ filter })`. No queue surgery, no manual SQL. |
+| **Fanout** | ✅ | One `send()` → N endpoints, filtered by event type, channel, or arbitrary predicate. |
+| **Endpoint lifecycle** | ✅ | `endpoints.create/update/delete/list/get/disable`, with `rotateSecret({ keepPreviousFor })` for overlap-window rotation. |
+| **Signing** | ✅ | HMAC (`HmacV1()`) or Ed25519 (`Ed25519V1a()`). Asymmetric signing pairs with JWKS publication so receivers verify without a shared secret. |
+| **Key management** | ✅ | Symmetric (`generateSymmetric`) and asymmetric (`generateAsymmetric`) generation; `rotateSecret` preserves the endpoint's algorithm. JWKS publication via the inbound [`jwksHandler`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side). |
+| **Storage** | ✅ in-memory · ⏳ DB | `InMemoryStorage()` ships now; Postgres / SQLite / ORM adapters land later, or implement the `Storage` interface against your own database. |
+| **Multi-tenancy** | ✅ scoping · ⏳ limits | Tenant-scoped fanout and persistence ship; per-tenant rate-limit *enforcement* and fair-scheduling land later (the config persists today). |
+| **Worker strategies** | ✅ in-process · ⏳ queues | The in-process worker pool ships and is the default; `BullMQ` / `PgBoss` / `External` are config slots that throw `NotImplementedError` until their adapters ship. |
+| **KMS integration** | ⏳ later | `PlaintextKms` only today; AWS KMS / GCP KMS / Vault adapters land later. |
+| **Observability** | ⏳ later | OpenTelemetry instrumentation is deferred. |
 
 ## The mental model
 
 The same `Postel({...})` factory accepts an `outbound` config alongside `inbound`. The two are independent — configure one, both, or neither.
 
 ```ts
-import { Postel, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
+import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
 
 const postel = Postel({
   outbound: {
-    storage: /* your DB connection / ORM, plugged via a storage adapter */,
-    signing: HmacV1(),
+    storage: InMemoryStorage(),    // or a DB-backed Storage adapter in production
+    signing: HmacV1(),             // or Ed25519V1a() for asymmetric signing
     retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
     workers: InProcess({ concurrency: 4 }),
   },
@@ -52,16 +56,18 @@ await db.tx(async (tx) => {
 
 The key insight: `send()` is just an outbox INSERT under the hood. It commits or rolls back atomically with your business write. A separate worker picks the outbox row up and does the HTTP delivery — but you, the application author, never block on the network inside your transaction.
 
-## When does it ship?
+## What's available, and what's next
 
-Honest answer: no firm date. The v0.2 milestone is gated on:
+The outbound runtime is implemented and exercised end-to-end by the `@postel/compliance` sender suite. What's available now:
 
-- All sender-side capability specs (sender, retry-policy, replay-reconciliation, endpoint-management, key-management, filtering-transformation, observability) finalized — in progress.
-- The `@postel/compliance` test suite covering sender behaviors (in progress).
-- The TypeScript runtime implementing the suite end-to-end.
-- The full storage-adapter matrix (`drizzle`, `kysely`, `prisma`, plus standalone clients).
+- The sender-side capability specs (sender, retry-policy, replay-reconciliation, endpoint-management, key-management, filtering-transformation) and their TypeScript runtime.
+- The `@postel/compliance` suite driving the sender behaviors against the running runtime.
+- The in-process `InMemoryStorage` adapter — production-shaped for single-process deployments and the natural choice for tests.
 
-Until then: the API surface is stable enough that we ship the *types*. You can write code today against the types — TypeScript will catch shape mistakes — but the runtime throws `NotImplementedError`. This is intentional: it lets adopters design their integration before the runtime lands.
+Still ahead, in a later release:
+
+- The full storage-adapter matrix (`drizzle`, `kysely`, `prisma`, plus standalone Postgres / SQLite clients). Until those land, point `storage` at `InMemoryStorage()` or implement the `Storage` interface against your own database.
+- The external job-queue worker adapters (BullMQ, PgBoss) — the config slots exist but throw `NotImplementedError` today; the in-process worker pool is the supported runtime.
 
 ## Where to read next
 

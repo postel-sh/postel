@@ -1,11 +1,22 @@
+import { type Clock, systemClock } from "./clock.js";
 import { NotImplementedError } from "./errors.js";
+import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
+import { buildEndpointApi } from "./sender/endpoint/crud.js";
+import { PostelEventEmitter } from "./sender/events.js";
+import { generateAsymmetric, generateSymmetric } from "./sender/keys/generate.js";
+import { rotateSecret } from "./sender/keys/rotation.js";
+import { reconcileImpl, replayImpl } from "./sender/replay/replay.js";
+import { buildRetryDispatcher } from "./sender/retry/orchestrator.js";
+import { sendImpl } from "./sender/send.js";
+import { WorkerPool } from "./sender/worker/pool.js";
+import type { Storage } from "./storage/types.js";
 import type { KmsStrategy } from "./strategies/kms.js";
 import type { RetryStrategy } from "./strategies/retry.js";
 import type { SigningStrategy } from "./strategies/signing.js";
 import type { WorkerStrategy } from "./strategies/workers.js";
 
-export interface OutboundConfig {
-  readonly storage: unknown;
+export interface OutboundConfig<TTx = unknown> {
+  readonly storage: Storage<TTx>;
   readonly signing?: SigningStrategy;
   readonly retryPolicy?: RetryStrategy;
   readonly workers?: WorkerStrategy;
@@ -16,6 +27,8 @@ export interface OutboundConfig {
   readonly replay?: ReplayDefaults;
   readonly retention?: RetentionDefaults;
   readonly ephemeralKeys?: EphemeralKeysDefaults;
+  readonly clock?: Clock;
+  readonly defaultTenantId?: string | null;
 }
 
 export interface HttpDefaults {
@@ -28,6 +41,7 @@ export interface HttpDefaults {
     readonly allowedRanges?: ReadonlyArray<string>;
   };
   readonly userAgent?: string;
+  readonly fetch?: typeof globalThis.fetch;
 }
 
 export interface CircuitBreakerDefaults {
@@ -67,8 +81,8 @@ export interface SendEvent<TData = unknown> {
   readonly tenantId?: string;
 }
 
-export interface SendOptions {
-  readonly tx?: unknown;
+export interface SendOptions<TTx = unknown> {
+  readonly tx?: TTx;
 }
 
 export interface EndpointCreateOptions {
@@ -101,9 +115,9 @@ export interface Endpoint {
   readonly metadata?: Record<string, unknown>;
 }
 
-export interface RotateSecretOptions {
+export interface RotateSecretOptions<TTx = unknown> {
   readonly keepPreviousFor: number | string;
-  readonly tx?: unknown;
+  readonly tx?: TTx;
 }
 
 export interface AsymmetricKeypair {
@@ -111,13 +125,13 @@ export interface AsymmetricKeypair {
   readonly public: string;
 }
 
-export interface SetRateLimitOptions {
+export interface SetRateLimitOptions<TTx = unknown> {
   readonly perSecond: number;
-  readonly tx?: unknown;
+  readonly tx?: TTx;
 }
 
-export type ReplayOptions =
-  | { readonly messageId: string; readonly freshWebhookId: boolean; readonly tx?: unknown }
+export type ReplayOptions<TTx = unknown> =
+  | { readonly messageId: string; readonly freshWebhookId: boolean; readonly tx?: TTx }
   | {
       readonly endpointId: string;
       readonly since: Date | string;
@@ -125,101 +139,175 @@ export type ReplayOptions =
       readonly types?: ReadonlyArray<string>;
       readonly replayThroughput?: number;
       readonly freshWebhookId: boolean;
-      readonly tx?: unknown;
+      readonly tx?: TTx;
     }
   | {
       readonly filter: (msg: unknown) => boolean;
       readonly replayThroughput?: number;
       readonly freshWebhookId: boolean;
-      readonly tx?: unknown;
+      readonly tx?: TTx;
     };
 
 export interface ReplayResult {
   readonly enqueued: number;
 }
 
-export interface ReconcileOptions {
+export interface ReconcileOptions<TTx = unknown> {
   readonly endpointId: string;
   readonly since: Date | string;
-  readonly tx?: unknown;
+  readonly tx?: TTx;
 }
 
-export interface OutboundApi {
-  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions): Promise<MessageId>;
+export interface OutboundApi<TTx = unknown> {
+  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<MessageId>;
   endpoints: {
-    create(opts: EndpointCreateOptions, runtime?: { tx?: unknown }): Promise<Endpoint>;
-    update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: unknown }): Promise<Endpoint>;
-    delete(id: string, opts?: { purgeAttempts?: boolean; tx?: unknown }): Promise<void>;
-    list(opts?: { tenantId?: string; tx?: unknown }): Promise<ReadonlyArray<Endpoint>>;
-    get(id: string, opts?: { tx?: unknown }): Promise<Endpoint>;
-    disable(id: string, opts?: { tx?: unknown }): Promise<void>;
-    rotateSecret(id: string, opts: RotateSecretOptions): Promise<void>;
+    create(opts: EndpointCreateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
+    update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
+    delete(id: string, opts?: { purgeAttempts?: boolean; tx?: TTx }): Promise<void>;
+    list(opts?: { tenantId?: string; tx?: TTx }): Promise<ReadonlyArray<Endpoint>>;
+    get(id: string, opts?: { tx?: TTx }): Promise<Endpoint>;
+    disable(id: string, opts?: { tx?: TTx }): Promise<void>;
+    rotateSecret(id: string, opts: RotateSecretOptions<TTx>): Promise<void>;
   };
   keys: {
     generateSymmetric(): string;
-    generateAsymmetric(): AsymmetricKeypair;
+    generateAsymmetric(): Promise<AsymmetricKeypair>;
   };
   tenants: {
-    setRateLimit(tenantId: string, opts: SetRateLimitOptions): Promise<void>;
-    delete(tenantId: string, opts?: { tx?: unknown }): Promise<void>;
+    setRateLimit(tenantId: string, opts: SetRateLimitOptions<TTx>): Promise<void>;
+    delete(tenantId: string, opts?: { tx?: TTx }): Promise<void>;
   };
-  replay(opts: ReplayOptions): Promise<ReplayResult>;
-  reconcile(opts: ReconcileOptions): Promise<ReadonlyArray<MessageId>>;
+  replay(opts: ReplayOptions<TTx>): Promise<ReplayResult>;
+  reconcile(opts: ReconcileOptions<TTx>): Promise<ReadonlyArray<MessageId>>;
+}
+
+export interface OutboundRuntime<TTx = unknown> {
+  readonly api: OutboundApi<TTx>;
+  readonly pool: WorkerPool;
+  readonly storage: Storage<TTx>;
+  readonly clock: Clock;
+  readonly emitter: PostelEventEmitter;
 }
 
 function notImplemented(symbol: string): never {
   throw new NotImplementedError(symbol);
 }
 
-export function buildOutboundApi(_config: OutboundConfig): OutboundApi {
-  return {
-    async send() {
-      return notImplemented("postel.outbound.send");
+export function buildOutboundRuntime<TTx = unknown>(
+  config: OutboundConfig<TTx>,
+): OutboundRuntime<TTx> {
+  const clock: Clock = config.clock ?? systemClock;
+  const emitter = new PostelEventEmitter();
+  if (config.workers && config.workers.kind !== "in-process") {
+    // Only the in-process worker pool ships in this release. BullMQ / PgBoss /
+    // external-adapter strategies are tagged config slots with no runtime yet —
+    // fail fast rather than silently running them in-process.
+    notImplemented(`Worker strategy '${config.workers.kind}' (only 'in-process' is supported)`);
+  }
+  const concurrency = config.workers?.kind === "in-process" ? config.workers.concurrency : 4;
+  const fetchImpl = config.http?.fetch ?? globalThis.fetch;
+  const httpDispatcher = buildHttpDispatcher({
+    storage: config.storage,
+    clock,
+    fetchImpl,
+    defaults: config.http ?? {},
+  });
+  const retryDispatcher = buildRetryDispatcher(
+    {
+      storage: config.storage,
+      clock,
+      emitter,
+      ...(config.retryPolicy !== undefined ? { orgRetryPolicy: config.retryPolicy } : {}),
+      ...(config.circuitBreaker !== undefined ? { orgCircuitBreaker: config.circuitBreaker } : {}),
+      ...(config.autoDisable !== undefined ? { orgAutoDisable: config.autoDisable } : {}),
+    },
+    httpDispatcher,
+  );
+  const pool = new WorkerPool({
+    storage: config.storage,
+    clock,
+    concurrency,
+    dispatchOne: retryDispatcher,
+  });
+  const endpointApi = buildEndpointApi(
+    config.storage,
+    config.http?.ssrf
+      ? {
+          ssrf: {
+            blockPrivateRanges: config.http.ssrf.blockPrivateRanges ?? true,
+            allowedRanges: config.http.ssrf.allowedRanges ?? [],
+          },
+        }
+      : {},
+  );
+  const api: OutboundApi<TTx> = {
+    async send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>) {
+      return sendImpl(
+        { storage: config.storage, clock, defaultTenantId: config.defaultTenantId ?? null },
+        event,
+        options,
+      );
     },
     endpoints: {
-      async create() {
-        return notImplemented("postel.outbound.endpoints.create");
-      },
-      async update() {
-        return notImplemented("postel.outbound.endpoints.update");
-      },
-      async delete() {
-        return notImplemented("postel.outbound.endpoints.delete");
-      },
-      async list() {
-        return notImplemented("postel.outbound.endpoints.list");
-      },
-      async get() {
-        return notImplemented("postel.outbound.endpoints.get");
-      },
-      async disable() {
-        return notImplemented("postel.outbound.endpoints.disable");
-      },
-      async rotateSecret() {
-        return notImplemented("postel.outbound.endpoints.rotateSecret");
+      create: endpointApi.create,
+      update: endpointApi.update,
+      delete: endpointApi.delete,
+      list: endpointApi.list,
+      get: endpointApi.get,
+      disable: endpointApi.disable,
+      async rotateSecret(id, opts) {
+        await rotateSecret(config.storage, clock, id, {
+          keepPreviousFor: opts.keepPreviousFor,
+          ...(opts.tx !== undefined ? { tx: opts.tx } : {}),
+        });
       },
     },
     keys: {
       generateSymmetric() {
-        return notImplemented("postel.outbound.keys.generateSymmetric");
+        return generateSymmetric();
       },
-      generateAsymmetric() {
-        return notImplemented("postel.outbound.keys.generateAsymmetric");
+      async generateAsymmetric() {
+        return generateAsymmetric();
       },
     },
     tenants: {
-      async setRateLimit() {
-        return notImplemented("postel.outbound.tenants.setRateLimit");
+      async setRateLimit(tenantId, opts) {
+        const existing = await config.storage.tenants.get(tenantId);
+        const metadata = {
+          ...(existing?.metadata ?? {}),
+          rateLimit: { perSecond: opts.perSecond },
+        } as Readonly<Record<string, unknown>>;
+        await config.storage.tenants.upsert(
+          tenantId,
+          metadata,
+          opts.tx !== undefined ? { tx: opts.tx } : undefined,
+        );
       },
-      async delete() {
-        return notImplemented("postel.outbound.tenants.delete");
+      async delete(tenantId, opts) {
+        await config.storage.tenants.delete(
+          tenantId,
+          opts?.tx !== undefined ? { tx: opts.tx } : undefined,
+        );
       },
     },
-    async replay() {
-      return notImplemented("postel.outbound.replay");
+    async replay(opts) {
+      const replayCtx: { storage: Storage; clock: Clock; defaultThroughput?: number } = {
+        storage: config.storage,
+        clock,
+      };
+      if (config.replay?.defaultThroughput !== undefined) {
+        replayCtx.defaultThroughput = config.replay.defaultThroughput;
+      }
+      return replayImpl(replayCtx, opts);
     },
-    async reconcile() {
-      return notImplemented("postel.outbound.reconcile");
+    async reconcile(opts) {
+      return reconcileImpl({ storage: config.storage, clock }, opts.endpointId, opts.since);
     },
   };
+  void notImplemented;
+  return { api, pool, storage: config.storage, clock, emitter };
+}
+
+export function buildOutboundApi<TTx = unknown>(config: OutboundConfig<TTx>): OutboundApi<TTx> {
+  return buildOutboundRuntime(config).api;
 }

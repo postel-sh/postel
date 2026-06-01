@@ -12,17 +12,22 @@ Error messages are safe to log — they never contain the secret or the signatur
 ```
 Error
 └── PostelError                      (abstract)
-    ├── MalformedHeader              code: "MALFORMED_HEADER"
-    ├── TimestampTooOld              code: "TIMESTAMP_TOO_OLD"
-    ├── SignatureInvalid             code: "SIGNATURE_INVALID"
-    ├── UnknownKeyId                 code: "UNKNOWN_KEY_ID"
-    └── RawBytesMismatchDetected     code: "RAW_BYTES_MISMATCH_DETECTED"
+    ├── MalformedHeader              code: "MALFORMED_HEADER"            (inbound)
+    ├── TimestampTooOld              code: "TIMESTAMP_TOO_OLD"           (inbound)
+    ├── SignatureInvalid             code: "SIGNATURE_INVALID"           (inbound)
+    ├── UnknownKeyId                 code: "UNKNOWN_KEY_ID"              (inbound)
+    ├── RawBytesMismatchDetected     code: "RAW_BYTES_MISMATCH_DETECTED" (inbound)
+    ├── EndpointValidation           code: "ENDPOINT_VALIDATION"         (outbound)
+    ├── SsrfBlocked                  code: "SSRF_BLOCKED"                (outbound)
+    ├── IdempotencyKeyConflict       code: "IDEMPOTENCY_KEY_CONFLICT"    (reserved)
+    ├── EndpointDisabled             code: "ENDPOINT_DISABLED"           (reserved)
+    └── MigrationRequired            code: "MIGRATION_REQUIRED"          (reserved)
 
 Error
 └── NotImplementedError              code: "NOT_IMPLEMENTED"
 ```
 
-`NotImplementedError` is **not** a `PostelError` subclass on purpose — it signals a v0.1-vs-v0.2 boundary, not a verification outcome. Don't try to catch it as part of normal flow; it means you're calling outbound code before v0.2 has shipped.
+`NotImplementedError` is **not** a `PostelError` subclass on purpose — it signals a not-yet-implemented configuration option (a worker strategy without an adapter), not a verification outcome. Don't try to catch it as part of normal flow; it means a config slot you selected has no runtime yet.
 
 ## Class reference
 
@@ -84,13 +89,39 @@ if (err instanceof SignatureInvalid) {
 
 **Recovery:** Best-effort safety net. Fix the underlying re-serialization (don't catch and ignore). See [Raw bytes](/docs/inbound/raw-bytes).
 
+### `EndpointValidation`
+
+**Code:** `ENDPOINT_VALIDATION`
+**Thrown by:** `postel.outbound.endpoints.create(...)` / `endpoints.update(...)` (outbound).
+**When:** The endpoint URL is rejected at create/update time — unparseable, not `http(s)`, plain `http://` without `allowHttp`, resolves to an SSRF-eligible (private / loopback / link-local) address, or does not resolve at all (DNS failure). Validation runs before the endpoint is persisted.
+
+**Recovery:** `4xx` from your admin surface. The URL or `allowHttp` flag is wrong; fix it and retry. This is the create-time half of SSRF defense (the dispatch-time half is `SsrfBlocked`, below).
+
+```ts
+if (err instanceof EndpointValidation) {
+  return new Response(err.message, { status: 422 });
+}
+```
+
+### `SsrfBlocked`
+
+**Code:** `SSRF_BLOCKED`
+**Raised by:** the dispatcher, at delivery time (outbound).
+**When:** An endpoint URL that passed create-time validation resolves into a blocked range *at dispatch* (e.g. DNS rebinding, or a record that changed since creation). The dispatcher catches it internally and records the attempt with status `ssrf-blocked` — it is **not** thrown back to the `send()` caller (delivery happens asynchronously in a worker). You observe it on the attempt, not in a `try/catch` around `send()`.
+
+**Recovery:** The target now resolves to a private address; the delivery is held (treated as a retryable failure) rather than sent. Point the endpoint at a public address.
+
+### Reserved codes (defined, not yet emitted by the runtime)
+
+`IdempotencyKeyConflict` (`IDEMPOTENCY_KEY_CONFLICT`), `EndpointDisabled` (`ENDPOINT_DISABLED`), and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them yet: idempotent `send` reuses the existing message id rather than conflicting, a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the in-memory storage adapter has no migration step. They become live when strict-idempotency conflict reporting and the database-backed storage adapters land.
+
 ### `NotImplementedError`
 
 **Code:** `NOT_IMPLEMENTED`
-**Thrown by:** Any `postel.outbound.*` method, in v0.1.
-**When:** You called `postel.outbound.send(...)`, `postel.outbound.replay(...)`, `postel.outbound.endpoints.create(...)`, or any other outbound runtime method. The outbound runtime lands in v0.2.
+**Thrown by:** Configuring a worker strategy that has no runtime yet.
+**When:** You set `outbound.workers` to a non-in-process strategy — `BullMQ(...)`, `PgBoss(...)`, or `External(...)`. The outbound runtime itself is available; `send`, `replay`, `endpoints.*`, `keys.*`, and `tenants.*` all work against the in-process `InMemoryStorage` adapter. Only the external job-queue strategies are config slots without an adapter today.
 
-**Recovery:** Wait for v0.2. Until then, write your outbound code against the types (TypeScript catches shape mistakes) but don't deploy outbound-using code.
+**Recovery:** Use the in-process worker pool (`InProcess(...)`, the default) until the BullMQ / PgBoss adapters ship. Failing fast here is deliberate — it stops a queue-backed config from silently running in-process.
 
 ## Discriminating by code
 

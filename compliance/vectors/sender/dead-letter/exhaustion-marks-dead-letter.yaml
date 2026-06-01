@@ -1,0 +1,33 @@
+id: sender/dead-letter/exhaustion-marks-dead-letter
+mode: sender
+requirement:
+  capability: retry-policy
+  title: Dead-letter event
+description: After maxAttempts failures, the last attempt is marked dead-letter and the dead-letter event fires.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  default_response: { status: 500 }
+triggers:
+  - op: register_endpoint
+    as: ep_dl
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["100ms", "100ms"], jitter: 0, maxAttempts: 2 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 2
+    timeout_ms: 4000
+expected_requests:
+  - endpoint: ep_dl
+    attempt_status: failed
+  - endpoint: ep_dl
+    attempt_status: dead-letter
+expected:
+  outcome: accept

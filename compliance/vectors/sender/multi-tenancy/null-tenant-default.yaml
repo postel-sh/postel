@@ -1,0 +1,27 @@
+id: sender/multi-tenancy/null-tenant-default
+mode: sender
+requirement:
+  capability: multi-tenancy
+  title: Tenant-scoped persistence
+description: Single-tenant deployments (no tenantId) deliver to endpoints without a tenant scope; null-tenant works.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_default
+    endpoint:
+      url: "{{mock_receiver_url}}/default"
+      types: ["evt.x"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_default
+expected:
+  outcome: accept

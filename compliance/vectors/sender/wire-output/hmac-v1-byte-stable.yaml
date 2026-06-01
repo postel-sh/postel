@@ -1,0 +1,41 @@
+id: sender/wire-output/hmac-v1-byte-stable
+mode: sender
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: >-
+  A single send through the control plane produces one outgoing HTTP request whose
+  v1 HMAC signature verifies against the fixture key. The outgoing body is the
+  canonical Standard Webhooks payload `{ type, timestamp, data }`.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_main
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["test.hello"]
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event:
+      type: test.hello
+      data: { hello: world }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_main
+    method: POST
+    path: /hook
+    headers_present: ["webhook-id", "webhook-timestamp", "webhook-signature"]
+    headers_match:
+      content-type: application/json
+    signature_verifies:
+      fixture_id: hmac_primary
+      scheme: v1
+    attempt_status: success
+expected:
+  outcome: accept

@@ -1,0 +1,29 @@
+id: sender/wire-output/ed25519-v1a-byte-stable
+mode: sender
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: Single send signed with Ed25519 produces v1a signature header that verifies against the fixture public key.
+secrets:
+  - id: primary
+    fixture: ed25519_a.yaml
+triggers:
+  - op: register_endpoint
+    as: ep_main
+    endpoint:
+      url: "{{mock_receiver_url}}/hook"
+      types: ["test.hello"]
+      signing: { fixture_id: ed25519_a }
+  - op: start_workers
+    concurrency: 1
+  - op: send
+    event: { type: test.hello, data: { hello: world } }
+  - op: wait_for
+    request_count: 1
+    timeout_ms: 3000
+expected_requests:
+  - endpoint: ep_main
+    headers_present: ["webhook-id", "webhook-timestamp", "webhook-signature"]
+    signature_verifies: { fixture_id: ed25519_a, scheme: v1a }
+expected:
+  outcome: accept
