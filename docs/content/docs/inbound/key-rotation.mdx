@@ -92,7 +92,7 @@ export const GET = jwksHandler({ keys: PUBLIC_JWKS });
 
 `PUBLIC_JWKS` is your set of public keys in the standard JWKS shape — only public key material, never private. The handler refuses to serve a key that includes `d` (the Ed25519 private scalar). Wire it into whichever HTTP layer you use; the handler returns a `Response`.
 
-> Note: the JWKS handler ships today. The producer-side **signing** side (issuing keys, rotating them automatically, recording them) lands with the [outbound](/docs/outbound) release.
+> Note: the JWKS handler ships today, and the producer-side **signing** side (issuing keys, rotating them, recording them) is available on the [outbound](/docs/outbound) sender.
 
 ### When to choose JWKS over multi-secret
 
@@ -104,7 +104,7 @@ export const GET = jwksHandler({ keys: PUBLIC_JWKS });
 
 JWKS unlocks **ephemeral signing keys**: the producer rotates a new keypair every N hours, publishes the public half, drops the old private key. Receivers pick up rotations automatically as long as they refetch the JWKS. The compromise window for any leaked private key shrinks from *"until manual rotation"* to *"until the next auto-rotation."*
 
-Postel ships the consumer side of this today (the `Keyset({...})` strategy). The producer-side auto-rotation lands with the v0.2.0 sender release.
+Postel ships the consumer side of this today (the `Keyset({...})` strategy). The producer-side rotation is available on the sender via `rotateSecret` and asymmetric key generation — see [Outbound](/docs/outbound).
 
 ## What's next
 

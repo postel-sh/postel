@@ -1,17 +1,17 @@
 ---
 title: Outbound · Overview
-description: Send Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout. Shipping in v0.2.0.
+description: Send Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout. Available today.
 ---
 
-> **Status: shipping in v0.2.0.** The outbound runtime is implemented and runs against the in-process `InMemoryStorage` adapter today. Database-backed storage adapters (Postgres, SQLite, …) land in a later release — until then, bring the in-memory adapter for single-process deployments and tests, or implement the `Storage` interface against your own database.
+> **Status: available.** The outbound runtime is implemented and runs against the in-process `InMemoryStorage` adapter today. Database-backed storage adapters (Postgres, SQLite, …) are planned — until then, bring the in-memory adapter for single-process deployments and tests, or implement the `Storage` interface against your own database.
 
 The outbound half of Postel delivers Standard Webhooks to your customers' HTTP endpoints. It's the half you reach for when *your* product emits webhooks — order.created, deployment.finished, message.posted — and someone else's app is the receiver.
 
 If you're verifying webhooks that other services send to you — that's the [inbound half](/docs/inbound), and it ships today.
 
-## What ships in v0.2.0
+## What's available
 
-✅ = available now · ⏳ = config slot present, adapter/runtime lands later.
+✅ = available now · ⏳ = config slot present, adapter/runtime planned.
 
 | Feature | Status | Notes |
 |---|---|---|
@@ -56,9 +56,9 @@ await db.tx(async (tx) => {
 
 The key insight: `send()` is just an outbox INSERT under the hood. It commits or rolls back atomically with your business write. A separate worker picks the outbox row up and does the HTTP delivery — but you, the application author, never block on the network inside your transaction.
 
-## What ships in v0.2.0, and what's next
+## What's available, and what's next
 
-The outbound runtime is implemented and exercised end-to-end by the `@postel/compliance` sender suite. What ships now:
+The outbound runtime is implemented and exercised end-to-end by the `@postel/compliance` sender suite. What's available now:
 
 - The sender-side capability specs (sender, retry-policy, replay-reconciliation, endpoint-management, key-management, filtering-transformation) and their TypeScript runtime.
 - The `@postel/compliance` suite driving the sender behaviors against the running runtime.

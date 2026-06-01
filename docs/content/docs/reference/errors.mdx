@@ -111,15 +111,15 @@ if (err instanceof EndpointValidation) {
 
 **Recovery:** The target now resolves to a private address; the delivery is held (treated as a retryable failure) rather than sent. Point the endpoint at a public address.
 
-### Reserved codes (defined, not yet emitted by the v0.2 runtime)
+### Reserved codes (defined, not yet emitted by the runtime)
 
-`IdempotencyKeyConflict` (`IDEMPOTENCY_KEY_CONFLICT`), `EndpointDisabled` (`ENDPOINT_DISABLED`), and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the v0.2 TypeScript runtime does not throw them yet: idempotent `send` reuses the existing message id rather than conflicting, a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the in-memory storage adapter has no migration step. They become live when strict-idempotency conflict reporting and the database-backed storage adapters land.
+`IdempotencyKeyConflict` (`IDEMPOTENCY_KEY_CONFLICT`), `EndpointDisabled` (`ENDPOINT_DISABLED`), and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them yet: idempotent `send` reuses the existing message id rather than conflicting, a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the in-memory storage adapter has no migration step. They become live when strict-idempotency conflict reporting and the database-backed storage adapters land.
 
 ### `NotImplementedError`
 
 **Code:** `NOT_IMPLEMENTED`
 **Thrown by:** Configuring a worker strategy that has no runtime yet.
-**When:** You set `outbound.workers` to a non-in-process strategy — `BullMQ(...)`, `PgBoss(...)`, or `External(...)`. The outbound runtime itself ships in v0.2.0; `send`, `replay`, `endpoints.*`, `keys.*`, and `tenants.*` all work against the in-process `InMemoryStorage` adapter. Only the external job-queue strategies are config slots without an adapter today.
+**When:** You set `outbound.workers` to a non-in-process strategy — `BullMQ(...)`, `PgBoss(...)`, or `External(...)`. The outbound runtime itself is available; `send`, `replay`, `endpoints.*`, `keys.*`, and `tenants.*` all work against the in-process `InMemoryStorage` adapter. Only the external job-queue strategies are config slots without an adapter today.
 
 **Recovery:** Use the in-process worker pool (`InProcess(...)`, the default) until the BullMQ / PgBoss adapters ship. Failing fast here is deliberate — it stops a queue-backed config from silently running in-process.
 

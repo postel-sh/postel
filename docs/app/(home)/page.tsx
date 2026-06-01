@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   }
 }`;
 
-const outboundSnippet = `// Ships in v0.2 — in-memory adapter today, DB adapters next.
+const outboundSnippet = `// In-memory storage adapter available now; database adapters planned.
 import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff } from "@postel/core";
 
 const postel = Postel({
@@ -120,7 +120,7 @@ export default async function HomePage() {
         </p>
         <div className="mb-10 inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-muted/40 px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-fd-muted-foreground">
           <span className="size-1.5 rounded-full bg-amber-500" />
-          Pre-alpha · receiver works today · sender v0.2
+          Pre-alpha · inbound + outbound
         </div>
         <div className="mb-12 flex flex-wrap items-center justify-center gap-3">
           <Link
@@ -183,7 +183,7 @@ export default async function HomePage() {
                 </div>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
                   <span className="size-1.5 rounded-full bg-emerald-500" />
-                  Ships v0.1
+                  Available
                 </span>
               </header>
               <div
@@ -210,9 +210,9 @@ export default async function HomePage() {
                   </p>
                   <h3 className="text-base font-semibold">Transactional outbox</h3>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                  <span className="size-1.5 rounded-full bg-amber-500" />
-                  Planned v0.2
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                  <span className="size-1.5 rounded-full bg-emerald-500" />
+                  Available
                 </span>
               </header>
               <div
@@ -220,7 +220,7 @@ export default async function HomePage() {
                 dangerouslySetInnerHTML={{ __html: outboundHtml }}
               />
               <footer className="border-fd-border border-t px-5 py-3 text-xs text-fd-muted-foreground">
-                Retries, replay, fanout, endpoints, KMS, OTel — all designed; runtime lands in v0.2.{" "}
+                Retries, replay, fanout, endpoints, signing, key rotation — available against the in-memory adapter; database adapters, KMS, and observability are planned.{" "}
                 <Link
                   href="/docs/outbound"
                   className="text-fd-foreground underline underline-offset-4 hover:text-fd-muted-foreground"

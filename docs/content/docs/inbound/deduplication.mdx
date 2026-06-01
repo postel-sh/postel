@@ -113,7 +113,7 @@ Per-instance, not shared. Fine for development; **not** fine for production with
 
 For anything else, use a database-backed dedup adapter.
 
-### Redis — opt-in (not in v0.1)
+### Redis — opt-in (not bundled)
 
 A Redis dedup adapter ships as a separate package for hosts that already run Redis. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, use it. If you don't, don't stand one up just for dedup; one of the SQL dedup adapters works.
 
@@ -142,7 +142,7 @@ await pgPool.tx(async (tx) => {
 
 If `processOrder` throws, both the dedup row and the work roll back. The next retry sees the ID as unseen and tries again. If `processOrder` succeeds, both commit; the next retry is correctly skipped.
 
-This is exactly the pattern the v0.2.0 [outbound](/docs/outbound) sender will use for outbox inserts — the receiver's dedup row is the mirror image of the sender's outbox row.
+This is exactly the pattern the [outbound](/docs/outbound) sender uses for outbox inserts — the receiver's dedup row is the mirror image of the sender's outbox row.
 
 ## What's next
 
