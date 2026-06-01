@@ -174,17 +174,11 @@ export default async function HomePage() {
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Inbound */}
             <article className="border-fd-border bg-fd-background flex flex-col rounded-lg border">
-              <header className="border-fd-border flex items-center justify-between border-b px-5 py-3">
-                <div>
-                  <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
-                    Inbound · receive
-                  </p>
-                  <h3 className="text-base font-semibold">Verify a signed webhook</h3>
-                </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                  <span className="size-1.5 rounded-full bg-emerald-500" />
-                  Available
-                </span>
+              <header className="border-fd-border border-b px-5 py-3">
+                <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
+                  Inbound · receive
+                </p>
+                <h3 className="text-base font-semibold">Verify a signed webhook</h3>
               </header>
               <div
                 className="[&_pre]:!m-0 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:px-5 [&_pre]:py-4 [&_pre]:text-[13px] [&_pre]:leading-relaxed"
@@ -203,17 +197,11 @@ export default async function HomePage() {
 
             {/* Outbound */}
             <article className="border-fd-border bg-fd-background flex flex-col rounded-lg border">
-              <header className="border-fd-border flex items-center justify-between border-b px-5 py-3">
-                <div>
-                  <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
-                    Outbound · send
-                  </p>
-                  <h3 className="text-base font-semibold">Transactional outbox</h3>
-                </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                  <span className="size-1.5 rounded-full bg-emerald-500" />
-                  Available
-                </span>
+              <header className="border-fd-border border-b px-5 py-3">
+                <p className="text-fd-muted-foreground mb-0.5 font-mono text-[10px] uppercase tracking-wider">
+                  Outbound · send
+                </p>
+                <h3 className="text-base font-semibold">Transactional outbox</h3>
               </header>
               <div
                 className="[&_pre]:!m-0 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:px-5 [&_pre]:py-4 [&_pre]:text-[13px] [&_pre]:leading-relaxed"
