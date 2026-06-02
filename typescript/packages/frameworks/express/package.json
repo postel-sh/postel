@@ -1,5 +1,6 @@
 {
   "name": "@postel/express",
+  "private": true,
   "version": "0.0.0",
   "description": "Express middleware and admin handlers for the Postel receiver.",
   "license": "MIT",

@@ -105,3 +105,76 @@ run = "pnpm build"
 description = "Typecheck the docs site"
 dir = "docs"
 run = "pnpm typecheck"
+
+# Release flow — lockstep versioning across the npm packages and the Go
+# compliance suite (VISION.md §8). One version in, every artifact stamped by a
+# single writer; the actual publish is gated to CI on a pushed tag, never from a
+# working tree. Mechanism + rationale: decisions/0014-release-and-versioning-flow.md.
+
+[tasks."release:stamp"]
+description = "Stamp <version> into the Go suite const, the compliance CHANGELOG, and every @postel/* package.json"
+usage = 'arg "<version>"'
+run = 'node scripts/release/stamp-version.mjs "$usage_version"'
+
+[tasks."release:verify-lockstep"]
+description = "Assert every release artifact already sits at <version> — no writes (CI lockstep guard)"
+usage = 'arg "<version>"'
+run = 'node scripts/release/stamp-version.mjs "$usage_version" --check'
+
+[tasks."release:sync-license"]
+description = "Copy the root LICENSE into every publishable @postel/* package before publish"
+run = "node scripts/release/sync-license.mjs"
+
+[tasks."compliance:receiver:ts"]
+description = "Run the receiver compliance corpus against the reference TS receiver"
+run = """
+mise run compliance:build
+pnpm -C typescript --filter @postel/core build
+PORT=8787 node typescript/scripts/reference-receiver.mjs &
+RECV=$!
+trap "kill $RECV 2>/dev/null" EXIT
+for _ in $(seq 1 50); do curl -fsS -o /dev/null http://127.0.0.1:8787/.well-known/webhooks-keys && break; sleep 0.1; done
+./bin/compliance --target http://127.0.0.1:8787/webhooks --vectors compliance/vectors --schema-dir compliance/schema --now "$POSTEL_NOW" --format text
+"""
+
+[tasks."compliance:receiver:ts".env]
+POSTEL_NOW = "2026-01-01T00:00:00Z"
+POSTEL_TOLERANCE = "300"
+POSTEL_DEDUP = "true"
+POSTEL_DEDUP_PRESEED = "pre_seen_"
+POSTEL_SECRETS = "whsec_q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s=,whsec_VlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlY=,whpk_/JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic="
+POSTEL_JWKS_KEYS = '[{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"kid_a","x":"_JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic"},{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"kid_b","x":"IEBA42TBDyvsnB_lAKHNTCR8idZQoB7X6CyrqGeHfCE","not_after":"2025-01-01T00:00:00Z"}]'
+
+[tasks."release:gate"]
+description = "Full pre-release gate: TS quality + spec drift + Go suite + receiver & sender compliance"
+depends = ["check:all", "lint", "typecheck", "build", "test", "compliance:vet", "compliance:test"]
+run = """
+mise run compliance:receiver:ts
+mise run compliance:sender:ts
+"""
+
+[tasks."release:prepare"]
+description = "Stamp <version> across all artifacts and run the full gate. Does NOT tag or publish."
+usage = 'arg "<version>"'
+run = """
+version="$usage_version"
+mise run release:stamp "$version"
+mise run release:gate
+echo ""
+echo "prepared release $version. Next:"
+echo "  1. review the diff; commit on a release branch and open a PR"
+echo "  2. once merged + green:  mise run release:tag $version"
+echo "  3. git push origin v$version compliance/cli/v$version   (this triggers publish)"
+"""
+
+[tasks."release:tag"]
+description = "Create the v<version> and compliance/cli/v<version> tags at HEAD (does not push)"
+usage = 'arg "<version>"'
+run = """
+version="$usage_version"
+mise run release:verify-lockstep "$version"
+git tag -a "v$version" -m "release v$version"
+git tag -a "compliance/cli/v$version" -m "@postel/compliance v$version"
+echo "tagged v$version and compliance/cli/v$version (not pushed)."
+echo "publish:  git push origin v$version compliance/cli/v$version"
+"""

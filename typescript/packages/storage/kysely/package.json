@@ -1,5 +1,6 @@
 {
   "name": "@postel/kysely",
+  "private": true,
   "version": "0.0.0",
   "description": "Postel storage adapter — host hands Postel a Kysely query-builder instance.",
   "license": "MIT",
