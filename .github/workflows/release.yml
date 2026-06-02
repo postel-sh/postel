@@ -1,80 +1,83 @@
 name: Release
 
-# Lockstep release of the @postel/* npm packages and the Go compliance suite.
-# Triggered ONLY by a pushed release tag — publishing never happens from a
-# working tree (AGENTS.md). The single source of truth for the version is the
-# tag; `release:verify-lockstep` fails the run if the committed tree (Go suite
-# const, compliance CHANGELOG, every package.json) is not already at that version.
+# GitHub-Release-driven publishing. Drafting and publishing a GitHub Release is
+# the trigger; the release tag is the single source of truth for the version.
+# Nothing is stamped or committed in the repo — versions are injected into the
+# ephemeral CI build tree from the tag. Publishing never happens from a working
+# tree (AGENTS.md).
 #
-# Flow: tag vX.Y.Z (+ compliance/cli/vX.Y.Z) is pushed
-#   -> gate            full quality + compliance + lockstep guard
-#   -> publish-npm     pnpm publish -r (private packages skipped) with provenance
-#   -> release-binary  cross-compile the compliance runner
-#   -> github-release  create the GitHub Release, attach the runner binaries
+# Two independent tracks, selected by tag prefix:
+#   compliance/vMAJOR.MINOR   -> cross-compile the runner, attach binaries (no patch)
+#   ts/vMAJOR.MINOR.PATCH     -> conformance-gate against compliance@MAJOR.MINOR, publish npm
 #
-# Required repository secret: NPM_TOKEN (npm automation token with publish rights
-# to the @postel scope). Provenance needs the id-token: write permission below.
+# A TypeScript release at ts/vX.Y.Z runs the compliance corpus checked out at
+# tag compliance/vX.Y (the version-match rule). It fails fast if that suite tag
+# does not exist yet — which enforces "the compliance suite leads."
+#
+# Required repository secret: NPM_TOKEN (npm automation token, publish rights to
+# the @postel scope). Provenance uses the id-token: write permission below.
 #
 # Mechanism + rationale: decisions/0014-release-and-versioning-flow.md.
 
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
-      - "v[0-9]+.[0-9]+.[0-9]+-*"
+  release:
+    types: [published]
 
 permissions:
   contents: read
 
 jobs:
-  gate:
-    name: Gate + lockstep guard
+  # ---- Compliance suite release: tag compliance/vMAJOR.MINOR (no patch) ----
+  compliance-release:
+    if: startsWith(github.event.release.tag_name, 'compliance/v')
+    name: Publish compliance suite binaries
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.v.outputs.version }}
-      dist_tag: ${{ steps.v.outputs.dist_tag }}
-      prerelease: ${{ steps.v.outputs.prerelease }}
+    permissions:
+      contents: write # upload assets to the release
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve version from tag
-        id: v
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          if [[ "${version}" == *-* ]]; then
-            echo "dist_tag=next" >> "$GITHUB_OUTPUT"
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-go@v5
         with:
-          version: 10.33.4
+          go-version: stable
+          cache-dependency-path: compliance/cli/go.sum
 
-      - uses: jdx/mise-action@v2
+      - name: Resolve suite version and cross-compile
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#compliance/v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "compliance tag must be compliance/vMAJOR.MINOR with no PATCH; got '$tag'" >&2
+            exit 1
+          fi
+          mkdir -p dist
+          cd compliance/cli
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"; arch="${target#*/}"; ext=""
+            [ "$os" = "windows" ] && ext=".exe"
+            echo "building ${os}/${arch}"
+            GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X main.SuiteVersion=${version}" \
+              -o "../../dist/compliance-${version}-${os}-${arch}${ext}" .
+          done
 
-      - name: Install TS workspace
-        working-directory: typescript
-        run: pnpm install --frozen-lockfile
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: dist/*
 
-      - name: Lockstep guard — npm packages and Go suite share ${{ steps.v.outputs.version }}
-        run: mise run release:verify-lockstep "${{ steps.v.outputs.version }}"
-
-      - name: Full release gate
-        run: mise run release:gate
-
-  publish-npm:
-    name: Publish @postel/* to npm
-    needs: gate
+  # ---- TypeScript port release: tag ts/vMAJOR.MINOR.PATCH ----
+  ts-release:
+    if: startsWith(github.event.release.tag_name, 'ts/v')
+    name: Conformance-gate and publish @postel/*
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write # npm provenance
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the compliance/* tags for the conformance overlay
 
       - uses: pnpm/action-setup@v4
         with:
@@ -87,73 +90,53 @@ jobs:
           cache: pnpm
           cache-dependency-path: typescript/pnpm-lock.yaml
 
+      - uses: jdx/mise-action@v2
+
+      - name: Resolve port version and conformance target
+        id: v
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="${tag#ts/v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ts tag must be ts/vMAJOR.MINOR.PATCH; got '$tag'" >&2
+            exit 1
+          fi
+          minor="$(echo "$version" | cut -d. -f1-2)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "minor=${minor}" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            echo "dist_tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Conformance target exists, and overlay it
+        run: |
+          ctag="compliance/v${{ steps.v.outputs.minor }}"
+          if ! git rev-parse -q --verify "refs/tags/${ctag}" >/dev/null; then
+            echo "conformance: required suite tag '${ctag}' does not exist." >&2
+            echo "The compliance suite must release ${{ steps.v.outputs.minor }} before this port can claim it." >&2
+            exit 1
+          fi
+          echo "conformance: overlaying ${ctag} (vectors + runner + schema) onto the tree"
+          git checkout "${ctag}" -- compliance/
+
       - name: Install TS workspace
         working-directory: typescript
         run: pnpm install --frozen-lockfile
 
-      - name: Build all packages
-        working-directory: typescript
-        run: pnpm build
+      - name: Gate — quality + Go suite + receiver & sender compliance @ ${{ steps.v.outputs.minor }}
+        run: mise run release:gate
+
+      - name: Stamp npm versions to ${{ steps.v.outputs.version }} (ephemeral, not committed)
+        run: node scripts/release/stamp-version.mjs "${{ steps.v.outputs.version }}"
 
       - name: Stage LICENSE into publishable packages
         run: node scripts/release/sync-license.mjs
 
-      - name: Publish (private packages are skipped automatically)
+      - name: Publish (private packages skipped automatically)
         working-directory: typescript
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
-        run: pnpm publish -r --access public --no-git-checks --tag "${{ needs.gate.outputs.dist_tag }}"
-
-  release-binary:
-    name: Build compliance runner (${{ matrix.goos }}/${{ matrix.goarch }})
-    needs: gate
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - { goos: linux, goarch: amd64 }
-          - { goos: linux, goarch: arm64 }
-          - { goos: darwin, goarch: arm64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: windows, goarch: amd64, ext: ".exe" }
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: stable
-          cache-dependency-path: compliance/cli/go.sum
-
-      - name: Cross-compile
-        working-directory: compliance/cli
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
-        run: |
-          out="../../dist/compliance-${{ needs.gate.outputs.version }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
-          go build -trimpath -ldflags "-s -w" -o "${out}" .
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: compliance-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/*
-
-  github-release:
-    name: Create GitHub Release
-    needs: [gate, publish-npm, release-binary]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
-          prerelease: ${{ needs.gate.outputs.prerelease == 'true' }}
+        run: pnpm publish -r --access public --no-git-checks --tag "${{ steps.v.outputs.dist_tag }}"
