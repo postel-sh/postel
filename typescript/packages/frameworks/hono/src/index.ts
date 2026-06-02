@@ -10,7 +10,13 @@ import {
   type WebhookHeaders,
   verify,
 } from "@postel/core";
-import { type GateSource, type WebhookHandlerOptions, handleInbound } from "@postel/http";
+import {
+  type GateSource,
+  type JwksProvider,
+  type WebhookHandlerOptions,
+  handleInbound,
+  jwksFetchHandler,
+} from "@postel/http";
 import type { Context, MiddlewareHandler } from "hono";
 
 export type HonoVerifyOptions = VerifyOptions;
@@ -94,6 +100,7 @@ export function honoAdapter<const C extends PostelConfig>(
     handler: (c: Context) => Response | Promise<Response>,
     opts?: WebhookHandlerOptions<TData>,
   ): (c: Context) => Promise<Response>;
+  jwks(provider: JwksProvider): (c: Context) => Promise<Response>;
 } {
   return {
     verify(key, opts) {
@@ -101,6 +108,9 @@ export function honoAdapter<const C extends PostelConfig>(
     },
     guard(key, handler, opts) {
       return withWebhook(postel.inbound[key], handler, opts);
+    },
+    jwks(provider) {
+      return (c) => jwksFetchHandler(provider)(c.req.raw);
     },
   };
 }

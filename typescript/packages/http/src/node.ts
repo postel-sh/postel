@@ -18,6 +18,16 @@ export function writeOutcomeToNodeRes(res: NodeResponseLike, outcome: WebhookOut
   }
 }
 
+export async function writeResponseToNodeRes(
+  res: NodeResponseLike,
+  response: Response,
+): Promise<void> {
+  res.statusCode = response.status;
+  response.headers.forEach((value, name) => res.setHeader(name, value));
+  const body = await response.text();
+  res.end(body.length > 0 ? body : undefined);
+}
+
 export function headersFromNode(
   headers: Record<string, string | string[] | undefined>,
 ): Record<string, string> {

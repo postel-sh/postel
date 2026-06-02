@@ -200,3 +200,20 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
     expect(await res.json()).toEqual({ ok: true, type: "payment.captured" });
   });
 });
+
+describe("JWKS endpoint mounter", () => {
+  it("honoAdapter(postel).jwks(provider) serves the JWKS document on GET", async () => {
+    const postel = Postel({ inbound: { vendor: { verify: Secret(SECRET) } } });
+    const wh = honoAdapter(postel);
+    const app = new Hono();
+    app.get(
+      "/.well-known/webhooks-keys",
+      wh.jwks(() => ({
+        keys: [{ kty: "OKP", crv: "Ed25519", x: "Zm9vYmFy", kid: "k1", alg: "EdDSA" }],
+      })),
+    );
+    const res = await app.request("/.well-known/webhooks-keys");
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { keys: { kid: string }[] }).keys[0]?.kid).toBe("k1");
+  });
+});

@@ -5,7 +5,13 @@ import type {
   PostelConfig,
   PostelInstance,
 } from "@postel/core";
-import { type GateSource, type WebhookHandlerOptions, handleInbound } from "@postel/http";
+import {
+  type GateSource,
+  type JwksProvider,
+  type WebhookHandlerOptions,
+  handleInbound,
+  jwksFetchHandler,
+} from "@postel/http";
 import { headersFromNode } from "@postel/http/node";
 import type {
   FastifyPluginAsync,
@@ -105,6 +111,7 @@ export function fastifyAdapter<const C extends PostelConfig>(
     handler: (req: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>,
     opts?: WebhookHandlerOptions<TData>,
   ): (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
+  jwks(provider: JwksProvider): (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
 } {
   return {
     verify(key, opts) {
@@ -112,6 +119,15 @@ export function fastifyAdapter<const C extends PostelConfig>(
     },
     guard(key, handler, opts) {
       return withWebhook(postel.inbound[key], handler, opts);
+    },
+    jwks(provider) {
+      return async (req, reply) => {
+        const request = new Request(`http://local${req.url}`, { method: req.method });
+        const response = await jwksFetchHandler(provider)(request);
+        reply.code(response.status);
+        response.headers.forEach((value, name) => reply.header(name, value));
+        return reply.send(await response.text());
+      };
     },
   };
 }

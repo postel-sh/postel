@@ -63,3 +63,20 @@ describe("Framework adapters preserve raw bytes", () => {
     await app.close();
   });
 });
+
+describe("JWKS endpoint mounter", () => {
+  it("fastifyAdapter(postel).jwks(provider) serves the JWKS document on GET", async () => {
+    const postel = Postel({ inbound: { vendor: { verify: Secret(SECRET) } } });
+    const app = Fastify();
+    app.get(
+      "/.well-known/webhooks-keys",
+      fastifyAdapter(postel).jwks(() => ({
+        keys: [{ kty: "OKP", crv: "Ed25519", x: "Zm9vYmFy", kid: "k1", alg: "EdDSA" }],
+      })),
+    );
+    const res = await app.inject({ method: "GET", url: "/.well-known/webhooks-keys" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().keys[0].kid).toBe("k1");
+    await app.close();
+  });
+});
