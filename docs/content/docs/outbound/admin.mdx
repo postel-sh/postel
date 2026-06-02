@@ -1,0 +1,53 @@
+---
+title: Admin API
+description: A framework-agnostic HTTP control plane over the outbound sender — endpoints, replay, key rotation — with default-deny auth and tenant scoping.
+---
+
+`@postel/admin` turns your configured `Postel` instance into a privileged HTTP control plane. `adminRouter(postel, { authorize })` returns a Web `(Request) => Promise<Response>` that maps REST routes to `postel.outbound.*`.
+
+```ts title="lib/admin.ts"
+import { adminRouter } from "@postel/admin";
+import { postel } from "./postel";
+
+export const admin = adminRouter(postel, {
+  // boolean | { allow, status?, tenantId? } | Promise<...>
+  authorize: (req) => checkAdminToken(req.headers.get("authorization")),
+});
+```
+
+## Mounting
+
+```ts
+// Hono — Fetch-native, mount directly
+app.all("/admin/*", (c) => admin(c.req.raw));
+
+// Express
+import { fetchToExpress } from "@postel/express";
+app.use("/admin", fetchToExpress(admin));
+
+// Fastify
+import { fetchToFastify } from "@postel/fastify";
+app.all("/admin/*", fetchToFastify(admin));
+```
+
+## Authorization — default-deny
+
+`authorize` is effectively required: with none configured, **every request is 403** (and logs once). It receives the raw `Request`, so read whatever you authenticate with — bearer token, mTLS header, cookie. Return `true`/`false`, or `{ allow, status?, tenantId? }` to choose `401` vs `403` and bind the caller to a tenant.
+
+When `authorize` returns a `tenantId`, every route is scoped to it: lists and creates are constrained, and by-id routes return **404** (not 403) for another tenant's resources — so the API never leaks which ids exist in other tenants. Prefer transport auth in front? Run it and pass `authorize: () => true`.
+
+## Routes
+
+| Method · path | Does |
+|---|---|
+| `GET /endpoints` · `POST /endpoints` | list · create |
+| `GET/PATCH/DELETE /endpoints/:id` | get · update · delete |
+| `POST /endpoints/:id/disable` | disable (pause) |
+| `POST /endpoints/:id/rotate-secret` | rotate signing secret |
+| `POST /replay` · `POST /reconcile` | replay · reconcile |
+| `POST /tenants/:id/rate-limit` · `DELETE /tenants/:id` | tenant rate limit · delete |
+| `POST /keys/symmetric` · `POST /keys/asymmetric` | generate signing keys |
+
+Failures map to status by `PostelError.code` — `ENDPOINT_NOT_FOUND` → 404, `ENDPOINT_VALIDATION` → 422, `ENDPOINT_DISABLED` → 409, `MIGRATION_REQUIRED` → 503 — with a `{ errorCode, error }` JSON body. Code-only endpoint options (`filter`, `transform`, callable `headers`) aren't configurable over HTTP; set them in your `Postel` config.
+
+> Listing events/attempts and viewing raw payloads aren't part of the control-plane router yet — they land when the outbound surface gains a message/attempt query API.

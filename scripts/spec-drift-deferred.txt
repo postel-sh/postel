@@ -77,8 +77,6 @@ OpenTelemetry spans on every operation
 Prometheus metrics
 Structured JSON logs with trace correlation
 Health check endpoint
-Admin HTTP handlers
-Admin authorization predicate
 Replay UI handler with dry run
 
 # receiver — perf benchmark (deferred until perf harness lands)
