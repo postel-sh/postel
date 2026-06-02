@@ -26,5 +26,17 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*",
+    "@postel/http": "workspace:*",
+    "fastify-plugin": "4.5.1"
+  },
+  "peerDependencies": {
+    "fastify": ">=4"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10",
+    "fastify": "4.28.1"
   }
 }

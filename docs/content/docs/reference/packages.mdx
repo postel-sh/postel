@@ -12,6 +12,8 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/core`** | [Inbound](/docs/inbound) and [Outbound](/docs/outbound) — the `Postel({ inbound, outbound })` factory and primitives | Zero runtime dependencies. The outbound runtime is available, including the in-process `InMemoryStorage` adapter (`import { InMemoryStorage } from "@postel/core"`). |
 | **`@postel/http`** | Framework-agnostic webhook HTTP core | The verification gate (`handleInbound`, `fetchWebhook`) and the shared `PostelError`→HTTP-status policy every framework adapter binds to. Depends only on `@postel/core`. |
 | **`@postel/hono`** | [Hono](/docs/inbound/frameworks) framework adapter | `verifyWebhook()` / `honoAdapter(postel).verify()` gate middleware + `withWebhook()` wrapper. `honoVerify`/`postelHono` kept as deprecated aliases. |
+| **`@postel/express`** | [Express](/docs/inbound/frameworks) framework adapter | `verifyWebhook()` (mounts `express.raw()` + the gate) / `expressAdapter(postel).verify()`; sets `req.postel`. |
+| **`@postel/fastify`** | [Fastify](/docs/inbound/frameworks) framework adapter | `fastifyPostel` raw-body plugin + `verifyWebhook()` preHandler / `fastifyAdapter(postel).verify()`; sets `req.postel`. |
 | **`@postel/standalone-pg`** | [Postgres dedup adapter](/docs/inbound/deduplication) | Plug into `inbound.<source>.dedup` at factory time. |
 | **`@postel/standalone-sqlite`** | [SQLite dedup adapter](/docs/inbound/deduplication) | Same shape as the Postgres adapter; uses `better-sqlite3`. |
 
@@ -19,8 +21,6 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 
 | Package | Will be | Status |
 |---|---|---|
-| `@postel/express` | Express framework adapter (raw-body middleware) | Planned |
-| `@postel/fastify` | Fastify framework adapter | Planned |
 | `@postel/nextjs` | Next.js Route Handler ergonomics | Planned |
 | `@postel/bun` | Bun.serve adapter | Planned |
 
