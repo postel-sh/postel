@@ -1,5 +1,6 @@
 import { type Clock, systemClock } from "./clock.js";
 import { NotImplementedError } from "./errors.js";
+import { ed25519Jwk, ed25519Kid } from "./internal/jwk.js";
 import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
 import { buildEndpointApi } from "./sender/endpoint/crud.js";
 import { PostelEventEmitter } from "./sender/events.js";
@@ -14,6 +15,7 @@ import type { KmsStrategy } from "./strategies/kms.js";
 import type { RetryStrategy } from "./strategies/retry.js";
 import type { SigningStrategy } from "./strategies/signing.js";
 import type { WorkerStrategy } from "./strategies/workers.js";
+import type { Jwk, Jwks } from "./types.js";
 
 export interface OutboundConfig<TTx = unknown> {
   readonly storage: Storage<TTx>;
@@ -172,6 +174,7 @@ export interface OutboundApi<TTx = unknown> {
   keys: {
     generateSymmetric(): string;
     generateAsymmetric(): Promise<AsymmetricKeypair>;
+    publicJwks(opts?: { tenantId?: string; tx?: TTx }): Promise<Jwks>;
   };
   tenants: {
     setRateLimit(tenantId: string, opts: SetRateLimitOptions<TTx>): Promise<void>;
@@ -268,6 +271,28 @@ export function buildOutboundRuntime<TTx = unknown>(
       },
       async generateAsymmetric() {
         return generateAsymmetric();
+      },
+      async publicJwks(opts) {
+        const listArgs: { tenantId?: string; tx?: TTx } = {};
+        if (opts?.tenantId !== undefined) listArgs.tenantId = opts.tenantId;
+        if (opts?.tx !== undefined) listArgs.tx = opts.tx;
+        const endpoints = await config.storage.endpoints.list(listArgs);
+        const now = clock.now();
+        const seen = new Set<string>();
+        const keys: Jwk[] = [];
+        for (const ep of endpoints) {
+          const secrets = await config.storage.secrets.listForEndpoint(ep.id);
+          for (const s of secrets) {
+            if (s.algorithm !== "v1a" || !s.publicKey) continue;
+            if (s.status !== "primary" && s.status !== "verifying") continue;
+            if (s.notAfter && s.notAfter.getTime() <= now.getTime()) continue;
+            const kid = await ed25519Kid(s.publicKey);
+            if (seen.has(kid)) continue;
+            seen.add(kid);
+            keys.push(ed25519Jwk(s.publicKey, kid));
+          }
+        }
+        return { keys };
       },
     },
     tenants: {

@@ -1,5 +1,6 @@
 import type { Clock } from "../../clock.js";
 import { bytesToBase64 } from "../../internal/base64.js";
+import { decodeSecret } from "../../internal/secret.js";
 import type { EndpointId, Storage } from "../../storage/types.js";
 import { durationToMs } from "../internal/duration.js";
 import { generateAsymmetric, generateSymmetric } from "./generate.js";
@@ -35,8 +36,15 @@ export async function rotateSecret(
         await storage.secrets.setStatus(s.id, "verifying", expiresAt, { tx });
       }
     }
-    const newSecret =
-      algorithm === "v1a" ? (await generateAsymmetric()).private : generateSymmetric();
+    let encryptedValue: Uint8Array;
+    let publicKey: Uint8Array | undefined;
+    if (algorithm === "v1a") {
+      const keypair = await generateAsymmetric();
+      encryptedValue = new TextEncoder().encode(keypair.private);
+      publicKey = decodeSecret(keypair.public).bytes;
+    } else {
+      encryptedValue = new TextEncoder().encode(generateSymmetric());
+    }
     await storage.secrets.insert(
       {
         id: newSecretId(),
@@ -44,7 +52,8 @@ export async function rotateSecret(
         algorithm,
         status: "primary",
         priority: 0,
-        encryptedValue: new TextEncoder().encode(newSecret),
+        encryptedValue,
+        ...(publicKey !== undefined ? { publicKey } : {}),
         notAfter: null,
       },
       { tx },
