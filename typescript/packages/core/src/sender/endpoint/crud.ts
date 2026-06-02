@@ -1,3 +1,4 @@
+import { EndpointNotFound } from "../../errors.js";
 import { bytesToBase64 } from "../../internal/base64.js";
 import type {
   Endpoint,
@@ -88,7 +89,7 @@ export function buildEndpointApi(
       // downgraded to a cleartext or SSRF-eligible URL.
       if (opts.url !== undefined || opts.allowHttp !== undefined || opts.http !== undefined) {
         const current = await storage.endpoints.get(id, runtime);
-        if (!current) throw new Error(`endpoint not found: ${id}`);
+        if (!current) throw new EndpointNotFound(`endpoint not found: ${id}`);
         const effectiveUrl = opts.url ?? current.url;
         const effectiveAllowHttp = opts.allowHttp ?? current.allowHttp;
         const effectiveHttp = opts.http ?? (current.http as HttpDefaults | null) ?? undefined;
@@ -133,7 +134,7 @@ export function buildEndpointApi(
     },
     async get(id, opts) {
       const rec = await storage.endpoints.get(id, opts);
-      if (!rec) throw new Error(`endpoint not found: ${id}`);
+      if (!rec) throw new EndpointNotFound(`endpoint not found: ${id}`);
       return toPublicEndpoint(rec);
     },
     async disable(id, opts) {

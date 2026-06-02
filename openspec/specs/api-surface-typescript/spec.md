@@ -58,6 +58,7 @@ The canonical class ↔ code mapping is:
 | `UnknownKeyId` | `UNKNOWN_KEY_ID` |
 | `RawBytesMismatchDetected` | `RAW_BYTES_MISMATCH_DETECTED` |
 | `EndpointDisabled` | `ENDPOINT_DISABLED` |
+| `EndpointNotFound` | `ENDPOINT_NOT_FOUND` |
 | `IdempotencyKeyConflict` | `IDEMPOTENCY_KEY_CONFLICT` |
 | `MigrationRequired` | `MIGRATION_REQUIRED` |
 | `EndpointValidation` | `ENDPOINT_VALIDATION` |
