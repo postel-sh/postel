@@ -60,6 +60,9 @@ importers:
       '@postel/core':
         specifier: workspace:*
         version: link:../../core
+      '@postel/http':
+        specifier: workspace:*
+        version: link:../../http
     devDependencies:
       hono:
         specifier: 4.12.18
