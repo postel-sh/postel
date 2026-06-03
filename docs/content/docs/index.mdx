@@ -32,7 +32,7 @@ The `Postel({ inbound, outbound })` factory composes both — but everywhere els
 
 ## Pre-1.0 reality check
 
-Postel is pre-alpha. The receiver is feature-complete against its capability specs, but no `@postel/*` package has cut a numbered release yet — they all sit at `0.0.0` in the workspace. The receiver works; you can clone and use it. We don't recommend production deployment until a tagged release ships on npm.
+Postel is pre-alpha. The receiver is feature-complete against its capability specs, but no `@postel/*` package has cut a numbered release yet — none are published to npm. The receiver works; you can clone and use it. We don't recommend production deployment until a tagged release ships on npm.
 
 The sender runtime is available too — `send`, the transactional outbox, retries, replay, fanout, and signing all run against the in-process `InMemoryStorage` adapter. Database-backed storage adapters are planned; until they land, bring the in-memory adapter or implement the `Storage` interface against your own database. Pages under [Outbound](/docs/outbound) note what's available now versus planned.
 
