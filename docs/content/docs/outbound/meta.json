@@ -8,6 +8,7 @@
     "send",
     "retries",
     "replay",
-    "endpoints"
+    "endpoints",
+    "admin"
   ]
 }

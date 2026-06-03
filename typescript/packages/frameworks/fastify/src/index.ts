@@ -131,3 +131,20 @@ export function fastifyAdapter<const C extends PostelConfig>(
     },
   };
 }
+
+export function fetchToFastify(handler: (req: Request) => Promise<Response>) {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+    const init: RequestInit = { method: req.method, headers: headersFromNode(req.headers) };
+    if (req.body !== undefined && req.body !== null) {
+      init.body = Buffer.isBuffer(req.body)
+        ? req.body
+        : typeof req.body === "string"
+          ? req.body
+          : JSON.stringify(req.body);
+    }
+    const response = await handler(new Request(`http://local${req.url}`, init));
+    reply.code(response.status);
+    response.headers.forEach((value, name) => reply.header(name, value));
+    return reply.send(await response.text());
+  };
+}

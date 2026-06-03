@@ -104,3 +104,20 @@ export function expressAdapter<const C extends PostelConfig>(
     },
   };
 }
+
+export function fetchToExpress(handler: (req: Request) => Promise<Response>): RequestHandler {
+  return (req, res, next) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      const init: RequestInit = { method: req.method, headers: headersFromNode(req.headers) };
+      if (buffer.length > 0) init.body = buffer;
+      const request = new Request(`http://local${req.originalUrl ?? req.url ?? "/"}`, init);
+      handler(request)
+        .then((response) => writeResponseToNodeRes(res, response))
+        .catch(next);
+    });
+    req.on("error", next);
+  };
+}

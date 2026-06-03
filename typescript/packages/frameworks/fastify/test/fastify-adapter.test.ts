@@ -2,7 +2,7 @@ import { Postel, Secret, signFixture } from "@postel/core";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 
-import { fastifyAdapter, fastifyPostel, verifyWebhook } from "../src/index.js";
+import { fastifyAdapter, fastifyPostel, fetchToFastify, verifyWebhook } from "../src/index.js";
 
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
@@ -77,6 +77,33 @@ describe("JWKS endpoint mounter", () => {
     const res = await app.inject({ method: "GET", url: "/.well-known/webhooks-keys" });
     expect(res.statusCode).toBe(200);
     expect(res.json().keys[0].kid).toBe("k1");
+    await app.close();
+  });
+});
+
+describe("Admin HTTP handlers", () => {
+  it("fetchToFastify bridges a Fetch handler (method, body, response) onto Fastify", async () => {
+    const app = Fastify();
+    app.post(
+      "/admin/echo",
+      fetchToFastify(async (request) => {
+        const body = await request.text();
+        return new Response(JSON.stringify({ method: request.method, body }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/echo",
+      headers: { "content-type": "application/json" },
+      payload: { hi: 1 },
+    });
+    expect(res.statusCode).toBe(201);
+    const parsed = res.json() as { method: string; body: string };
+    expect(parsed.method).toBe("POST");
+    expect(JSON.parse(parsed.body)).toEqual({ hi: 1 });
     await app.close();
   });
 });
