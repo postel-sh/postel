@@ -1,0 +1,14 @@
+{
+  "title": "Storage",
+  "icon": "database",
+  "description": "Persist the outbox and audit trail — pick a storage adapter or bring your own.",
+  "root": true,
+  "pages": [
+    "index",
+    "---Adapters---",
+    "sqlite",
+    "---Reference---",
+    "schema",
+    "custom-adapters"
+  ]
+}
