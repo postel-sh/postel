@@ -1,0 +1,49 @@
+---
+title: NestJS
+description: Verify webhooks in NestJS — PostelModule plus a WebhookGuard, with the verified event injected via @Event().
+---
+
+NestJS is DI-first, so the gate is a `CanActivate` guard. Boot with `rawBody: true` so the guard sees the exact received bytes.
+
+```ts title="main.ts"
+const app = await NestFactory.create(AppModule, { rawBody: true });
+```
+
+```ts title="app.module.ts"
+import { Module } from "@nestjs/common";
+import { PostelModule } from "@postel/nestjs";
+import { postel } from "./lib/postel";
+
+@Module({ imports: [PostelModule.forRoot(postel)], controllers: [WebhooksController] })
+export class AppModule {}
+```
+
+```ts title="webhooks.controller.ts"
+import { Controller, Post, UseGuards } from "@nestjs/common";
+import { WebhookGuard, Event } from "@postel/nestjs";
+import type { WebhookEvent } from "@postel/core";
+
+@Controller("webhooks")
+export class WebhooksController {
+  @Post("vendor")
+  @UseGuards(WebhookGuard("vendor"))
+  handle(@Event() event: WebhookEvent) {
+    return { ok: true, type: event.type };
+  }
+}
+```
+
+`WebhookGuard(key)` verifies before the controller method runs and maps a failure to an `HttpException` with the right status; a non-`PostelError` bubbles as 5xx. `@Event()` / `@WebhookResult()` read the verified result off the request.
+
+## Type-checked source keys
+
+`createPostelDecorators(postel)` returns a `WebhookGuard` whose `key` argument is narrowed to your configured source names:
+
+```ts
+const { WebhookGuard } = createPostelDecorators(postel);
+// @UseGuards(WebhookGuard("vendor"))  ← "vendor" is checked against your config
+```
+
+## JWKS & admin
+
+Mount the framework-agnostic handlers in a controller with `@Res()`: `jwksFetchHandler(() => postel.outbound.keys.publicJwks())` for JWKS, and the [`@postel/admin`](/docs/outbound/admin) `adminRouter` for the control plane.

@@ -1,0 +1,7 @@
+{
+  "title": "Web adapters",
+  "icon": "plug",
+  "description": "Wire Postel verification into your web framework or runtime.",
+  "root": true,
+  "pages": ["index", "http", "hono", "express", "fastify", "nestjs", "nextjs", "bun"]
+}

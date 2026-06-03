@@ -1,0 +1,46 @@
+---
+title: "@postel/http"
+description: The framework-agnostic webhook HTTP core — verify, map errors, serve JWKS — usable on any Fetch runtime or as the base for a custom adapter.
+---
+
+`@postel/http` is the framework-neutral layer every adapter is built on. Use it directly on any runtime whose requests are Web `Request`s — Deno, Next.js Route Handlers, Bun, Cloudflare Workers, a bare server — or as the base for your own adapter.
+
+## fetchWebhook
+
+```ts
+import { fetchWebhook } from "@postel/http";
+import { postel } from "./postel";
+
+const handler = fetchWebhook(postel.inbound.vendor, {
+  onVerified: async ({ event }) => {
+    await handleOrder(event);
+  },
+});
+
+Deno.serve((req) => handler(req)); // Deno
+export const POST = (req: Request) => handler(req); // Next.js Route Handler
+```
+
+`fetchWebhook(source, opts)` returns `(req: Request) => Promise<Response>`: it reads the raw bytes, runs the verifier(s) you configured, maps `PostelError` → status (`SIGNATURE_INVALID` / `TIMESTAMP_TOO_OLD` / `MALFORMED_HEADER` / `RAW_BYTES_MISMATCH_DETECTED` → 400, `UNKNOWN_KEY_ID` → 401), runs `onVerified`, and returns `204` (or the response your handler returns). A non-`PostelError` is rethrown so the runtime yields 5xx.
+
+## handleInbound
+
+For frameworks that aren't Fetch-native, work with the normalized outcome and write your own response:
+
+```ts
+import { handleInbound } from "@postel/http";
+
+const outcome = await handleInbound(source, { rawBody, headers, method }, opts);
+// outcome.kind: "verified" | "duplicate" | "error"
+// + outcome.status, outcome.headers, outcome.body, outcome.context (verified result)
+```
+
+`@postel/http/node` adds `writeOutcomeToNodeRes(res, outcome)` and `headersFromNode(req.headers)` for Node `req`/`res` frameworks; the error→status policy is exported as `statusForError` / `errorBody`. (This is exactly what the Express and Fastify adapters use under the hood.)
+
+## Dedup-ack
+
+Pass `dedup: { ttl }` (with a dedup adapter configured on the source) and a repeated `webhook-id` is acknowledged `2xx` with `X-Postel-Dedup-Result: duplicate` — checked **after** verification, so an unauthenticated id can never short-circuit handling.
+
+## JWKS
+
+`jwksFetchHandler(() => postel.outbound.keys.publicJwks())` returns a Fetch handler that serves your current public keys per request — see [key rotation](/docs/inbound/key-rotation).

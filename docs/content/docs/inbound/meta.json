@@ -9,7 +9,6 @@
     "signing",
     "key-rotation",
     "deduplication",
-    "raw-bytes",
-    "frameworks"
+    "raw-bytes"
   ]
 }

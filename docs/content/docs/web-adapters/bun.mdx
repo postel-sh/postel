@@ -1,0 +1,26 @@
+---
+title: Bun
+description: Bun.serve is Fetch-native — verify with @postel/http's fetchWebhook today; a dedicated @postel/bun adapter is planned.
+---
+
+`Bun.serve` hands your `fetch` handler a Web `Request`, so the framework-agnostic [`@postel/http`](/docs/web-adapters/http) handler works directly:
+
+```ts
+import { fetchWebhook } from "@postel/http";
+import { postel } from "./postel";
+
+const handler = fetchWebhook(postel.inbound.vendor, {
+  onVerified: async ({ event }) => {
+    await handleOrder(event);
+  },
+});
+
+Bun.serve({
+  fetch(req) {
+    if (new URL(req.url).pathname === "/webhooks/vendor") return handler(req);
+    return new Response("not found", { status: 404 });
+  },
+});
+```
+
+The `@postel/bun` package name is **reserved** — a stub today. A future release adds Bun-specific ergonomics on top of `@postel/http`; until then, use `@postel/http` directly.

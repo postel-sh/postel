@@ -1,0 +1,61 @@
+---
+title: Hono
+description: Verify webhooks in Hono — a middleware gate bound to your configured source, with the verified event on c.get("postel").
+---
+
+```ts title="lib/postel.ts"
+import { Postel, Secret } from "@postel/core";
+
+export const postel = Postel({
+  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+});
+```
+
+## Middleware gate
+
+```ts title="app.ts"
+import { Hono } from "hono";
+import { verifyWebhook, honoAdapter, POSTEL_CONTEXT_KEY } from "@postel/hono";
+import { postel } from "./lib/postel";
+
+const app = new Hono();
+
+app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => {
+  const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · typed · raw bytes intact
+  return c.json({ ok: true, type: event.type });
+});
+```
+
+On failure the gate short-circuits with the mapped status and your handler never runs; a non-`PostelError` bubbles as 5xx.
+
+## Adapter object
+
+Bind by source key — the key is type-checked against the sources you configured:
+
+```ts
+const wh = honoAdapter(postel);
+app.post("/webhooks/github", wh.verify("github"), (c) => c.text("ok"));
+```
+
+`wh.guard(key, handler)` (= `withWebhook`) folds the gate and a single handler into one.
+
+## JWKS
+
+```ts
+app.get("/.well-known/webhooks-keys", wh.jwks(() => postel.outbound.keys.publicJwks()));
+```
+
+## Admin
+
+Hono mounts the [`@postel/admin`](/docs/outbound/admin) router natively (it speaks Fetch):
+
+```ts
+import { adminRouter } from "@postel/admin";
+
+const admin = adminRouter(postel, { authorize: (req) => checkAdminToken(req) });
+app.all("/admin/*", (c) => admin(c.req.raw));
+```
+
+## Deprecated
+
+The raw-secret helpers `honoVerify` / `postelHono` remain as `@deprecated` aliases — prefer the gate above.
