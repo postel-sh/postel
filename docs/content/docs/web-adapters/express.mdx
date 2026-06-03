@@ -1,0 +1,58 @@
+---
+title: Express
+description: Verify webhooks in Express — verifyWebhook mounts express.raw() + the gate and sets req.postel.
+---
+
+```ts title="lib/postel.ts"
+import { Postel, Secret } from "@postel/core";
+
+export const postel = Postel({
+  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+});
+```
+
+## Middleware gate
+
+`verifyWebhook` returns `[express.raw({ type: () => true }), gate]` — mount it and your handler stays normal. Don't put `express.json()` ahead of it; the gate needs the exact received bytes.
+
+```ts title="app.ts"
+import express from "express";
+import { verifyWebhook, expressAdapter } from "@postel/express";
+import { postel } from "./lib/postel";
+
+const app = express();
+
+app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (req, res) => {
+  res.json({ ok: true, type: req.postel?.event.type });
+});
+```
+
+On failure the gate writes the mapped 4xx and your handler never runs; a non-`PostelError` is forwarded to `next(err)` (your error middleware / 500).
+
+## Adapter object
+
+```ts
+app.post("/webhooks/github", expressAdapter(postel).verify("github"), (_req, res) => res.send("ok"));
+```
+
+Source keys are type-checked. `.guard(key, handler)` (= `withWebhook`) folds the gate and handler into one.
+
+## JWKS
+
+```ts
+app.get(
+  "/.well-known/webhooks-keys",
+  expressAdapter(postel).jwks(() => postel.outbound.keys.publicJwks()),
+);
+```
+
+## Admin
+
+Mount the [`@postel/admin`](/docs/outbound/admin) router with the generic Fetch→Express bridge:
+
+```ts
+import { adminRouter } from "@postel/admin";
+import { fetchToExpress } from "@postel/express";
+
+app.use("/admin", fetchToExpress(adminRouter(postel, { authorize: (req) => checkAdminToken(req) })));
+```

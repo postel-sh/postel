@@ -1,0 +1,63 @@
+---
+title: Fastify
+description: Verify webhooks in Fastify — the fastifyPostel raw-body plugin plus a preHandler gate that sets req.postel.
+---
+
+```ts title="lib/postel.ts"
+import { Postel, Secret } from "@postel/core";
+
+export const postel = Postel({
+  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+});
+```
+
+## Plugin + preHandler gate
+
+Register `fastifyPostel` on the instance (or encapsulated scope) that serves webhooks — it installs a raw-Buffer body parser so signatures verify byte-for-byte. Then gate routes with the `verifyWebhook` preHandler.
+
+```ts title="app.ts"
+import Fastify from "fastify";
+import { fastifyPostel, verifyWebhook, fastifyAdapter } from "@postel/fastify";
+import { postel } from "./lib/postel";
+
+const app = Fastify();
+await app.register(fastifyPostel);
+
+app.post(
+  "/webhooks/vendor",
+  { preHandler: verifyWebhook(postel.inbound.vendor) },
+  async (req) => ({ ok: true, type: req.postel?.event.type }),
+);
+```
+
+`fastifyPostel` removes the built-in body parsers in its scope, so register it on a Fastify instance or encapsulated scope **dedicated to webhook routes** — that way it doesn't strip JSON parsing from your other routes. On failure the preHandler replies with the mapped status; a non-`PostelError` bubbles to Fastify's error handler (5xx).
+
+## Adapter object
+
+```ts
+app.post(
+  "/webhooks/github",
+  { preHandler: fastifyAdapter(postel).verify("github") },
+  async () => "ok",
+);
+```
+
+Source keys are type-checked. `.guard(key, handler)` (= `withWebhook`) folds the gate and a route handler into one.
+
+## JWKS
+
+```ts
+app.get(
+  "/.well-known/webhooks-keys",
+  fastifyAdapter(postel).jwks(() => postel.outbound.keys.publicJwks()),
+);
+```
+
+## Admin
+
+```ts
+import { adminRouter } from "@postel/admin";
+import { fetchToFastify } from "@postel/fastify";
+
+app.all("/admin/*", fetchToFastify(adminRouter(postel, { authorize: (req) => checkAdminToken(req) })));
+```

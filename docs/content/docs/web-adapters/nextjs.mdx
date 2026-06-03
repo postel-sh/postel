@@ -1,0 +1,21 @@
+---
+title: Next.js
+description: Next.js Route Handlers are Fetch-native — verify with @postel/http's fetchWebhook today; a dedicated @postel/nextjs adapter is planned.
+---
+
+Next.js Route Handlers receive a Web `Request`, so the framework-agnostic [`@postel/http`](/docs/web-adapters/http) handler works directly — no adapter needed:
+
+```ts title="app/api/webhooks/vendor/route.ts"
+import { fetchWebhook } from "@postel/http";
+import { postel } from "@/lib/postel";
+
+const handler = fetchWebhook(postel.inbound.vendor, {
+  onVerified: async ({ event }) => {
+    await handleOrder(event);
+  },
+});
+
+export const POST = (req: Request) => handler(req);
+```
+
+The `@postel/nextjs` package name is **reserved** — a stub exporting only a marker today. A future release adds Route-Handler type ergonomics on top of `@postel/http`; until then, the snippet above is the supported path.
