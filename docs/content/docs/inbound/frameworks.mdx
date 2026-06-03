@@ -15,8 +15,8 @@ Until your framework's adapter ships, the factory snippet from [Verify a signed 
 | Framework | Package | Ships? | Notes |
 |---|---|---|---|
 | Hono | `@postel/hono` | ✅ Today | `verifyWebhook()` / `honoAdapter(postel).verify()` gate middleware + `withWebhook()` wrapper, built on `@postel/http`. (`honoVerify`/`postelHono` kept as deprecated aliases.) |
-| Express | `@postel/express` | ⏳ Soon | Package exists as a stub; full middleware planned. |
-| Fastify | `@postel/fastify` | ⏳ Soon | Stub today. |
+| Express | `@postel/express` | ✅ Today | `verifyWebhook()` / `expressAdapter(postel).verify()` — mounts `express.raw()` + the gate; sets `req.postel`. |
+| Fastify | `@postel/fastify` | ✅ Today | `fastifyPostel` plugin (raw-body parser) + `verifyWebhook()` preHandler / `fastifyAdapter(postel).verify()`; sets `req.postel`. |
 | Next.js Route Handlers | `@postel/nextjs` | ⏳ Soon | Stub today. Native `Request` works fine without an adapter; the package is for type ergonomics. |
 | Bun.serve | `@postel/bun` | ⏳ Soon | Stub today. |
 | Deno.serve | (none planned) | n/a | Use the factory directly with `req.arrayBuffer()`. |
@@ -76,36 +76,7 @@ export async function POST(req: Request) {
 }
 ```
 
-```ts title="Express (with express.raw)"
-import express from "express";
-const app = express();
-
-app.post(
-  "/webhooks/vendor",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-    const body = new Uint8Array(req.body);
-    const headers = req.headers as Record<string, string>;
-    const { event } = await postel.inbound.vendor.verify(body, headers);
-    res.status(200).send("ok");
-  },
-);
-```
-
-```ts title="Fastify (with content-type-parser)"
-fastify.addContentTypeParser(
-  "application/json",
-  { parseAs: "buffer" },
-  (_req, body, done) => done(null, body),
-);
-
-fastify.post("/webhooks/vendor", async (req, reply) => {
-  const body = new Uint8Array(req.body as Buffer);
-  const headers = req.headers as Record<string, string>;
-  const { event } = await postel.inbound.vendor.verify(body, headers);
-  return reply.send("ok");
-});
-```
+> **Express and Fastify now ship real adapters** (`@postel/express`, `@postel/fastify`) — use the gate API shown in the Hono section above (`verifyWebhook` / `expressAdapter(postel).verify(...)` / `fastifyAdapter(postel).verify(...)`) instead of hand-rolling `express.raw()` or a content-type parser.
 
 ```ts title="Bun.serve"
 Bun.serve({
@@ -119,7 +90,7 @@ Bun.serve({
 });
 ```
 
-The full adapters will package each of these as one-liner middleware (and add framework-specific runtime detection for `RawBytesMismatchDetected`). Until then, the snippets above are what we run in production.
+Next.js, Bun, and Deno have no dedicated gate yet — the factory call above works directly against their native `Request`. Express, Fastify, and Hono ship real adapters (see the gate API above); they reuse the shared verification core in [`@postel/http`](/docs/reference/packages).
 
 ## What's next
 

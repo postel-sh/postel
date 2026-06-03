@@ -26,5 +26,19 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*",
+    "@postel/http": "workspace:*"
+  },
+  "peerDependencies": {
+    "express": ">=4"
+  },
+  "devDependencies": {
+    "@types/express": "4.17.21",
+    "@types/node": "20.17.10",
+    "@types/supertest": "6.0.2",
+    "express": "4.21.2",
+    "supertest": "7.0.0"
   }
 }
