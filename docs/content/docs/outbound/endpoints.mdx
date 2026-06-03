@@ -78,9 +78,41 @@ await postel.outbound.endpoints.create({
 
 The transformed payload is what gets signed and sent. The original payload remains in the outbox row for replay (in its original form).
 
-## Secret rotation
+## Signing secrets
 
-Symmetric (HMAC) endpoints carry a secret. Rotate with `rotateSecret`:
+Creating an endpoint provisions its initial **primary** signing secret automatically, from the resolved signing strategy — the per-endpoint `signing` option, else the outbound `signing` default, else HMAC (`v1`):
+
+```ts
+// HMAC (v1) by default — a symmetric secret is minted and stored.
+const hmacEp = await postel.outbound.endpoints.create({
+  url:   "https://customer.example.com/webhooks",
+  types: ["order.*"],
+});
+
+// Ed25519 (v1a) — a keypair is minted and the public key is published via
+// JWKS immediately, with no rotation required.
+const edEp = await postel.outbound.endpoints.create({
+  url:     "https://partner.example.com/webhooks",
+  types:   ["order.*"],
+  signing: Ed25519V1a(),
+});
+
+const jwks = await postel.outbound.keys.publicJwks(); // already includes edEp's public key
+```
+
+If you manage signing material yourself — a KMS-backed flow, or your own secret store — pass `provisionSecret: false` so `create` writes no secret:
+
+```ts
+await postel.outbound.endpoints.create({
+  url:             "https://customer.example.com/webhooks",
+  signing:         Ed25519V1a(),
+  provisionSecret: false, // you provision / manage the secret out of band
+});
+```
+
+### Rotation
+
+Rotate the signing secret with `rotateSecret`:
 
 ```ts
 await postel.outbound.endpoints.rotateSecret(ep.id, {

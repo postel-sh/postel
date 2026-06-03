@@ -151,6 +151,9 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
           const retryPolicy = normalizeRetryPolicy(body.retryPolicy);
           const ep = await host.postel.outbound.endpoints.create({
             url: body.url,
+            // Fixtures own the signing material below; auto-minting a secret here
+            // would add a second signature that no compliance vector expects.
+            provisionSecret: false,
             ...(body.types !== undefined ? { types: body.types } : {}),
             ...(body.channels !== undefined ? { channels: body.channels } : {}),
             ...(retryPolicy !== undefined ? { retryPolicy } : {}),
