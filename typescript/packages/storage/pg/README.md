@@ -1,6 +1,6 @@
-# @postel/standalone-sqlite
+# @postel/pg
 
-> Standalone Postel storage adapter — Postel owns the SQLite database; zero-config drop-in.
+> Standalone Postel storage adapter — Postel owns the Postgres pool; zero-config drop-in.
 
 This package is part of [Postel](https://github.com/postel-sh/postel), a polyglot library for sending and receiving webhooks reliably and securely. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified by the `@postel/compliance` test suite.
 

@@ -8,8 +8,8 @@
 typescript/
 ├── packages/                      # one folder per published @postel/* package
 │   ├── core/                      # @postel/core
-│   ├── standalone-pg/             # @postel/standalone-pg
-│   ├── standalone-sqlite/         # @postel/standalone-sqlite
+│   ├── storage/pg/               # @postel/pg
+│   ├── storage/sqlite/           # @postel/sqlite
 │   ├── drizzle/                   # @postel/drizzle
 │   ├── prisma/                    # @postel/prisma
 │   ├── kysely/                    # @postel/kysely

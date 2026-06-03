@@ -33,7 +33,7 @@ First time? Start with **Verify a signed request**. Before you ship to productio
 | Multi-secret rotation windows and cross-scheme migration | Ships | Pass `[Verifier, Verifier, …]` |
 | Constant-time signature comparison | Ships | (always on) |
 | Structured `PostelError` subclasses for every failure mode | Ships | `SignatureInvalid`, `TimestampTooOld`, `MalformedHeader`, `UnknownKeyId`, `RawBytesMismatchDetected` |
-| Idempotency dedup with Postgres / SQLite / in-memory adapters | Ships | `@postel/standalone-pg`, `@postel/standalone-sqlite`, `InMemoryDedup` |
+| Idempotency dedup with Postgres / SQLite / in-memory adapters | Ships | `@postel/pg`, `@postel/sqlite`, `InMemoryDedup` |
 | Hono, Express, Fastify, NestJS framework adapters | Ships | `@postel/hono`, `@postel/express`, `@postel/fastify`, `@postel/nestjs` — a verification gate over `@postel/http` |
 | Next.js, Bun adapters | Stub packages today (`__postelPackage` only); use the factory directly meanwhile | `@postel/nextjs`, `@postel/bun` |
 

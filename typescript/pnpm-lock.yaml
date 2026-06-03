@@ -156,9 +156,7 @@ importers:
 
   packages/storage/kysely: {}
 
-  packages/storage/prisma: {}
-
-  packages/storage/standalone-pg:
+  packages/storage/pg:
     dependencies:
       '@postel/core':
         specifier: workspace:*
@@ -174,7 +172,9 @@ importers:
         specifier: 8.20.0
         version: 8.20.0
 
-  packages/storage/standalone-sqlite:
+  packages/storage/prisma: {}
+
+  packages/storage/sqlite:
     dependencies:
       '@postel/core':
         specifier: workspace:*

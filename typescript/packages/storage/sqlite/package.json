@@ -1,20 +1,20 @@
 {
-  "name": "@postel/standalone-pg",
+  "name": "@postel/sqlite",
   "version": "0.0.0",
-  "description": "Standalone Postel storage adapter — Postel owns the Postgres pool; zero-config drop-in.",
+  "description": "Standalone Postel storage adapter — Postel owns the SQLite database; zero-config drop-in.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/postel-sh/postel.git",
-    "directory": "typescript/packages/storage/standalone-pg"
+    "directory": "typescript/packages/storage/sqlite"
   },
   "homepage": "https://postel.dev",
   "bugs": "https://github.com/postel-sh/postel/issues",
   "keywords": [
     "webhooks",
     "standard-webhooks",
-    "postgres",
-    "postgresql",
+    "sqlite",
+    "better-sqlite3",
     "dedup",
     "idempotency",
     "postel"
@@ -52,11 +52,11 @@
     "@postel/core": "workspace:*"
   },
   "peerDependencies": {
-    "pg": ">=8"
+    "better-sqlite3": ">=11"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
     "@types/node": "20.17.10",
-    "@types/pg": "8.20.0",
-    "pg": "8.20.0"
+    "better-sqlite3": "12.10.0"
   }
 }
