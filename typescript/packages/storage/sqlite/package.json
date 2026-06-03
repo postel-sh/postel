@@ -49,12 +49,14 @@
     }
   },
   "dependencies": {
-    "@postel/core": "workspace:*"
+    "@postel/core": "workspace:*",
+    "@postel/storage-helpers": "workspace:*"
   },
   "peerDependencies": {
     "better-sqlite3": ">=11"
   },
   "devDependencies": {
+    "@postel/storage-testkit": "workspace:*",
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "20.17.10",
     "better-sqlite3": "12.10.0"

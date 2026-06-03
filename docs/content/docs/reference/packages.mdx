@@ -16,8 +16,9 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/fastify`** | [Fastify](/docs/web-adapters/fastify) framework adapter | `fastifyPostel` raw-body plugin + `verifyWebhook()` preHandler / `fastifyAdapter(postel).verify()`; sets `req.postel`. |
 | **`@postel/nestjs`** | [NestJS](/docs/web-adapters/nestjs) framework adapter | `PostelModule.forRoot(postel)` + `WebhookGuard(key)` guard + `@Event()` / `@WebhookResult()` decorators. |
 | **`@postel/admin`** | [Admin control plane](/docs/outbound/admin) over the outbound sender | `adminRouter(postel, { authorize })` Fetch router (endpoint CRUD, replay, keys) with default-deny auth + tenant scoping; mount via Hono / `fetchToExpress` / `fetchToFastify`. |
-| **`@postel/pg`** | [Postgres dedup adapter](/docs/inbound/deduplication) | Plug into `inbound.<source>.dedup` at factory time. |
-| **`@postel/sqlite`** | [SQLite dedup adapter](/docs/inbound/deduplication) | Same shape as the Postgres adapter; uses `better-sqlite3`. |
+| **`@postel/sqlite`** | [SQLite storage adapter](/docs/storage/sqlite) | Standalone — Postel owns the SQLite database (`postelSqlite`). Full outbound `Storage`; also exports `sqliteDedupAdapter` for inbound dedup. |
+| **`@postel/pg`** | [Postgres dedup adapter](/docs/inbound/deduplication) | `pgDedupAdapter` for `inbound.<source>.dedup`. The full Postgres `Storage` adapter is landing. |
+| **`@postel/storage-helpers`** | Zero-DB helpers for [custom adapters](/docs/storage/custom-adapters) | Dialect codecs, capability flags, row encode/decode, migration SQL, callback registry — what every adapter reuses. |
 
 ## Stubs today (name reserved, no runtime yet)
 
@@ -28,14 +29,15 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 
 Each "stub" package exports only `__postelPackage` today. Don't depend on them in production yet — the framework-agnostic [factory recipe](/docs/inbound/verify) works directly against each runtime's native `Request`.
 
-## Planned (database & queue adapters)
+## Storage adapters
 
-The `postel.outbound.*` runtime (`send`, `replay`, `endpoints.*`, `keys.*`, `tenants.*`) is available inside `@postel/core`, against the in-process `InMemoryStorage` adapter. The database-backed storage adapters and external job-queue adapters are planned:
+The `postel.outbound.*` runtime runs against any `Storage` adapter: the in-process `InMemoryStorage` (in `@postel/core`), the standalone [`@postel/sqlite`](/docs/storage/sqlite) (shipping), or — landing across the matrix — the Postgres and query-builder/ORM adapters:
 
 | Package | Will be |
 |---|---|
-| `@postel/drizzle` | Drizzle ORM storage adapter — wires the outbound `Storage` interface against a Drizzle schema |
+| `@postel/pg` | Standalone Postgres storage adapter (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`) |
 | `@postel/kysely` | Kysely query-builder storage adapter |
+| `@postel/drizzle` | Drizzle ORM storage adapter |
 | `@postel/prisma` | Prisma storage adapter |
 
 The storage adapter matrix is per [ADR 0007](https://github.com/postel-sh/postel/blob/main/decisions/0007-storage-strategy.md) — Postgres / SQLite as the canonical first-class databases, ORM-specific adapters in their own packages. The external worker strategies (`BullMQ`, `PgBoss`) are likewise config slots today and throw `NotImplementedError` until their adapters ship; the in-process worker pool is the supported runtime.

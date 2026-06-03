@@ -1,0 +1,55 @@
+---
+title: SQLite
+description: "@postel/sqlite — a standalone SQLite storage adapter built on better-sqlite3."
+---
+
+`@postel/sqlite` is a **standalone** adapter: Postel owns the SQLite database. It's the simplest way to get durable, single-node webhook delivery — no server to run.
+
+```bash
+pnpm add @postel/sqlite better-sqlite3
+# or: npm i @postel/sqlite better-sqlite3
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { SqliteStorage } from "@postel/sqlite";
+
+export const postel = Postel({
+  outbound: { storage: SqliteStorage({ filename: "postel.db" }) },
+});
+```
+
+## Options
+
+| Option | Default | Notes |
+|---|---|---|
+| `filename` | `":memory:"` | Path Postel opens. Use a real file for persistence; `:memory:` for tests. |
+| `db` | — | An existing `better-sqlite3` `Database` to reuse instead of `filename`. |
+| `autoMigrate` | `true` | Run migrations on construction. Set `false` to manage migrations yourself. |
+| `clock` | system clock | Inject a clock for deterministic time in tests. |
+
+Pass either `filename` (Postel opens it) or `db` (you opened it). `better-sqlite3` is a peer dependency you install alongside.
+
+## Migrations
+
+With `autoMigrate` on (the default), the adapter brings the database up to the current schema version on every construction. It's idempotent — a fully-migrated database is left untouched — so it's safe to run on every boot. The schema it applies is the canonical one documented in [Schema & migrations](/docs/storage/schema).
+
+## Polling, not push
+
+SQLite has no `LISTEN`/`NOTIFY`, so the adapter declares `capabilities.notify = false` and Postel's workers **poll** the outbox at a short interval instead of being pushed. Delivery is identical; only the wake-up latency differs from a Postgres deployment.
+
+## Single-writer
+
+SQLite serializes writes through a single writer. The adapter reserves outbox rows under `BEGIN IMMEDIATE`, which is correct and safe, but throughput is bounded by one writer — `@postel/sqlite` is built for single-node deployments. For multi-node / high-throughput delivery, use `@postel/pg`.
+
+## Receiver-side dedup
+
+The package also exports `SqliteDedup` for the inbound idempotency-dedup helper, independent of the outbound storage:
+
+```ts
+import { SqliteDedup } from "@postel/sqlite";
+
+const postel = Postel({
+  inbound: { vendor: { verify: secret, dedup: SqliteDedup({ db }) } },
+});
+```

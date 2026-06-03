@@ -1,0 +1,28 @@
+---
+title: Schema & migrations
+description: The canonical Postel database schema, the forward-only migrations, and the boot-time version handshake.
+---
+
+Every SQL-backed adapter targets the same canonical schema. It's defined once, in Postgres dialect with SQLite variants noted inline, under [`specs/db-schema/`](https://github.com/postel-sh/postel/tree/main/specs/db-schema) — that directory is the source of truth, and each adapter transcribes it to its dialect.
+
+## Tables
+
+| Table | Holds |
+|---|---|
+| `_postel_meta` | Schema version (read at boot for the compatibility handshake). |
+| `tenants` | Optional tenant rows (NULL tenant = single-tenant mode). |
+| `endpoints` | One row per registered receiver URL, plus its delivery config. |
+| `endpoint_secrets` | Priority-ordered signing secrets per endpoint (rotation overlap). |
+| `messages` | The outbox: one row per `send()`. Workers reserve rows here. |
+| `attempts` | Per-endpoint, per-message delivery attempts (the audit trail). |
+| `endpoint_state_transitions` | Audit log of endpoint state changes. |
+
+Plus a `dead_letter` view over `attempts` whose final disposition is exhausted.
+
+## Forward-only migrations
+
+Migrations are numbered (`0001_init.sql`, `0002_*`, …) and **forward-only**: no destructive change, every step idempotent (`IF NOT EXISTS` / version-gated). Standalone and client adapters run them through your connection; ORM adapters ship a schema fragment in the host's DSL that you merge and migrate with your ORM's own tooling.
+
+## Version handshake
+
+`_postel_meta` records the schema version the database is at. An adapter reads it at boot and refuses to run against an incompatible schema, so a library upgrade that needs a newer schema fails fast with a clear "run the migration" error rather than misbehaving against old columns. Run the adapter's migrations (or `postel migrate`) to bring the database forward.

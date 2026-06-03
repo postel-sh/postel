@@ -1,0 +1,50 @@
+---
+title: Overview
+description: How Postel persists the outbox and audit trail, and how to pick a storage adapter — or bring your own.
+---
+
+The outbound sender needs durable storage for two things: the **transactional outbox** (every `send()` is a row workers reserve and dispatch) and the **audit trail** (attempts, endpoint state, replay history). Postel talks to that storage through one operation-shaped `Storage` interface, so the same sender runs unchanged against any backend.
+
+`@postel/core` ships an in-memory `Storage` adapter (`InMemoryStorage`) — the zero-config default and the reference implementation. It's perfect for tests and single-process demos, but it doesn't survive a restart. For production you wire a database-backed adapter.
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { SqliteStorage } from "@postel/sqlite";
+
+export const postel = Postel({
+  outbound: { storage: SqliteStorage({ filename: "postel.db" }) },
+});
+```
+
+## The outbox, and why it composes with your transaction
+
+Every adapter's write operations accept an optional `tx` — your application's own transaction handle. Hand it to `send()` and the outbox insert commits (or rolls back) atomically with your business write:
+
+```ts
+await db.transaction(async (tx) => {
+  await tx.insert(orders).values({ /* ... */ });
+  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+});
+```
+
+No second connection, no dual-write race: if the order rolls back, so does the webhook. This is the single biggest reason Postel hands *you* the database client instead of opening its own.
+
+## Capabilities
+
+Each adapter declares a `capabilities` object. The one that affects behavior most is `notify`: Postgres adapters use `LISTEN`/`NOTIFY` to wake idle workers the instant a message is enqueued; adapters without it (SQLite) fall back to polling the outbox at a short interval. Both deliver the same messages — `notify` only changes dispatch latency.
+
+## Worker leases
+
+When a worker reserves a batch it stamps each row with a lease (`lease_expires_at = now + 60s` by default). If the worker crashes, the lease expires and another worker reclaims the row — so a message is never lost, only ever re-attempted. This is what makes delivery at-least-once.
+
+## Picking an adapter
+
+Three integration shapes, all implementing the same `Storage` interface:
+
+| Category | Packages | Postel owns the connection? | Use when |
+|---|---|---|---|
+| **Standalone** | [`@postel/sqlite`](/docs/storage/sqlite), `@postel/pg` | Yes | You don't have a DB layer yet, or want the simplest drop-in |
+| **Query-builder / ORM** | `@postel/kysely`, `@postel/drizzle`, `@postel/prisma` | No — you hand Postel your `db` | You already run Kysely / Drizzle / Prisma and want outbox writes in your transactions |
+| **Bring your own** | [custom adapter](/docs/storage/custom-adapters) | Your call | Any other backend (libSQL, D1, CockroachDB, …) |
+
+The full canonical schema is documented in [Schema & migrations](/docs/storage/schema).

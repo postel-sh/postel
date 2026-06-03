@@ -183,7 +183,13 @@ importers:
       '@postel/core':
         specifier: workspace:*
         version: link:../../core
+      '@postel/storage-helpers':
+        specifier: workspace:*
+        version: link:../helpers
     devDependencies:
+      '@postel/storage-testkit':
+        specifier: workspace:*
+        version: link:../testkit
       '@types/better-sqlite3':
         specifier: 7.6.13
         version: 7.6.13

@@ -1,0 +1,158 @@
+// Forward-only migration SQL, transcribed from the canonical specs/db-schema/
+// (Postgres dialect) into each adapter dialect. Standalone / client / query-
+// builder adapters run these through the host connection; a migration test in
+// each adapter asserts the post-migrate schema matches the canonical tables and
+// columns (drift guard). ORM adapters ship DSL fragments instead.
+
+export interface Migration {
+  readonly version: number;
+  readonly name: string;
+  readonly sql: string;
+}
+
+// SQLite dialect (>= 3.40). timestamptz -> TEXT (ISO-8601), jsonb -> TEXT,
+// bytea -> BLOB, boolean -> INTEGER 0/1. Idempotency is provided by the
+// version gate in each adapter's migrate(), so column ALTERs need no
+// IF NOT EXISTS (they run exactly once, when crossing their version).
+export const SQLITE_MIGRATIONS: ReadonlyArray<Migration> = [
+  {
+    version: 1,
+    name: "init",
+    sql: `
+CREATE TABLE IF NOT EXISTS _postel_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenants (
+  id         TEXT PRIMARY KEY,
+  metadata   TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS endpoints (
+  id           TEXT PRIMARY KEY,
+  tenant_id    TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+  url          TEXT NOT NULL,
+  state        TEXT NOT NULL DEFAULT 'active',
+  types        TEXT,
+  channels     TEXT,
+  retry_policy TEXT,
+  headers      TEXT,
+  signing      TEXT,
+  metadata     TEXT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS endpoints_tenant_idx ON endpoints (tenant_id);
+CREATE INDEX IF NOT EXISTS endpoints_state_idx ON endpoints (state);
+
+CREATE TABLE IF NOT EXISTS endpoint_secrets (
+  id              TEXT PRIMARY KEY,
+  endpoint_id     TEXT NOT NULL REFERENCES endpoints(id) ON DELETE CASCADE,
+  algorithm       TEXT NOT NULL,
+  status          TEXT NOT NULL,
+  priority        INTEGER NOT NULL,
+  encrypted_value BLOB NOT NULL,
+  not_after       TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS endpoint_secrets_endpoint_idx ON endpoint_secrets (endpoint_id, priority);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id               TEXT PRIMARY KEY,
+  tenant_id        TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+  type             TEXT NOT NULL,
+  data             TEXT NOT NULL,
+  channels         TEXT,
+  idempotency_key  TEXT,
+  version          TEXT,
+  ttl_seconds      INTEGER,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at       TEXT,
+  reserved_by      TEXT,
+  reserved_at      TEXT,
+  lease_expires_at TEXT,
+  status           TEXT NOT NULL DEFAULT 'pending'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS messages_tenant_idem_idx
+  ON messages (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS messages_pending_idx
+  ON messages (status, created_at) WHERE status = 'pending';
+
+CREATE TABLE IF NOT EXISTS attempts (
+  id               TEXT PRIMARY KEY,
+  message_id       TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  endpoint_id      TEXT NOT NULL REFERENCES endpoints(id) ON DELETE CASCADE,
+  tenant_id        TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+  attempt_number   INTEGER NOT NULL,
+  status           TEXT NOT NULL,
+  scheduled_for    TEXT,
+  started_at       TEXT,
+  completed_at     TEXT,
+  response_code    INTEGER,
+  response_headers TEXT,
+  response_body    TEXT,
+  latency_ms       INTEGER,
+  error            TEXT,
+  replay_of        TEXT REFERENCES messages(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS attempts_message_idx ON attempts (message_id);
+CREATE INDEX IF NOT EXISTS attempts_endpoint_idx ON attempts (endpoint_id, scheduled_for);
+CREATE INDEX IF NOT EXISTS attempts_tenant_idx ON attempts (tenant_id);
+CREATE INDEX IF NOT EXISTS attempts_status_idx ON attempts (status);
+
+CREATE TABLE IF NOT EXISTS endpoint_state_transitions (
+  id          TEXT PRIMARY KEY,
+  endpoint_id TEXT NOT NULL REFERENCES endpoints(id) ON DELETE CASCADE,
+  from_state  TEXT,
+  to_state    TEXT NOT NULL,
+  reason      TEXT NOT NULL,
+  actor       TEXT,
+  metadata    TEXT,
+  occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS endpoint_state_transitions_endpoint_idx
+  ON endpoint_state_transitions (endpoint_id, occurred_at DESC);
+
+CREATE VIEW IF NOT EXISTS dead_letter AS SELECT a.* FROM attempts a WHERE a.status = 'dead-letter';
+
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '1')
+  ON CONFLICT (key) DO UPDATE SET value = '1';
+`,
+  },
+  {
+    version: 2,
+    name: "endpoint_secret_public_key",
+    sql: `
+ALTER TABLE endpoint_secrets ADD COLUMN public_key BLOB;
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '2')
+  ON CONFLICT (key) DO UPDATE SET value = '2';
+`,
+  },
+  {
+    version: 3,
+    name: "message_dispatch_columns",
+    sql: `
+ALTER TABLE messages ADD COLUMN attempt_number INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN scheduled_for TEXT;
+ALTER TABLE messages ADD COLUMN replay_of TEXT;
+CREATE INDEX IF NOT EXISTS messages_scheduled_idx ON messages (scheduled_for) WHERE status = 'pending';
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '3')
+  ON CONFLICT (key) DO UPDATE SET value = '3';
+`,
+  },
+  {
+    version: 4,
+    name: "endpoint_config_columns",
+    sql: `
+ALTER TABLE endpoints ADD COLUMN allow_http INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE endpoints ADD COLUMN max_inflight INTEGER;
+ALTER TABLE endpoints ADD COLUMN http TEXT;
+ALTER TABLE endpoints ADD COLUMN circuit_breaker TEXT;
+ALTER TABLE endpoints ADD COLUMN auto_disable TEXT;
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
+  ON CONFLICT (key) DO UPDATE SET value = '4';
+`,
+  },
+];

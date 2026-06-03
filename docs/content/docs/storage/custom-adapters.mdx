@@ -1,0 +1,38 @@
+---
+title: Custom adapters
+description: Implement the Storage interface for any backend, with zero-DB helpers and a conformance battery to prove it.
+---
+
+The `Storage` interface is technology-agnostic on purpose: you can back Postel with anything — libSQL, Turso, D1, CockroachDB, a backend the first-party adapters don't cover — by implementing it yourself. Wire your adapter in exactly like a first-party one:
+
+```ts
+const postel = Postel({ outbound: { storage: myAdapter } });
+```
+
+## What you implement
+
+`Storage` is **operation-shaped, not CRUD**. The hot-path operations carry semantics a plain `update` can't express — `reserveBatch` is lock-acquire + lease-assign + return in one atomic step (`FOR UPDATE SKIP LOCKED` on Postgres, `BEGIN IMMEDIATE` on SQLite). You implement that operation set plus the `endpoints` / `secrets` / `tenants` sub-namespaces, `dedup`, and `transaction(cb)`. Declare a `capabilities` object so the worker scheduler degrades gracefully (poll when `notify` is absent, run sequentially when `transactional` is false).
+
+## Don't reimplement the glue — use `@postel/storage-helpers`
+
+`@postel/storage-helpers` has zero database dependencies and carries everything an adapter would otherwise hand-roll: dialect-aware timestamp / JSON / bytes codecs, the canonical capability flag sets, idempotency-key formatting, message / attempt / endpoint / secret row encode-decode, the schema-version constant, and the code-side `filter`/`transform` callback registry (those callbacks aren't serializable, so adapters keep them in memory keyed by endpoint id and re-attach them on read).
+
+## Prove it with the conformance battery
+
+`@postel/storage-testkit` exports `runStorageTests(factory)` — the same behavior battery the in-memory reference and every first-party adapter pass. Point it at your adapter from a test file:
+
+```ts title="my-adapter/test/conformance.test.ts"
+import { makeFakeClock, runStorageTests } from "@postel/storage-testkit";
+import { myAdapter } from "../src/index.js";
+
+runStorageTests({
+  name: "my-adapter",
+  capabilities: { notify: false, txIsolation: true },
+  async create() {
+    const clock = makeFakeClock();
+    return { storage: myAdapter({ clock }), clock };
+  },
+});
+```
+
+The `capabilities` flags let the battery skip scenarios your backend genuinely can't honor (e.g. cross-connection notify on a single-connection store). Everything else must pass — that's the bar for being a real Postel storage backend.
