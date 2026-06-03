@@ -25,7 +25,7 @@ The library SHALL be distributed as the following npm packages, grouped by purpo
 - `@postel/http` — the framework-agnostic webhook HTTP layer every framework adapter binds to: a normalized `handleInbound` outcome function, a Web-Fetch `fetchWebhook` request-handler builder, a `@postel/http/node` entry for Node `req`/`res` frameworks, and the single canonical `PostelError`→HTTP-status policy. Depends only on `@postel/core`; pulls in no framework.
 
 **Framework adapters:**
-- `@postel/express`, `@postel/hono`, `@postel/fastify`, `@postel/nextjs`, `@postel/bun` — receiver middleware + admin handlers. Each depends on `@postel/http` for the verification gate and error→status policy rather than re-deriving them.
+- `@postel/express`, `@postel/hono`, `@postel/fastify`, `@postel/nestjs`, `@postel/nextjs`, `@postel/bun` — receiver middleware / guards + admin handlers. Each depends on `@postel/http` for the verification gate and error→status policy rather than re-deriving them.
 
 **Auxiliary:**
 - `@postel/admin` — framework-agnostic admin HTTP handler builder.
@@ -58,7 +58,7 @@ Each package MUST have a single, documented purpose declared in its `package.jso
 
 - **WHEN** a host installs `@postel/hono`
 - **THEN** `@postel/http` is present transitively (the adapter binds the shared gate + error→status policy)
-- **AND** no other framework's adapter (`@postel/express`, `@postel/fastify`, …) is pulled in
+- **AND** no other framework's adapter (`@postel/express`, `@postel/fastify`, `@postel/nestjs`, …) is pulled in
 
 ### Requirement: Core bundle budget
 

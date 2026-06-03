@@ -17,6 +17,7 @@ Until your framework's adapter ships, the factory snippet from [Verify a signed 
 | Hono | `@postel/hono` | ✅ Today | `verifyWebhook()` / `honoAdapter(postel).verify()` gate middleware + `withWebhook()` wrapper, built on `@postel/http`. (`honoVerify`/`postelHono` kept as deprecated aliases.) |
 | Express | `@postel/express` | ✅ Today | `verifyWebhook()` / `expressAdapter(postel).verify()` — mounts `express.raw()` + the gate; sets `req.postel`. |
 | Fastify | `@postel/fastify` | ✅ Today | `fastifyPostel` plugin (raw-body parser) + `verifyWebhook()` preHandler / `fastifyAdapter(postel).verify()`; sets `req.postel`. |
+| NestJS | `@postel/nestjs` | ✅ Today | `PostelModule.forRoot(postel)` + `@UseGuards(WebhookGuard("vendor"))` guard + `@Event()` / `@WebhookResult()` decorators (boot with `rawBody: true`). |
 | Next.js Route Handlers | `@postel/nextjs` | ⏳ Soon | Stub today. Native `Request` works fine without an adapter; the package is for type ergonomics. |
 | Bun.serve | `@postel/bun` | ⏳ Soon | Stub today. |
 | Deno.serve | (none planned) | n/a | Use the factory directly with `req.arrayBuffer()`. |
@@ -62,6 +63,30 @@ The gate reads the raw request bytes (no JSON re-serialization), runs the verifi
 The error→status policy and the byte-preservation plumbing live once in [`@postel/http`](/docs/reference/packages); every framework adapter binds to it. The older raw-secret helpers `honoVerify` / `postelHono` remain as deprecated aliases.
 
 See [`@postel/hono` source](https://github.com/postel-sh/postel/tree/main/typescript/packages/frameworks/hono) for the exposed API.
+
+## NestJS — the guard form
+
+NestJS is DI-first, so the gate is a `CanActivate` guard. Boot with `rawBody: true` so the guard sees the exact received bytes.
+
+```ts
+import { Module, Controller, Post, UseGuards } from "@nestjs/common";
+import { PostelModule, WebhookGuard, Event } from "@postel/nestjs";
+import { postel } from "./lib/postel";
+
+@Module({ imports: [PostelModule.forRoot(postel)], controllers: [WebhooksController] })
+export class AppModule {}
+
+@Controller("webhooks")
+class WebhooksController {
+  @Post("vendor")
+  @UseGuards(WebhookGuard("vendor"))
+  handle(@Event() event) {
+    return { ok: true, type: event.type };
+  }
+}
+```
+
+The guard verifies before the controller method runs and maps a failure to an `HttpException` with the right status; a non-`PostelError` bubbles as 5xx. `createPostelDecorators(postel)` gives a `WebhookGuard` whose key is type-checked against your configured sources. See [`@postel/nestjs` source](https://github.com/postel-sh/postel/tree/main/typescript/packages/frameworks/nestjs).
 
 ## Other frameworks (until adapters ship)
 
