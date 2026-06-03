@@ -70,7 +70,10 @@ const CAPABILITIES: StorageCapabilities = {
   streaming: true,
 };
 
-const SCHEMA_VERSION = 1;
+// Canonical source: specs/db-schema/ (latest forward-only migration). The
+// in-memory adapter implements that current shape, so it reports the same
+// version a fully-migrated SQL adapter would.
+const SCHEMA_VERSION = 3;
 
 function newId(prefix: string): string {
   const bytes = new Uint8Array(12);

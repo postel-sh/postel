@@ -73,7 +73,7 @@ describe("Schema is a fixed set of canonical tables", () => {
   it("Schema version handshake: schemaVersion returns the library-compatible value", async () => {
     const storage = InMemoryStorage();
     const v = await storage.schemaVersion();
-    expect(v).toBe(1);
+    expect(v).toBe(3);
   });
 });
 
