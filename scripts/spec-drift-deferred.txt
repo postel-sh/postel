@@ -45,6 +45,7 @@ v0.2.0 sender-side initial test scope
 Package map
 Core bundle budget
 Tree-shakeability
+Framework adapters share a framework-agnostic HTTP core
 ESM and CJS dual export, TypeScript types
 Published unminified for tooling readability
 Strict SemVer from 1.0
