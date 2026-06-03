@@ -14,7 +14,7 @@ Until your framework's adapter ships, the factory snippet from [Verify a signed 
 
 | Framework | Package | Ships? | Notes |
 |---|---|---|---|
-| Hono | `@postel/hono` | ✅ Today | Real implementation: `postelHono()` middleware sets `c.get("postel")`; `honoVerify()` for ad-hoc calls. |
+| Hono | `@postel/hono` | ✅ Today | `verifyWebhook()` / `honoAdapter(postel).verify()` gate middleware + `withWebhook()` wrapper, built on `@postel/http`. (`honoVerify`/`postelHono` kept as deprecated aliases.) |
 | Express | `@postel/express` | ⏳ Soon | Package exists as a stub; full middleware planned. |
 | Fastify | `@postel/fastify` | ⏳ Soon | Stub today. |
 | Next.js Route Handlers | `@postel/nextjs` | ⏳ Soon | Stub today. Native `Request` works fine without an adapter; the package is for type ergonomics. |
@@ -38,33 +38,28 @@ export const postel = Postel({
 
 ```ts title="app.ts"
 import { Hono } from "hono";
-import { honoVerify } from "@postel/hono";
+import { verifyWebhook, honoAdapter, POSTEL_CONTEXT_KEY } from "@postel/hono";
 import { postel } from "./lib/postel";
-import { SignatureInvalid } from "@postel/core";
 
 const app = new Hono();
 
-app.post("/webhooks/vendor", async (c) => {
-  try {
-    // Either thread the verifier strategy directly:
-    const { event } = await honoVerify(c, Secret(process.env.WEBHOOK_SECRET!));
-
-    // Or, more commonly, use the source you configured at module scope:
-    // const body = new Uint8Array(await c.req.arrayBuffer());
-    // const { event } = await postel.inbound.vendor.verify(
-    //   body,
-    //   c.req.header() as Record<string, string>,
-    // );
-
-    return c.text("ok");
-  } catch (err) {
-    if (err instanceof SignatureInvalid) return c.text("bad signature", 401);
-    throw err;
-  }
+// Gate the route with the source you configured. Verification runs before your
+// handler; SIGNATURE_INVALID / TIMESTAMP_TOO_OLD / MALFORMED_HEADER map to the
+// right HTTP status automatically, and your handler simply never runs on failure.
+app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => {
+  const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · typed · raw bytes intact
+  return c.json({ ok: true, type: event.type });
 });
+
+// Or bind by source key through the adapter object — the key is type-checked
+// against the sources you configured:
+const wh = honoAdapter(postel);
+app.post("/webhooks/github", wh.verify("github"), (c) => c.text("ok"));
 ```
 
-`honoVerify` is a convenience that handles `c.req.arrayBuffer()` and header extraction. The full middleware form (`postelHono(...)`) attaches the result to `c.get("postel")` for downstream handlers.
+The gate reads the raw request bytes (no JSON re-serialization), runs the verifier(s) you configured on that source, and on failure short-circuits with the mapped status — a non-`PostelError` (e.g. a programming bug) bubbles as 5xx rather than being miscast as a 4xx. For a single self-contained route, `withWebhook(postel.inbound.vendor, (c) => …)` folds the gate and your handler into one.
+
+The error→status policy and the byte-preservation plumbing live once in [`@postel/http`](/docs/reference/packages); every framework adapter binds to it. The older raw-secret helpers `honoVerify` / `postelHono` remain as deprecated aliases.
 
 See [`@postel/hono` source](https://github.com/postel-sh/postel/tree/main/typescript/packages/frameworks/hono) for the exposed API.
 

@@ -10,7 +10,8 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | Package | Used for | Notes |
 |---|---|---|
 | **`@postel/core`** | [Inbound](/docs/inbound) and [Outbound](/docs/outbound) — the `Postel({ inbound, outbound })` factory and primitives | Zero runtime dependencies. The outbound runtime is available, including the in-process `InMemoryStorage` adapter (`import { InMemoryStorage } from "@postel/core"`). |
-| **`@postel/hono`** | [Hono](/docs/inbound/frameworks) framework adapter | `postelHono()` middleware + `honoVerify()` helper. |
+| **`@postel/http`** | Framework-agnostic webhook HTTP core | The verification gate (`handleInbound`, `fetchWebhook`) and the shared `PostelError`→HTTP-status policy every framework adapter binds to. Depends only on `@postel/core`. |
+| **`@postel/hono`** | [Hono](/docs/inbound/frameworks) framework adapter | `verifyWebhook()` / `honoAdapter(postel).verify()` gate middleware + `withWebhook()` wrapper. `honoVerify`/`postelHono` kept as deprecated aliases. |
 | **`@postel/standalone-pg`** | [Postgres dedup adapter](/docs/inbound/deduplication) | Plug into `inbound.<source>.dedup` at factory time. |
 | **`@postel/standalone-sqlite`** | [SQLite dedup adapter](/docs/inbound/deduplication) | Same shape as the Postgres adapter; uses `better-sqlite3`. |
 
