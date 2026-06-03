@@ -6,6 +6,7 @@
   "pages": [
     "index",
     "packages",
+    "http",
     "core",
     "errors",
     "specs"
