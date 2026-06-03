@@ -6,14 +6,23 @@ import type {
   EndpointUpdateOptions,
   HttpDefaults,
 } from "../../outbound.js";
-import type { EndpointRecord, EndpointState, Storage } from "../../storage/types.js";
+import type {
+  EndpointRecord,
+  EndpointState,
+  NewEndpoint,
+  SecretAlgorithm,
+  Storage,
+} from "../../storage/types.js";
+import type { SigningStrategy } from "../../strategies/signing.js";
 import { DEFAULT_SSRF_POLICY, type SsrfPolicy } from "../dispatcher/ssrf.js";
+import { mintSecretMaterial, newSecretId } from "../keys/material.js";
 import { validateEndpointUrl } from "./url-validation.js";
 
 type SsrfOverride = HttpDefaults["ssrf"];
 
 export interface EndpointDefaults {
   readonly ssrf?: SsrfPolicy;
+  readonly signing?: SigningStrategy;
 }
 
 function newEndpointId(): string {
@@ -59,28 +68,57 @@ export function buildEndpointApi(
       const allowHttp = opts.allowHttp === true;
       const ssrfPolicy = resolveSsrfPolicy(opts.http?.ssrf);
       await validateEndpointUrl({ url: opts.url, allowHttp, ssrfPolicy });
-      const rec = await storage.endpoints.create(
-        {
-          id: newEndpointId(),
-          tenantId: opts.tenantId ?? null,
-          url: opts.url,
-          state: "active",
-          types: opts.types ?? null,
-          channels: opts.channels ?? null,
-          retryPolicy: opts.retryPolicy ?? null,
-          headers: opts.headers ?? null,
-          signing: opts.signing ?? null,
-          metadata: opts.metadata ?? null,
-          allowHttp,
-          maxInflight: opts.maxInflight ?? null,
-          http: opts.http ?? null,
-          circuitBreaker: opts.circuitBreaker ?? null,
-          autoDisable: opts.autoDisable ?? null,
-          filter: opts.filter ?? null,
-          transform: opts.transform ?? null,
-        },
-        runtime,
-      );
+      const newRecord: NewEndpoint = {
+        id: newEndpointId(),
+        tenantId: opts.tenantId ?? null,
+        url: opts.url,
+        state: "active",
+        types: opts.types ?? null,
+        channels: opts.channels ?? null,
+        retryPolicy: opts.retryPolicy ?? null,
+        headers: opts.headers ?? null,
+        signing: opts.signing ?? null,
+        metadata: opts.metadata ?? null,
+        allowHttp,
+        maxInflight: opts.maxInflight ?? null,
+        http: opts.http ?? null,
+        circuitBreaker: opts.circuitBreaker ?? null,
+        autoDisable: opts.autoDisable ?? null,
+        filter: opts.filter ?? null,
+        transform: opts.transform ?? null,
+      };
+      if (opts.provisionSecret === false) {
+        return toPublicEndpoint(await storage.endpoints.create(newRecord, runtime));
+      }
+      // Mint the endpoint's initial primary signing secret from the resolved
+      // strategy (per-endpoint signing, else the outbound default, else HMAC v1),
+      // atomically with the endpoint row. For v1a the public key is stored so
+      // publicJwks() surfaces the key without waiting for a first rotation.
+      const resolvedSigning = opts.signing ?? defaults.signing;
+      const algorithm: SecretAlgorithm = resolvedSigning?.kind === "ed25519-v1a" ? "v1a" : "v1";
+      const provision = async (tx: unknown): Promise<EndpointRecord> => {
+        const txOpt = tx !== undefined ? { tx } : undefined;
+        const created = await storage.endpoints.create(newRecord, txOpt);
+        const material = await mintSecretMaterial(algorithm);
+        await storage.secrets.insert(
+          {
+            id: newSecretId(),
+            endpointId: created.id,
+            algorithm,
+            status: "primary",
+            priority: 0,
+            encryptedValue: material.encryptedValue,
+            ...(material.publicKey !== undefined ? { publicKey: material.publicKey } : {}),
+            notAfter: null,
+          },
+          txOpt,
+        );
+        return created;
+      };
+      const rec =
+        runtime?.tx !== undefined
+          ? await provision(runtime.tx)
+          : await storage.transaction(provision);
       return toPublicEndpoint(rec);
     },
     async update(id, opts, runtime) {

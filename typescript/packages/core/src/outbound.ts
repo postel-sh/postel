@@ -105,6 +105,7 @@ export interface EndpointCreateOptions {
   readonly tenantId?: string;
   readonly allowHttp?: boolean;
   readonly maxInflight?: number;
+  readonly provisionSecret?: boolean;
 }
 
 export interface EndpointUpdateOptions extends Partial<EndpointCreateOptions> {}
@@ -232,17 +233,17 @@ export function buildOutboundRuntime<TTx = unknown>(
     concurrency,
     dispatchOne: retryDispatcher,
   });
-  const endpointApi = buildEndpointApi(
-    config.storage,
-    config.http?.ssrf
+  const endpointApi = buildEndpointApi(config.storage, {
+    ...(config.http?.ssrf
       ? {
           ssrf: {
             blockPrivateRanges: config.http.ssrf.blockPrivateRanges ?? true,
             allowedRanges: config.http.ssrf.allowedRanges ?? [],
           },
         }
-      : {},
-  );
+      : {}),
+    ...(config.signing !== undefined ? { signing: config.signing } : {}),
+  });
   const api: OutboundApi<TTx> = {
     async send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>) {
       return sendImpl(

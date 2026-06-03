@@ -1,15 +1,7 @@
 import type { Clock } from "../../clock.js";
-import { bytesToBase64 } from "../../internal/base64.js";
-import { decodeSecret } from "../../internal/secret.js";
 import type { EndpointId, Storage } from "../../storage/types.js";
 import { durationToMs } from "../internal/duration.js";
-import { generateAsymmetric, generateSymmetric } from "./generate.js";
-
-function newSecretId(): string {
-  const bytes = new Uint8Array(12);
-  crypto.getRandomValues(bytes);
-  return `sec_${bytesToBase64(bytes).replace(/[+/=]/g, "")}`;
-}
+import { mintSecretMaterial, newSecretId } from "./material.js";
 
 export interface RotateOptions {
   readonly keepPreviousFor: number | string;
@@ -36,15 +28,7 @@ export async function rotateSecret(
         await storage.secrets.setStatus(s.id, "verifying", expiresAt, { tx });
       }
     }
-    let encryptedValue: Uint8Array;
-    let publicKey: Uint8Array | undefined;
-    if (algorithm === "v1a") {
-      const keypair = await generateAsymmetric();
-      encryptedValue = new TextEncoder().encode(keypair.private);
-      publicKey = decodeSecret(keypair.public).bytes;
-    } else {
-      encryptedValue = new TextEncoder().encode(generateSymmetric());
-    }
+    const material = await mintSecretMaterial(algorithm);
     await storage.secrets.insert(
       {
         id: newSecretId(),
@@ -52,8 +36,8 @@ export async function rotateSecret(
         algorithm,
         status: "primary",
         priority: 0,
-        encryptedValue,
-        ...(publicKey !== undefined ? { publicKey } : {}),
+        encryptedValue: material.encryptedValue,
+        ...(material.publicKey !== undefined ? { publicKey: material.publicKey } : {}),
         notAfter: null,
       },
       { tx },
