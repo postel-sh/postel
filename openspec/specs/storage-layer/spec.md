@@ -33,7 +33,7 @@ All library-issued queries SHALL include the `tenantId` filter when one is confi
 
 ### Requirement: Schema is a fixed set of canonical tables
 
-The DB schema SHALL include the tables `_postel_meta`, `tenants`, `endpoints`, `endpoint_secrets`, `messages`, `attempts`, and `endpoint_state_transitions`, plus a `dead_letter` view over `attempts`. `_postel_meta` records the schema version (read by the library at boot to refuse to run against an incompatible schema). The `messages` table SHALL additionally carry the dispatch-state columns `attempt_number`, `scheduled_for`, and `replay_of` that worker reservation, retry backoff, and replay tagging require. The canonical DDL lives in [`specs/db-schema/`](../../../specs/db-schema/) as forward-only migrations (`0001_init.sql`, `0002_*`, `0003_*`, …) and is the source of truth.
+The DB schema SHALL include the tables `_postel_meta`, `tenants`, `endpoints`, `endpoint_secrets`, `messages`, `attempts`, and `endpoint_state_transitions`, plus a `dead_letter` view over `attempts`. `_postel_meta` records the schema version (read by the library at boot to refuse to run against an incompatible schema). The `messages` table SHALL additionally carry the dispatch-state columns `attempt_number`, `scheduled_for`, and `replay_of` that worker reservation, retry backoff, and replay tagging require. The `endpoints` table SHALL carry the delivery-config columns `allow_http`, `max_inflight`, `http`, `circuit_breaker`, and `auto_disable` that per-endpoint dispatch behavior requires. The canonical DDL lives in [`specs/db-schema/`](../../../specs/db-schema/) as forward-only migrations (`0001_init.sql`, `0002_*`, `0003_*`, `0004_*`, …) and is the source of truth.
 
 #### Scenario: Canonical DDL inspectable
 
@@ -50,6 +50,12 @@ The DB schema SHALL include the tables `_postel_meta`, `tenants`, `endpoints`, `
 - **WHEN** a contributor inspects the canonical `messages` schema after all forward-only migrations are applied
 - **THEN** the table includes `attempt_number` (the per-message reservation/dispatch attempt counter), `scheduled_for` (retry-backoff time; NULL means due now), and `replay_of` (replay-origin tag)
 - **AND** these are exactly the columns `reserveBatch` reads back into a `ReservedMessage`
+
+#### Scenario: endpoints carries delivery-config columns
+
+- **WHEN** a contributor inspects the canonical `endpoints` schema after all forward-only migrations are applied
+- **THEN** the table includes `allow_http`, `max_inflight`, `http`, `circuit_breaker`, and `auto_disable`
+- **AND** these are exactly the per-endpoint delivery-config fields `endpoints.create` / `endpoints.update` persist on an `EndpointRecord`
 
 ### Requirement: Postgres support across the adapter matrix
 
