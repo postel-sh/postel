@@ -12,14 +12,14 @@ The library SHALL be distributed as the following npm packages, grouped by purpo
 - `@postel/core` — sender + receiver + types + errors. The receiver-side verify / dedup / JWKS-consumer surface ships here directly; there is no separate edge-runtime carve-out package. The **in-memory `Storage` adapter** (`InMemoryStorage`) and the **in-memory dedup adapter** (`inMemoryDedupAdapter`) also ship from `@postel/core` — they are the reference implementations, the deterministic test backend, and the zero-config default. Both are leaf exports: a receiver-only bundle that imports `verify` does not pull them in (see `Tree-shakeability`).
 
 **Storage adapters (Tier 1 — must ship for 1.0, per [ADR 0007](../../../decisions/0007-storage-strategy.md)):**
-- `@postel/standalone-pg` — Postel owns the Postgres pool; zero-config drop-in.
-- `@postel/standalone-sqlite` — same for SQLite.
+- `@postel/pg` — Postel owns the Postgres pool; zero-config drop-in.
+- `@postel/sqlite` — same for SQLite.
 - `@postel/drizzle` — host hands Postel a Drizzle instance (any dialect Drizzle supports — Postgres, MySQL, SQLite, …).
 - `@postel/prisma` — host hands Postel a `PrismaClient`.
 - `@postel/kysely` — host hands Postel a `Kysely<DB>`.
 - `@postel/storage-helpers` — zero-DB-dependency helpers package every adapter (first-party or third-party) imports for timestamp normalization, retry-policy JSON serialization, idempotency-key formatting, capability flags, and message/attempt row encode/decode.
 
-(Tier 2 raw-client adapters — `@postel/pg`, `@postel/postgres-js`, `@postel/better-sqlite3` — are explicitly post-1.0 demand-driven additions per ADR 0007, not in this Tier-1 package map.)
+(Tier 2 raw-client adapters — `@postel/node-postgres`, `@postel/postgres-js`, `@postel/better-sqlite3` — are explicitly post-1.0 demand-driven additions per ADR 0007, not in this Tier-1 package map.)
 
 **Framework-core:**
 - `@postel/http` — the framework-agnostic webhook HTTP layer every framework adapter binds to: a normalized `handleInbound` outcome function, a Web-Fetch `fetchWebhook` request-handler builder, a `@postel/http/node` entry for Node `req`/`res` frameworks, and the single canonical `PostelError`→HTTP-status policy. Depends only on `@postel/core`; pulls in no framework.
@@ -41,7 +41,7 @@ Each package MUST have a single, documented purpose declared in its `package.jso
 #### Scenario: Importing a storage adapter does not pull other adapters
 
 - **WHEN** a host installs only `@postel/drizzle`
-- **THEN** `@postel/prisma`, `@postel/kysely`, `@postel/standalone-pg`, and `@postel/standalone-sqlite` are NOT transitively installed
+- **THEN** `@postel/prisma`, `@postel/kysely`, `@postel/pg`, and `@postel/sqlite` are NOT transitively installed
 
 #### Scenario: storage-helpers has no DB dependency
 

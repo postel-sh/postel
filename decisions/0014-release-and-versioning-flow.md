@@ -26,7 +26,7 @@ The compliance suite ships as a versioned binary (ADR 0011), not a registry arti
 
 4. **The suite carries no PATCH.** The compliance track validates that its tag is `MAJOR.MINOR` (no third component) and refuses otherwise. Suite-side fixes re-publish the same `MAJOR.MINOR` or bump MINOR/MAJOR if warranted.
 
-5. **Narrow first-release package set.** Only packages with real code publish: `@postel/core`, `@postel/hono`, `@postel/standalone-pg`, `@postel/standalone-sqlite`. The scaffold packages and `@postel/compliance-driver` are `"private": true` until they have code; un-privating a package adds it to the train.
+5. **Narrow first-release package set.** Only packages with real code publish: `@postel/core`, `@postel/hono`, `@postel/pg`, `@postel/sqlite`. The scaffold packages and `@postel/compliance-driver` are `"private": true` until they have code; un-privating a package adds it to the train.
 
 6. **No release framework yet.** Changesets and release-please are deferred. The decoupled, GitHub-Release-driven flow is less machinery while one language port exists; revisit (release-please's per-component `linked-versions` is the natural fit) when a second independently-maintained port lands.
 

@@ -48,11 +48,11 @@ A few things to note:
 
 `dedup` is wired through an adapter that controls storage. Postel ships three first-party adapters; you can plug others in by implementing the `DedupAdapter` interface (one method, `record(id, ttlSeconds, options?) → { duplicate }`).
 
-### Postgres — `@postel/standalone-pg`
+### Postgres — `@postel/pg`
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
-import { pgDedupAdapter } from "@postel/standalone-pg";
+import { pgDedupAdapter } from "@postel/pg";
 
 const postel = Postel({
   inbound: {
@@ -72,10 +72,10 @@ const postel = Postel({
 
 The adapter uses `INSERT … ON CONFLICT … DO UPDATE WHERE expires_at <= now()` — atomic at the DB level, no application-level locks. The table is two columns: `message_id text PRIMARY KEY`, `expires_at timestamptz`. An index on `expires_at` keeps cleanup cheap.
 
-### SQLite — `@postel/standalone-sqlite`
+### SQLite — `@postel/sqlite`
 
 ```ts title="lib/postel.ts"
-import { sqliteDedupAdapter } from "@postel/standalone-sqlite";
+import { sqliteDedupAdapter } from "@postel/sqlite";
 
 const postel = Postel({
   inbound: {

@@ -4,6 +4,7 @@
 - **Date**: 2026-05-11
 - **Supersedes**: the previously-separate `0004-postgres-and-sqlite-only`, `0008-storage-abstraction`, and `0009-byo-storage-interface` drafts. Nothing shipped against those; they are consolidated here.
 - **Decision drivers**: outbox-pattern correctness, **host-transaction interop** (the biggest single win), edge-runtime support, ecosystem fit (work with whatever DB layer the host already uses), polyglot port portability
+- **Amendment (2026-06-03)**: the standalone adapters are renamed **`@postel/pg`** and **`@postel/sqlite`** (the obvious package per database). The three-category model is retained; the raw-client node-postgres adapter is renamed **`@postel/node-postgres`** to free the `@postel/pg` name. The internal SQL-writer open question below is resolved — each adapter is **hand-written against its own driver** (no shared internal SQL builder / Kysely core); `@postel/storage-helpers` carries the zero-DB glue every adapter reuses.
 
 ## Context
 
@@ -27,8 +28,8 @@ Postel ships an **adapter matrix** in which the host's existing database access 
 
 | Category | Examples | Postel owns connection? | When to use |
 |---|---|---|---|
-| **Standalone** | `@postel/standalone-pg`, `@postel/standalone-sqlite` | Yes | Hosts who don't yet have a DB layer; demos; the simplest "drop it in" path |
-| **Client** | `@postel/pg` (node-postgres), `@postel/postgres-js`, `@postel/better-sqlite3` | No — host hands us a pool/client | Hosts using raw SQL drivers but no query builder/ORM |
+| **Standalone** | `@postel/pg`, `@postel/sqlite` | Yes | Hosts who don't yet have a DB layer; demos; the simplest "drop it in" path |
+| **Client** | `@postel/node-postgres`, `@postel/postgres-js`, `@postel/better-sqlite3` | No — host hands us a pool/client | Hosts using raw SQL drivers but no query builder/ORM |
 | **Query-builder / ORM** | `@postel/kysely`, `@postel/drizzle`, `@postel/prisma` | No — host hands us their `db` or `tx` | The majority — hosts already running Drizzle/Prisma/Kysely against their DB |
 
 A host running Drizzle does this:
@@ -117,8 +118,8 @@ A `@postel/storage-helpers` package (zero DB deps) exports utilities every adapt
 ## Phasing for 1.0
 
 **Tier 1 (must ship for 1.0):**
-- `@postel/standalone-pg` — zero-config "drop it in" for Postgres.
-- `@postel/standalone-sqlite` — same for SQLite.
+- `@postel/pg` — zero-config "drop it in" for Postgres.
+- `@postel/sqlite` — same for SQLite.
 - `@postel/drizzle` — ORM adapter for Drizzle.
 - `@postel/prisma` — ORM adapter for Prisma.
 - `@postel/kysely` — query-builder adapter for Kysely.
@@ -126,7 +127,7 @@ A `@postel/storage-helpers` package (zero DB deps) exports utilities every adapt
 These cover ≥90% of the TypeScript ecosystem.
 
 **Tier 2 (post-1.0, demand-driven):**
-- `@postel/pg`, `@postel/postgres-js`, `@postel/better-sqlite3` (raw client adapters).
+- `@postel/node-postgres`, `@postel/postgres-js`, `@postel/better-sqlite3` (raw client adapters).
 - MySQL / MariaDB support via whichever adapter category gains traction first.
 
 **Polyglot cross-port:** each future language port introduces its own equivalents — `@postel/go-pgx`, `@postel/go-gorm`, `@postel/py-sqlalchemy`, etc. Same matrix, same `Storage` interface contract, gated on the compliance suite. The pattern carries across languages.
@@ -174,7 +175,7 @@ Better Auth uses CRUD because auth flows are stateless request/response. We can'
 ## Open questions
 
 - **`@postel/storage-helpers` exact surface** — defined as each adapter lands.
-- **Standalone adapter SQL writer** — for `@postel/standalone-pg` / `@postel/standalone-sqlite`, what writes the queries internally? Most likely Kysely; finalize during the standalone-pg spike.
+- **Standalone adapter SQL writer** — for `@postel/pg` / `@postel/sqlite`, what writes the queries internally? **Resolved (Amendment 2026-06-03): hand-written per adapter against its own driver; no shared internal SQL builder.**
 - **Idempotency dedup adapters** — `dedup` is one method on `Storage`; backing stores (Postgres, SQLite, Redis, in-memory) for the receiver-side dedup helper still need their own thin adapters or a separate `DedupStore` sub-interface so `@postel/edge` can pull just that without the full storage.
 - **Cross-port adapter equivalents** — when the Go port lands, what's the equivalent of "ORM adapter"? GORM / sqlc / ent. Each port picks its own Tier 1.
 

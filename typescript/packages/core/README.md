@@ -98,7 +98,7 @@ First match wins; `verify` returns `matchedVerifierIndex` so adopters can monito
 ## What's not in this package
 
 - Framework adapters (Express, Hono, Fastify, Next.js, Bun, …) — separate packages.
-- Storage adapters (Drizzle, Prisma, Kysely, standalone-pg, standalone-sqlite, raw-pg, …) — separate packages.
+- Storage adapters (Drizzle, Prisma, Kysely, pg, sqlite, node-postgres, …) — separate packages.
 - KMS adapter implementations — wired via the `AwsKms`, `GcpKms`, `Vault` strategy factories; runtime lands with sender in v0.2.0+.
 - Effect-TS layer — deferred past 1.0 until a real Effect adopter drives the layer shape.
 

@@ -57,7 +57,7 @@ The library SHALL provide Postgres support through multiple adapter packages acr
 
 #### Scenario: Standalone Postgres adapter reserves outbox rows
 
-- **WHEN** the host configures Postel with `@postel/standalone-pg` and 100 messages are pending
+- **WHEN** the host configures Postel with `@postel/pg` and 100 messages are pending
 - **THEN** workers reserve rows via `FOR UPDATE SKIP LOCKED` and dispatch them concurrently
 - **AND** new messages inserted via `send()` wake idle workers via `LISTEN`/`NOTIFY`
 
@@ -75,7 +75,7 @@ The library SHALL provide SQLite support through multiple adapter packages acros
 
 #### Scenario: Standalone SQLite adapter polls
 
-- **WHEN** the host configures Postel with `@postel/standalone-sqlite`
+- **WHEN** the host configures Postel with `@postel/sqlite`
 - **THEN** workers poll the outbox at the configured interval and reserve rows via `BEGIN IMMEDIATE`
 
 #### Scenario: Drizzle SQLite adapter
@@ -104,16 +104,16 @@ Schema migrations SHALL be deliverable per adapter category and runnable both vi
 
 The library SHALL ship storage adapters across three categories so a host can pick the right integration shape for their stack:
 
-1. **Standalone adapters** — Postel owns the connection. Zero-config "drop it in" packages for hosts who don't have a DB access layer yet (e.g., `@postel/standalone-pg`, `@postel/standalone-sqlite`).
-2. **Client adapters** — the host hands Postel a raw client (e.g., a pg `Pool`, a `postgres()` instance, `better-sqlite3`). Packages: `@postel/pg`, `@postel/postgres-js`, `@postel/better-sqlite3`.
+1. **Standalone adapters** — Postel owns the connection. Zero-config "drop it in" packages for hosts who don't have a DB access layer yet (e.g., `@postel/pg`, `@postel/sqlite`).
+2. **Client adapters** — the host hands Postel a raw client (e.g., a pg `Pool`, a `postgres()` instance, `better-sqlite3`). Packages: `@postel/node-postgres`, `@postel/postgres-js`, `@postel/better-sqlite3`.
 3. **Query-builder / ORM adapters** — the host hands Postel their query builder or ORM instance (Kysely `Kysely<DB>`, Drizzle `db`, Prisma `PrismaClient`). Packages: `@postel/kysely`, `@postel/drizzle`, `@postel/prisma`.
 
 For Postel 1.0, the library MUST ship at least one adapter in each category for both Postgres and SQLite (where applicable). The complete Tier-1 set is listed in [ADR 0007 — Storage strategy](../../../decisions/0007-storage-strategy.md).
 
 #### Scenario: Drop-in standalone usage
 
-- **WHEN** a new host has no existing DB layer and installs `@postel/standalone-pg`
-- **THEN** `Postel({ adapter: postelStandalonePg({ connectionString }) })` is the entire setup
+- **WHEN** a new host has no existing DB layer and installs `@postel/pg`
+- **THEN** `Postel({ adapter: postelPg({ connectionString }) })` is the entire setup
 - **AND** Postel owns the connection pool and runs migrations on first boot
 
 #### Scenario: Drizzle host wraps its own db
@@ -159,7 +159,7 @@ At minimum, `capabilities` includes: `notify` (boolean — does the adapter supp
 
 #### Scenario: Native push when notify is available
 
-- **WHEN** an adapter declares `capabilities.notify = true` (e.g., `@postel/standalone-pg`, `@postel/pg`)
+- **WHEN** an adapter declares `capabilities.notify = true` (e.g., `@postel/pg`, `@postel/node-postgres`)
 - **THEN** workers `subscribe` to a channel and receive wakeups via `notify` from `send()` paths
 - **AND** poll-fallback is not used
 

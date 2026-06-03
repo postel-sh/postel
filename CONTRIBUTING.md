@@ -15,7 +15,7 @@ postel/
 ├── typescript/           # TS port root (pnpm workspace; toolchain in ADR 0010)
 │   ├── packages/
 │   │   ├── core/  edge/
-│   │   ├── standalone-pg/  standalone-sqlite/
+│   │   ├── storage/ (pg/  sqlite/  drizzle/  prisma/  kysely/  helpers/)
 │   │   ├── drizzle/  prisma/  kysely/  storage-helpers/
 │   │   ├── express/  hono/  fastify/  nextjs/  bun/
 │   │   ├── admin/  effect/  test/  compliance/  cli/
