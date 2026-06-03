@@ -78,7 +78,7 @@ export async function POST(req: Request) {
 }
 ```
 
-The `Keyset(...)` strategy returns a cached, auto-refreshing keyset. The receiver looks up the public key by `kid` (extracted from the `webhook-id` header), so rotation is just *"add a new key to the JWKS, mark the old one's `not_after`, and the receiver picks it up on the next refresh."*
+The `Keyset(...)` strategy returns a cached, auto-refreshing keyset. The receiver looks up the public key by `kid` (extracted from the `webhook-key-id` header), so rotation is just *"add a new key to the JWKS, mark the old one's `not_after`, and the receiver picks it up on the next refresh."*
 
 ### Publishing a JWKS (producer side)
 
@@ -86,13 +86,20 @@ If you're on the producing side, mounting a JWKS endpoint is one line:
 
 ```ts title="app/.well-known/webhooks-keys/route.ts"
 import { jwksHandler } from "@postel/core";
+import { postel } from "@/lib/postel";
 
-export const GET = jwksHandler({ keys: PUBLIC_JWKS });
+// publicJwks() returns the sender's current public keys (primary + in-overlap),
+// each with the same kid the signer stamps as webhook-key-id — so receivers
+// resolve the right key by kid. jwksHandler serves them public-only.
+export async function GET(req: Request) {
+  const { keys } = await postel.outbound.keys.publicJwks();
+  return jwksHandler({ keys })(req);
+}
 ```
 
-`PUBLIC_JWKS` is your set of public keys in the standard JWKS shape — only public key material, never private. The handler refuses to serve a key that includes `d` (the Ed25519 private scalar). Wire it into whichever HTTP layer you use; the handler returns a `Response`.
+`outbound.keys.publicJwks()` returns the active Ed25519 public keys in the standard JWKS shape — only public key material, never private. The handler also refuses to serve a key that includes `d` (the Ed25519 private scalar). Wire it into whichever HTTP layer you use; the handler returns a `Response`.
 
-> Note: the JWKS handler ships today, and the producer-side **signing** side (issuing keys, rotating them, recording them) is available on the [outbound](/docs/outbound) sender.
+> Note: the kid is the RFC 7638 JWK thumbprint of the public key, and the sender stamps the matching `webhook-key-id` on every Ed25519 request. Framework adapters will expose a one-line `.jwks()` mount that wraps this; until then, the route above works on any runtime.
 
 ### When to choose JWKS over multi-secret
 

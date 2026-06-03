@@ -118,6 +118,7 @@ export interface EndpointSecretRecord {
   readonly status: EndpointSecretStatus;
   readonly priority: number;
   readonly encryptedValue: Uint8Array;
+  readonly publicKey?: Uint8Array;
   readonly notAfter: Date | null;
   readonly createdAt: Date;
 }

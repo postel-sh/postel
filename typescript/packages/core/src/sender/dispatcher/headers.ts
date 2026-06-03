@@ -1,5 +1,7 @@
 import { importEd25519PrivateKey, signEd25519V1a } from "../../internal/ed25519.js";
+import { KEY_ID_HEADER } from "../../internal/headers.js";
 import { signHmacV1 } from "../../internal/hmac.js";
+import { ed25519Kid } from "../../internal/jwk.js";
 import { decodeSecret } from "../../internal/secret.js";
 import type { EndpointRecord, EndpointSecretRecord } from "../../storage/types.js";
 
@@ -15,6 +17,7 @@ export async function signAndBuildHeaders(
   input: SignedHeadersInput,
 ): Promise<Record<string, string>> {
   const tuples: string[] = [];
+  let keyId: string | undefined;
   if (input.secrets.length === 0) throw new Error("endpoint has no primary signing secret");
   const canonical = new TextEncoder().encode(
     `${input.messageId}.${input.timestampSeconds}.${input.body}`,
@@ -32,6 +35,7 @@ export async function signAndBuildHeaders(
       const key = await importEd25519PrivateKey(decoded.bytes);
       const sig = await signEd25519V1a(key, canonical);
       tuples.push(`v1a,${sig}`);
+      if (sec.publicKey) keyId = await ed25519Kid(sec.publicKey);
     }
   }
   if (tuples.length === 0) throw new Error("no usable primary signing secret");
@@ -41,6 +45,7 @@ export async function signAndBuildHeaders(
     "webhook-signature": tuples.join(" "),
     "content-type": "application/json",
   };
+  if (keyId !== undefined) headers[KEY_ID_HEADER] = keyId;
   if (input.version !== null && input.version !== undefined) {
     headers["webhook-version"] = input.version;
   }
