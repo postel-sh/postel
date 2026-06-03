@@ -34,8 +34,8 @@ First time? Start with **Verify a signed request**. Before you ship to productio
 | Constant-time signature comparison | Ships | (always on) |
 | Structured `PostelError` subclasses for every failure mode | Ships | `SignatureInvalid`, `TimestampTooOld`, `MalformedHeader`, `UnknownKeyId`, `RawBytesMismatchDetected` |
 | Idempotency dedup with Postgres / SQLite / in-memory adapters | Ships | `@postel/standalone-pg`, `@postel/standalone-sqlite`, `InMemoryDedup` |
-| Hono framework adapter | Ships | `@postel/hono` |
-| Express, Fastify, Next.js, Bun adapters | Stub packages today (`__postelPackage` only); proper releases planned | `@postel/express`, `@postel/fastify`, `@postel/nextjs`, `@postel/bun` |
+| Hono, Express, Fastify, NestJS framework adapters | Ships | `@postel/hono`, `@postel/express`, `@postel/fastify`, `@postel/nestjs` — a verification gate over `@postel/http` |
+| Next.js, Bun adapters | Stub packages today (`__postelPackage` only); use the factory directly meanwhile | `@postel/nextjs`, `@postel/bun` |
 
 If a row above isn't on this list, it's outbound — see [Outbound](/docs/outbound).
 

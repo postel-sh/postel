@@ -1,6 +1,6 @@
 ---
 title: Framework adapters
-description: Adapter status per framework. Hono ships today; others planned. The framework-agnostic factory works everywhere.
+description: Adapter status per framework. Hono, Express, Fastify, and NestJS ship today; Next.js and Bun are stubs. The framework-agnostic factory works everywhere.
 ---
 
 `@postel/core` is framework-agnostic — anywhere you can hand it raw bytes and headers, the `Postel({...})` factory works. Framework adapters add two niceties on top:
@@ -23,7 +23,7 @@ Until your framework's adapter ships, the factory snippet from [Verify a signed 
 | Deno.serve | (none planned) | n/a | Use the factory directly with `req.arrayBuffer()`. |
 | SvelteKit, Astro, Nitro | (none planned) | n/a | Use the factory directly. |
 
-> "Stub today" means the package is registered (`@postel/express`, etc.) but contains only a name export — no real runtime. Don't depend on these stubs in production; they exist to reserve the name in the workspace.
+> "Stub today" means the package is registered (`@postel/nextjs`, `@postel/bun`) but contains only a name export — no real runtime. Don't depend on these stubs in production; they exist to reserve the name in the workspace.
 
 ## Hono — the real adapter
 
