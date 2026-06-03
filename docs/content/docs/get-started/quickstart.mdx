@@ -85,7 +85,7 @@ export async function POST(req: Request) {
 }
 ```
 
-Works unmodified on Next.js Route Handlers, Bun, Deno, and any other runtime whose `Request` exposes `arrayBuffer()`. For Hono there's a dedicated adapter that puts the verified event on `c.get("postel")` — see [Framework adapters](/docs/inbound/frameworks).
+Works unmodified on Next.js Route Handlers, Bun, Deno, and any other runtime whose `Request` exposes `arrayBuffer()`. Hono, Express, Fastify, and NestJS have dedicated adapters that gate the route — verification runs before your handler and the verified event lands on the request context — see [Framework adapters](/docs/inbound/frameworks).
 
 </Step>
 
