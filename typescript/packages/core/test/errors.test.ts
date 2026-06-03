@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   EndpointDisabled,
+  EndpointNotFound,
   EndpointValidation,
   IdempotencyKeyConflict,
   MalformedHeader,
@@ -31,6 +32,7 @@ const CANONICAL_TABLE: ReadonlyArray<{
     name: "RawBytesMismatchDetected",
   },
   { cls: EndpointDisabled, code: "ENDPOINT_DISABLED", name: "EndpointDisabled" },
+  { cls: EndpointNotFound, code: "ENDPOINT_NOT_FOUND", name: "EndpointNotFound" },
   {
     cls: IdempotencyKeyConflict,
     code: "IDEMPOTENCY_KEY_CONFLICT",
