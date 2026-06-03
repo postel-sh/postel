@@ -5,6 +5,7 @@ export type PostelErrorCode =
   | "UNKNOWN_KEY_ID"
   | "RAW_BYTES_MISMATCH_DETECTED"
   | "ENDPOINT_DISABLED"
+  | "ENDPOINT_NOT_FOUND"
   | "IDEMPOTENCY_KEY_CONFLICT"
   | "MIGRATION_REQUIRED"
   | "ENDPOINT_VALIDATION"
@@ -41,6 +42,10 @@ export class RawBytesMismatchDetected extends PostelError {
 
 export class EndpointDisabled extends PostelError {
   readonly code = "ENDPOINT_DISABLED" as const;
+}
+
+export class EndpointNotFound extends PostelError {
+  readonly code = "ENDPOINT_NOT_FOUND" as const;
 }
 
 export class IdempotencyKeyConflict extends PostelError {
