@@ -3,6 +3,22 @@
   "version": "0.0.0",
   "description": "Standalone Postel storage adapter — Postel owns the SQLite database; zero-config drop-in.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/storage/standalone-sqlite"
+  },
+  "homepage": "https://postel.dev",
+  "bugs": "https://github.com/postel-sh/postel/issues",
+  "keywords": [
+    "webhooks",
+    "standard-webhooks",
+    "sqlite",
+    "better-sqlite3",
+    "dedup",
+    "idempotency",
+    "postel"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -14,7 +30,7 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",

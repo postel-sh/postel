@@ -1,5 +1,6 @@
 {
   "name": "@postel/test",
+  "private": true,
   "version": "0.0.0",
   "description": "Test fixtures, signature generators, and mock receivers for Postel.",
   "license": "MIT",

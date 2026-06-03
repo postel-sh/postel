@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const SuiteVersion = "0.2.0-dev"
+var SuiteVersion = "0.2-dev"
 
 type TestResult struct {
 	VectorID    string           `json:"id"`

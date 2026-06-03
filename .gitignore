@@ -48,3 +48,7 @@ compliance/cli/compliance.exe
 
 # Go build artifact when running `go build .` inside the package dir
 /compliance/cli/cli
+
+# Per-package LICENSE copies — staged from the root LICENSE at publish time
+# by `mise run release:sync-license`. The root LICENSE is the source of truth.
+typescript/packages/**/LICENSE

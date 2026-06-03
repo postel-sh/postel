@@ -1,5 +1,6 @@
 {
   "name": "@postel/drizzle",
+  "private": true,
   "version": "0.0.0",
   "description": "Postel storage adapter — host hands Postel a Drizzle instance (any dialect Drizzle supports — Postgres, MySQL, SQLite, …).",
   "license": "MIT",

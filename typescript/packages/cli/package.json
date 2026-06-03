@@ -1,5 +1,6 @@
 {
   "name": "@postel/cli",
+  "private": true,
   "version": "0.0.0",
   "description": "The postel CLI binary — migrate, sign, verify, replay, simulate.",
   "license": "MIT",

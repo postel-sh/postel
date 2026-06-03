@@ -105,3 +105,41 @@ run = "pnpm build"
 description = "Typecheck the docs site"
 dir = "docs"
 run = "pnpm typecheck"
+
+# Release flow — GitHub-Release-driven, version-matched conformance (VISION §8).
+# The compliance suite and each port release independently; a port release at
+# `ts/vX.Y.Z` is gated on passing the compliance corpus at tag `compliance/vX.Y`.
+# Publishing happens only in CI on a pushed release tag, never from a working
+# tree. Mechanism + rationale: decisions/0014-release-and-versioning-flow.md.
+
+[tasks."release:sync-license"]
+description = "Copy the root LICENSE into every publishable @postel/* package before publish"
+run = "node scripts/release/sync-license.mjs"
+
+[tasks."compliance:receiver:ts"]
+description = "Run the receiver compliance corpus against the reference TS receiver"
+run = """
+mise run compliance:build
+pnpm -C typescript --filter @postel/core build
+PORT=8787 node typescript/scripts/reference-receiver.mjs &
+RECV=$!
+trap "kill $RECV 2>/dev/null" EXIT
+for _ in $(seq 1 50); do curl -fsS -o /dev/null http://127.0.0.1:8787/.well-known/webhooks-keys && break; sleep 0.1; done
+./bin/compliance --target http://127.0.0.1:8787/webhooks --vectors compliance/vectors --schema-dir compliance/schema --now "$POSTEL_NOW" --format text
+"""
+
+[tasks."compliance:receiver:ts".env]
+POSTEL_NOW = "2026-01-01T00:00:00Z"
+POSTEL_TOLERANCE = "300"
+POSTEL_DEDUP = "true"
+POSTEL_DEDUP_PRESEED = "pre_seen_"
+POSTEL_SECRETS = "whsec_q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s=,whsec_VlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlY=,whpk_/JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic="
+POSTEL_JWKS_KEYS = '[{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"kid_a","x":"_JR3MPSesBQnpm4FBzMpTZ5SDlRceicSWngGNOCGCic"},{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"kid_b","x":"IEBA42TBDyvsnB_lAKHNTCR8idZQoB7X6CyrqGeHfCE","not_after":"2025-01-01T00:00:00Z"}]'
+
+[tasks."release:gate"]
+description = "Local pre-release gate: TS quality + spec drift + Go suite + receiver & sender compliance (against ./compliance)"
+depends = ["check:all", "lint", "typecheck", "build", "test", "compliance:vet", "compliance:test"]
+run = """
+mise run compliance:receiver:ts
+mise run compliance:sender:ts
+"""
