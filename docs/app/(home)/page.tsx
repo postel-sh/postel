@@ -6,7 +6,11 @@ import {
   ArrowDownToLineIcon,
   ArrowUpFromLineIcon,
   CompassIcon,
+  ExpressIcon,
+  FastifyIcon,
   GlobeIcon,
+  HonoIcon,
+  NestjsIcon,
 } from "@/components/icons";
 import { HeroAdapterTabs } from "./hero-adapter-tabs";
 
@@ -326,10 +330,10 @@ export default async function HomePage() {
 
           <HeroAdapterTabs
             tabs={[
-              { label: "Hono", file: "app.ts", html: honoHtml },
-              { label: "Express", file: "app.ts", html: expressHtml },
-              { label: "Fastify", file: "app.ts", html: fastifyHtml },
-              { label: "NestJS", file: "webhooks.controller.ts", html: nestHtml },
+              { label: "Hono", file: "app.ts", html: honoHtml, icon: <HonoIcon className="size-3.5" /> },
+              { label: "Express", file: "app.ts", html: expressHtml, icon: <ExpressIcon className="size-3.5" /> },
+              { label: "Fastify", file: "app.ts", html: fastifyHtml, icon: <FastifyIcon className="size-3.5" /> },
+              { label: "NestJS", file: "webhooks.controller.ts", html: nestHtml, icon: <NestjsIcon className="size-3.5" /> },
             ]}
             badge="Inbound · verify"
             className="lg:justify-self-end lg:max-w-xl"

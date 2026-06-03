@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 export interface AdapterTab {
   readonly label: string;
   readonly file: string;
   readonly html: string;
+  readonly icon?: ReactNode;
 }
 
 export function HeroAdapterTabs({
@@ -39,12 +40,13 @@ export function HeroAdapterTabs({
               role="tab"
               aria-selected={i === active}
               onClick={() => setActive(i)}
-              className={`rounded-md px-2.5 py-1 font-mono text-[11px] transition-colors ${
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-mono text-[11px] transition-colors ${
                 i === active
                   ? "bg-fd-muted text-fd-foreground"
                   : "text-fd-muted-foreground hover:text-fd-foreground"
               }`}
             >
+              {t.icon}
               {t.label}
             </button>
           ))}
