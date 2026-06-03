@@ -42,6 +42,7 @@ export type {
 
 export {
   EndpointDisabled,
+  EndpointNotFound,
   EndpointValidation,
   IdempotencyKeyConflict,
   MalformedHeader,
