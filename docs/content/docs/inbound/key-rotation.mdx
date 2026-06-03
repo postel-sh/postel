@@ -99,7 +99,14 @@ export async function GET(req: Request) {
 
 `outbound.keys.publicJwks()` returns the active Ed25519 public keys in the standard JWKS shape — only public key material, never private. The handler also refuses to serve a key that includes `d` (the Ed25519 private scalar). Wire it into whichever HTTP layer you use; the handler returns a `Response`.
 
-> Note: the kid is the RFC 7638 JWK thumbprint of the public key, and the sender stamps the matching `webhook-key-id` on every Ed25519 request. Framework adapters will expose a one-line `.jwks()` mount that wraps this; until then, the route above works on any runtime.
+The kid is the RFC 7638 JWK thumbprint of the public key, and the sender stamps the matching `webhook-key-id` on every Ed25519 request — so receivers resolve the right key by kid. Framework adapters wrap this as a one-line `.jwks(provider)` mount:
+
+```ts
+// Hono — the adapter fetches the current keys per request
+app.get("/.well-known/webhooks-keys", honoAdapter(postel).jwks(() => postel.outbound.keys.publicJwks()));
+
+// Express / Fastify expose the same: expressAdapter(postel).jwks(...) · fastifyAdapter(postel).jwks(...)
+```
 
 ### When to choose JWKS over multi-secret
 

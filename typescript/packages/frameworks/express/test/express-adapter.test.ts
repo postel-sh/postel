@@ -57,3 +57,19 @@ describe("Framework adapters preserve raw bytes", () => {
     expect(res.body).toMatchObject({ error: { code: "SIGNATURE_INVALID" } });
   });
 });
+
+describe("JWKS endpoint mounter", () => {
+  it("expressAdapter(postel).jwks(provider) serves the JWKS document on GET", async () => {
+    const postel = Postel({ inbound: { vendor: { verify: Secret(SECRET) } } });
+    const app = express();
+    app.get(
+      "/.well-known/webhooks-keys",
+      expressAdapter(postel).jwks(() => ({
+        keys: [{ kty: "OKP", crv: "Ed25519", x: "Zm9vYmFy", kid: "k1", alg: "EdDSA" }],
+      })),
+    );
+    const res = await request(app).get("/.well-known/webhooks-keys");
+    expect(res.status).toBe(200);
+    expect(res.body.keys[0].kid).toBe("k1");
+  });
+});

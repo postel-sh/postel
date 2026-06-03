@@ -5,8 +5,14 @@ import type {
   PostelConfig,
   PostelInstance,
 } from "@postel/core";
-import { type GateSource, type WebhookHandlerOptions, handleInbound } from "@postel/http";
-import { headersFromNode, writeOutcomeToNodeRes } from "@postel/http/node";
+import {
+  type GateSource,
+  type JwksProvider,
+  type WebhookHandlerOptions,
+  handleInbound,
+  jwksFetchHandler,
+} from "@postel/http";
+import { headersFromNode, writeOutcomeToNodeRes, writeResponseToNodeRes } from "@postel/http/node";
 import express, { type RequestHandler } from "express";
 
 declare global {
@@ -79,6 +85,7 @@ export function expressAdapter<const C extends PostelConfig>(
     handler: RequestHandler,
     opts?: WebhookHandlerOptions<TData>,
   ): RequestHandler[];
+  jwks(provider: JwksProvider): RequestHandler;
 } {
   return {
     verify(key, opts) {
@@ -86,6 +93,14 @@ export function expressAdapter<const C extends PostelConfig>(
     },
     guard(key, handler, opts) {
       return withWebhook(postel.inbound[key], handler, opts);
+    },
+    jwks(provider) {
+      return (req, res, next) => {
+        const request = new Request(`http://local${req.url ?? "/"}`, { method: req.method });
+        jwksFetchHandler(provider)(request)
+          .then((response) => writeResponseToNodeRes(res, response))
+          .catch(next);
+      };
     },
   };
 }
