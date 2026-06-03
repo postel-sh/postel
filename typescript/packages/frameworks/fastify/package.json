@@ -1,6 +1,5 @@
 {
   "name": "@postel/fastify",
-  "private": true,
   "version": "0.0.0",
   "description": "Fastify plugin and admin handlers for the Postel receiver.",
   "license": "MIT",
