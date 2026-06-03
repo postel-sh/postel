@@ -1,6 +1,5 @@
 {
   "name": "@postel/storage-helpers",
-  "private": true,
   "version": "0.0.0",
   "description": "Zero-DB-dependency helpers shared by every first-party and third-party Postel storage adapter.",
   "license": "MIT",
@@ -27,5 +26,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*"
   }
 }
