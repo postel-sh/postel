@@ -3,9 +3,9 @@ title: Web adapters · Overview
 description: Wire Postel's verification gate into your framework or runtime. One core — @postel/http — bound idiomatically per framework.
 ---
 
-import { PlugIcon, GlobeIcon, CodeIcon } from "@/components/icons";
+import { PlugIcon, CodeIcon } from "@/components/icons";
 
-Every web adapter is a thin **gate** over [`@postel/http`](/docs/web-adapters/http): it reads the raw request bytes, runs the verifier(s) you configured on a source, maps any `PostelError` to the right HTTP status, optionally dedup-acks, and only then hands control to your handler. You keep writing a normal handler — you don't re-implement verify → error-mapping → ack in every route.
+Every web adapter is a thin **gate** over [`@postel/http`](/docs/reference/http): it reads the raw request bytes, runs the verifier(s) you configured on a source, maps any `PostelError` to the right HTTP status, optionally dedup-acks, and only then hands control to your handler. You keep writing a normal handler — you don't re-implement verify → error-mapping → ack in every route.
 
 The error→status policy, byte preservation, and the dedup-ack signal live **once** in `@postel/http`; each adapter binds them to its framework's idiom (middleware, preHandler, guard), so they can't drift. A non-`PostelError` (e.g. a programming bug) bubbles as 5xx — never miscast as a 4xx.
 
@@ -22,7 +22,6 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
   <Card icon={<PlugIcon />} title="Express" href="/docs/web-adapters/express" description="express.raw() + the gate; sets req.postel." />
   <Card icon={<PlugIcon />} title="Fastify" href="/docs/web-adapters/fastify" description="Raw-body plugin + a preHandler gate." />
   <Card icon={<PlugIcon />} title="NestJS" href="/docs/web-adapters/nestjs" description="PostelModule + WebhookGuard + @Event()." />
-  <Card icon={<GlobeIcon />} title="@postel/http — any runtime" href="/docs/web-adapters/http" description="The framework-agnostic Fetch handler: Deno, custom servers, your own adapter." />
   <Card icon={<CodeIcon />} title="Next.js" href="/docs/web-adapters/nextjs" description="Route Handlers are Fetch-native — use fetchWebhook directly." />
   <Card icon={<CodeIcon />} title="Bun" href="/docs/web-adapters/bun" description="Bun.serve is Fetch-native — use fetchWebhook directly." />
 </Cards>
@@ -35,7 +34,7 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
 | Express | `@postel/express` | ✅ | `express.raw()` + middleware gate |
 | Fastify | `@postel/fastify` | ✅ | Plugin + preHandler gate |
 | NestJS | `@postel/nestjs` | ✅ | Module + `WebhookGuard` + decorators |
-| Any Fetch runtime (Deno, custom, …) | `@postel/http` | ✅ | `fetchWebhook(source)` |
+| Any Fetch runtime (Deno, custom, …) | [`@postel/http`](/docs/reference/http) | ✅ | `fetchWebhook(source)` |
 | Next.js Route Handlers | `@postel/nextjs` | ⏳ stub | Use `@postel/http` meanwhile |
 | Bun.serve | `@postel/bun` | ⏳ stub | Use `@postel/http` meanwhile |
 

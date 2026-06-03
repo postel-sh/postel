@@ -8,6 +8,7 @@ import {
   CompassIcon,
   GlobeIcon,
 } from "@/components/icons";
+import { HeroAdapterTabs } from "./hero-adapter-tabs";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -29,23 +30,51 @@ function GithubIcon({ className }: { className?: string }) {
 
 const installCode = `pnpm add @postel/core`;
 
-const heroInbound = `import { Postel, Secret, SignatureInvalid } from "@postel/core";
+const heroHono = `import { Hono } from "hono";
+import { verifyWebhook, POSTEL_CONTEXT_KEY } from "@postel/hono";
+import { postel } from "@/lib/postel";
 
-const postel = Postel({
-  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
-});
+const app = new Hono();
 
-export async function POST(req: Request) {
-  const body = new Uint8Array(await req.arrayBuffer());
-  const headers = Object.fromEntries(req.headers);
+app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => {
+  const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · raw bytes intact
+  return c.json({ ok: true, type: event.type });
+});`;
 
-  try {
-    const { event } = await postel.inbound.vendor.verify(body, headers);
-    return new Response("ok"); // verified · raw bytes intact · event parsed
-  } catch (err) {
-    if (err instanceof SignatureInvalid)
-      return new Response("bad signature", { status: 401 });
-    throw err;
+const heroExpress = `import express from "express";
+import { verifyWebhook } from "@postel/express";
+import { postel } from "@/lib/postel";
+
+const app = express();
+
+// mounts express.raw() + the gate — your handler stays normal
+app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (req, res) => {
+  res.json({ ok: true, type: req.postel?.event.type });
+});`;
+
+const heroFastify = `import Fastify from "fastify";
+import { fastifyPostel, verifyWebhook } from "@postel/fastify";
+import { postel } from "@/lib/postel";
+
+const app = Fastify();
+await app.register(fastifyPostel); // raw-body parser
+
+app.post(
+  "/webhooks/vendor",
+  { preHandler: verifyWebhook(postel.inbound.vendor) },
+  async (req) => ({ ok: true, type: req.postel?.event.type }),
+);`;
+
+const heroNestjs = `import { Controller, Post, UseGuards } from "@nestjs/common";
+import { WebhookGuard, Event } from "@postel/nestjs";
+import type { WebhookEvent } from "@postel/core";
+
+@Controller("webhooks")
+export class WebhooksController {
+  @Post("vendor")
+  @UseGuards(WebhookGuard("vendor"))
+  handle(@Event() event: WebhookEvent) {
+    return { ok: true, type: event.type };
   }
 }`;
 
@@ -228,13 +257,19 @@ function CodeCard({
 
 export default async function HomePage() {
   const [
-    heroHtml,
+    honoHtml,
+    expressHtml,
+    fastifyHtml,
+    nestHtml,
     handRolledHtml,
     withPostelHtml,
     inboundConfigHtml,
     outboundConfigHtml,
   ] = await Promise.all([
-    codeToHtml(heroInbound, shikiOptions),
+    codeToHtml(heroHono, shikiOptions),
+    codeToHtml(heroExpress, shikiOptions),
+    codeToHtml(heroFastify, shikiOptions),
+    codeToHtml(heroNestjs, shikiOptions),
     codeToHtml(handRolledOutbound, shikiOptions),
     codeToHtml(withPostelOutbound, shikiOptions),
     codeToHtml(inboundConfig, shikiOptions),
@@ -289,9 +324,13 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <CodeCard
-            html={heroHtml}
-            file="app/api/webhooks/route.ts"
+          <HeroAdapterTabs
+            tabs={[
+              { label: "Hono", file: "app.ts", html: honoHtml },
+              { label: "Express", file: "app.ts", html: expressHtml },
+              { label: "Fastify", file: "app.ts", html: fastifyHtml },
+              { label: "NestJS", file: "webhooks.controller.ts", html: nestHtml },
+            ]}
             badge="Inbound · verify"
             className="lg:justify-self-end lg:max-w-xl"
           />
