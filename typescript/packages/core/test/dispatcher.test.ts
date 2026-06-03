@@ -1,7 +1,7 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
-import { Postel } from "../src/index.js";
+import { EndpointNotFound, Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
 import { base64ToBytes } from "../src/internal/base64.js";
@@ -193,6 +193,14 @@ describe("Endpoint CRUD", () => {
     expect(ep.id).toMatch(/^ep_/);
     const fetched = await postel.outbound.endpoints.get(ep.id);
     expect(fetched.id).toBe(ep.id);
+  });
+
+  it("Get of an unknown id throws EndpointNotFound", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage } });
+    await expect(postel.outbound.endpoints.get("ep_does_not_exist")).rejects.toBeInstanceOf(
+      EndpointNotFound,
+    );
   });
 });
 
