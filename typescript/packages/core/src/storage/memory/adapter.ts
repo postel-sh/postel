@@ -73,7 +73,7 @@ const CAPABILITIES: StorageCapabilities = {
 // Canonical source: specs/db-schema/ (latest forward-only migration). The
 // in-memory adapter implements that current shape, so it reports the same
 // version a fully-migrated SQL adapter would.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function newId(prefix: string): string {
   const bytes = new Uint8Array(12);
