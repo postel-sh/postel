@@ -1,9 +1,16 @@
 {
   "name": "@postel/drizzle",
-  "private": true,
   "version": "0.0.0",
-  "description": "Postel storage adapter — host hands Postel a Drizzle instance (any dialect Drizzle supports — Postgres, MySQL, SQLite, …).",
+  "description": "Postel storage adapter — host hands Postel a Drizzle instance (Postgres or SQLite).",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/storage/drizzle"
+  },
+  "homepage": "https://postel.dev",
+  "bugs": "https://github.com/postel-sh/postel/issues",
+  "keywords": ["webhooks", "standard-webhooks", "drizzle", "storage", "postel"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -32,5 +39,19 @@
     "adapter": {
       "category": "orm"
     }
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*",
+    "@postel/storage-helpers": "workspace:*"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=0.30"
+  },
+  "devDependencies": {
+    "@postel/storage-testkit": "workspace:*",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "20.17.10",
+    "better-sqlite3": "12.10.0",
+    "drizzle-orm": "0.36.4"
   }
 }
