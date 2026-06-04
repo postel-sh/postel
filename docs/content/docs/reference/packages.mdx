@@ -16,11 +16,11 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/fastify`** | [Fastify](/docs/web-adapters/fastify) framework adapter | `fastifyPostel` raw-body plugin + `verifyWebhook()` preHandler / `fastifyAdapter(postel).verify()`; sets `req.postel`. |
 | **`@postel/nestjs`** | [NestJS](/docs/web-adapters/nestjs) framework adapter | `PostelModule.forRoot(postel)` + `WebhookGuard(key)` guard + `@Event()` / `@WebhookResult()` decorators. |
 | **`@postel/admin`** | [Admin control plane](/docs/outbound/admin) over the outbound sender | `adminRouter(postel, { authorize })` Fetch router (endpoint CRUD, replay, keys) with default-deny auth + tenant scoping; mount via Hono / `fetchToExpress` / `fetchToFastify`. |
-| **`@postel/sqlite`** | [SQLite storage adapter](/docs/storage/sqlite) | Standalone — Postel owns the SQLite database (`postelSqlite`). Full outbound `Storage`; also exports `sqliteDedupAdapter` for inbound dedup. |
-| **`@postel/pg`** | [Postgres storage adapter](/docs/storage/pg) | Standalone — `postelPg({ connectionString })`. Full outbound `Storage` (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`); also exports `pgDedupAdapter` for inbound dedup. |
-| **`@postel/kysely`** | [Kysely storage adapter](/docs/storage/kysely) | ORM/query-builder — `postelKysely({ db, dialect })` runs Postel's storage through your Kysely (Postgres or SQLite). |
-| **`@postel/drizzle`** | [Drizzle storage adapter](/docs/storage/drizzle) | ORM — `postelDrizzle({ db, dialect })` runs Postel's storage through your Drizzle instance (Postgres or SQLite). |
-| **`@postel/prisma`** | [Prisma storage adapter](/docs/storage/prisma) | ORM — `postelPrisma({ prisma, dialect })` runs Postel's storage through your PrismaClient's raw surface (Postgres or SQLite). |
+| **`@postel/sqlite`** | [SQLite storage adapter](/docs/storage/sqlite) | Standalone — Postel owns the SQLite database (`SqliteStorage`). Full outbound `Storage`; also exports `SqliteDedup` for inbound dedup. |
+| **`@postel/pg`** | [Postgres storage adapter](/docs/storage/pg) | Standalone — `PgStorage({ connectionString })`. Full outbound `Storage` (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`); also exports `PgDedup` for inbound dedup. |
+| **`@postel/kysely`** | [Kysely storage adapter](/docs/storage/kysely) | ORM/query-builder — `KyselyStorage({ db, dialect })` runs Postel's storage through your Kysely (Postgres or SQLite). |
+| **`@postel/drizzle`** | [Drizzle storage adapter](/docs/storage/drizzle) | ORM — `DrizzleStorage({ db, dialect })` runs Postel's storage through your Drizzle instance (Postgres or SQLite). |
+| **`@postel/prisma`** | [Prisma storage adapter](/docs/storage/prisma) | ORM — `PrismaStorage({ prisma, dialect })` runs Postel's storage through your PrismaClient's raw surface (Postgres or SQLite). |
 | **`@postel/storage-helpers`** | Zero-DB helpers for [custom adapters](/docs/storage/custom-adapters) | Dialect codecs, capability flags, row encode/decode, migration SQL, callback registry — what every adapter reuses. |
 
 ## Stubs today (name reserved, no runtime yet)

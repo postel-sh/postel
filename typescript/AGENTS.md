@@ -73,10 +73,10 @@ This is the single load-bearing pattern in the TS port. See [ADR 0007](../decisi
 Every adapter is a thin shim over the host's existing DB client. Every write operation on the `Storage` interface accepts an optional `tx` parameter; when the host opens a transaction, that handle flows through to Postel's writes so the outbox insert commits or rolls back atomically with the host's business writes:
 
 ```ts
-import { postelDrizzle } from "@postel/drizzle";
+import { DrizzleStorage } from "@postel/drizzle";
 import { db } from "./db";
 
-const postel = Postel({ adapter: postelDrizzle(db) });
+const postel = Postel({ adapter: DrizzleStorage(db) });
 
 await db.transaction(async (tx) => {
   await tx.insert(orders).values({ /* ... */ });

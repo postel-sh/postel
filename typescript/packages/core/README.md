@@ -30,7 +30,7 @@ const postel = Postel({
 
   // Sender — types ship today, runtime in v0.2.0+
   outbound: {
-    storage: postelDrizzle(db),      // implements Storage
+    storage: DrizzleStorage(db),      // implements Storage
     signing: HmacV1(),                // org-wide default; overridable per endpoint
     retryPolicy: ExponentialBackoff(),
     workers: InProcess({ concurrency: 4 }),
