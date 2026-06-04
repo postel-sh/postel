@@ -1,0 +1,47 @@
+---
+title: Prisma
+description: "@postel/prisma — run Postel's storage through your existing PrismaClient (Postgres or SQLite)."
+---
+
+`@postel/prisma` is an **ORM** adapter: hand Postel your `PrismaClient` and it runs its storage through Prisma's raw query surface, sharing your connection and transactions.
+
+```bash
+pnpm add @postel/prisma
+# @prisma/client is already in your app
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { PrismaStorage } from "@postel/prisma";
+import { prisma } from "./db"; // your PrismaClient
+
+export const postel = Postel({
+  outbound: { storage: PrismaStorage({ prisma, dialect: "postgres" }) },
+});
+```
+
+## Options
+
+| Option | Notes |
+|---|---|
+| `prisma` | Your `PrismaClient` (or a transaction client). |
+| `dialect` | `"postgres"` or `"sqlite"` — selects `FOR UPDATE SKIP LOCKED` vs ordered reservation, the capability flags, and the column codecs. |
+| `autoMigrate` | Run migrations on first use (default `true`). |
+| `clock` | Inject a clock for deterministic time in tests. |
+
+The adapter talks to Prisma only through `$queryRawUnsafe` / `$executeRawUnsafe` / `$transaction`, so it needs **no Postel models in your `schema.prisma`** and there is no `prisma generate` coupling — it works against any generated client.
+
+## Shared transactions
+
+Use Prisma's interactive transaction and pass the transaction client to `send()`:
+
+```ts
+await prisma.$transaction(async (tx) => {
+  await tx.order.create({ data: { /* ... */ } });
+  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+});
+```
+
+## Migrations
+
+`autoMigrate` creates Postel's tables via raw SQL on first use (version-gated, idempotent) — independent of your Prisma schema. If you'd rather Prisma own those tables, model them from the [canonical schema](/docs/storage/schema) in your `schema.prisma` and run `prisma migrate`, then start the adapter with `autoMigrate: false`.

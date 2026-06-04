@@ -1,1 +1,6 @@
-export const __postelPackage = "@postel/prisma" as const;
+export {
+  type PrismaStorageOptions,
+  type PrismaDialect,
+  type PrismaLike,
+  PrismaStorage,
+} from "./storage.js";
