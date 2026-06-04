@@ -10,6 +10,7 @@
     "sqlite",
     "kysely",
     "drizzle",
+    "prisma",
     "---Reference---",
     "schema",
     "custom-adapters"

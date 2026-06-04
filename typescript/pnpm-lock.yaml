@@ -234,7 +234,27 @@ importers:
         specifier: 8.20.0
         version: 8.20.0
 
-  packages/storage/prisma: {}
+  packages/storage/prisma:
+    dependencies:
+      '@postel/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@postel/storage-helpers':
+        specifier: workspace:*
+        version: link:../helpers
+    devDependencies:
+      '@postel/storage-testkit':
+        specifier: workspace:*
+        version: link:../testkit
+      '@types/better-sqlite3':
+        specifier: 7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: 20.17.10
+        version: 20.17.10
+      better-sqlite3:
+        specifier: 12.10.0
+        version: 12.10.0
 
   packages/storage/sqlite:
     dependencies:

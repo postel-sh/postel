@@ -1,9 +1,16 @@
 {
   "name": "@postel/prisma",
-  "private": true,
   "version": "0.0.0",
   "description": "Postel storage adapter — host hands Postel a PrismaClient instance.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/storage/prisma"
+  },
+  "homepage": "https://postel.dev",
+  "bugs": "https://github.com/postel-sh/postel/issues",
+  "keywords": ["webhooks", "standard-webhooks", "prisma", "storage", "postel"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -32,5 +39,15 @@
     "adapter": {
       "category": "orm"
     }
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*",
+    "@postel/storage-helpers": "workspace:*"
+  },
+  "devDependencies": {
+    "@postel/storage-testkit": "workspace:*",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "20.17.10",
+    "better-sqlite3": "12.10.0"
   }
 }
