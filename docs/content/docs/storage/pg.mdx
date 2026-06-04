@@ -25,7 +25,7 @@ export const postel = Postel({
 | Option | Notes |
 |---|---|
 | `connectionString` | Postel opens and owns a `pg.Pool` for this URL. |
-| `pool` | An existing `pg.Pool` (or compatible) to reuse instead. Pass this to share a transaction with your app. |
+| `pool` | An existing node-postgres `pg.Pool` to reuse instead — pass this to share a connection (and transactions) with your app. |
 | `autoMigrate` | Run migrations on first use (default `true`). |
 | `clock` | Inject a clock for deterministic time in tests. |
 

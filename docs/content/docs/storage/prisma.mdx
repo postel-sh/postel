@@ -8,7 +8,7 @@ description: "@postel/prisma — run Postel's storage through your existing Pris
 
 ```bash
 pnpm add @postel/prisma
-# @prisma/client is already in your app
+# @prisma/client is a peer dependency — you already have it in a Prisma app
 ```
 
 ```ts title="lib/postel.ts"
@@ -25,12 +25,12 @@ export const postel = Postel({
 
 | Option | Notes |
 |---|---|
-| `prisma` | Your `PrismaClient` (or a transaction client). |
+| `prisma` | Your `PrismaClient` instance. |
 | `dialect` | `"postgres"` or `"sqlite"` — selects `FOR UPDATE SKIP LOCKED` vs ordered reservation, the capability flags, and the column codecs. |
 | `autoMigrate` | Run migrations on first use (default `true`). |
 | `clock` | Inject a clock for deterministic time in tests. |
 
-The adapter talks to Prisma only through `$queryRawUnsafe` / `$executeRawUnsafe` / `$transaction`, so it needs **no Postel models in your `schema.prisma`** and there is no `prisma generate` coupling — it works against any generated client.
+At runtime Postel calls Prisma only through its raw query surface (`$queryRawUnsafe` / `$executeRawUnsafe` / `$transaction`), so you add **no Postel models to your `schema.prisma`** — it works against any generated `PrismaClient`. `@prisma/client` is a peer dependency; the adapter imports only its type.
 
 ## Shared transactions
 
