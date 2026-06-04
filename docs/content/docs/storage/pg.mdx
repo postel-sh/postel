@@ -1,0 +1,47 @@
+---
+title: Postgres
+description: "@postel/pg — a standalone Postgres storage adapter built on node-postgres, with SKIP LOCKED reservation and LISTEN/NOTIFY."
+---
+
+`@postel/pg` is a **standalone** adapter for Postgres: hand it a connection string and Postel owns the pool, or hand it a `pg.Pool` you already manage. It's the adapter for multi-node, high-throughput delivery.
+
+```bash
+pnpm add @postel/pg pg
+# or: npm i @postel/pg pg
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { PgStorage } from "@postel/pg";
+
+export const postel = Postel({
+  outbound: { storage: PgStorage({ connectionString: process.env.DATABASE_URL }) },
+});
+```
+
+## Options
+
+| Option | Notes |
+|---|---|
+| `connectionString` | Postel opens and owns a `pg.Pool` for this URL. |
+| `pool` | An existing `pg.Pool` (or compatible) to reuse instead. Pass this to share a transaction with your app. |
+| `autoMigrate` | Run migrations on first use (default `true`). |
+| `clock` | Inject a clock for deterministic time in tests. |
+
+Pass exactly one of `connectionString` or `pool`. `pg` (node-postgres) is a peer dependency you install alongside.
+
+## SKIP LOCKED reservation
+
+Workers reserve outbox rows with `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED …)`. Concurrent workers each grab a disjoint batch without blocking on one another — this is what lets you scale delivery horizontally across many worker processes against one database.
+
+## LISTEN/NOTIFY
+
+The adapter declares `capabilities.notify = true`. Every `send()` fires `NOTIFY postel_messages_new`, and idle workers `LISTEN` for it — so a freshly enqueued message is picked up with near-zero latency instead of waiting for the next poll tick.
+
+## Transactions compose with yours
+
+Because Postel runs through node-postgres, you can share a transaction: open one on a client and pass it to `send()` so the outbox insert commits atomically with your business writes. See the [Storage overview](/docs/storage#the-outbox-and-why-it-composes-with-your-transaction).
+
+## Receiver-side dedup
+
+The package also exports `PgDedup` (and `ensurePgDedupTable`) for the inbound idempotency-dedup helper, independent of the outbound storage.

@@ -50,3 +50,37 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  pg-integration:
+    name: "@postel/pg integration (real Postgres)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Runs the @postel/pg testcontainers tier — true FOR UPDATE SKIP LOCKED
+      # contention + cross-connection LISTEN/NOTIFY against a real Postgres
+      # (spun up via Docker on the runner). The always-on pglite tier already
+      # ran in the job above.
+      - name: Test @postel/pg against real Postgres
+        run: pnpm --filter @postel/pg test
+        env:
+          POSTEL_PG_TESTCONTAINERS: "1"

@@ -109,9 +109,8 @@ IETF-alignment compatibility mode on the receiver
 Compliance test suite
 
 # storage-layer — adapter matrix / outbox
-# Adapter matrix, SQLite support, and migrations are covered by @postel/sqlite;
-# Postgres support lands with @postel/pg.
-Postgres support across the adapter matrix
+# Adapter matrix, Postgres/SQLite support, and migrations are covered by the
+# @postel/pg and @postel/sqlite adapters.
 Worker fairness across tenants
 Worker throughput target
 HTTP client implementation [PORT-SPECIFIC]

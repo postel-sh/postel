@@ -156,3 +156,152 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
 `,
   },
 ];
+
+// Postgres dialect (>= 14). jsonb / timestamptz / bytea native. Column ALTERs
+// use IF NOT EXISTS so the migration set is idempotent even without the version
+// gate. Mirrors specs/db-schema/ — except the canonical FOREIGN KEY constraints
+// are intentionally not declared: the library maintains referential integrity
+// application-side (matching the in-memory reference and SQLite, which runs with
+// foreign_keys off), so the relationship columns are plain `text`.
+export const PG_MIGRATIONS: ReadonlyArray<Migration> = [
+  {
+    version: 1,
+    name: "init",
+    sql: `
+CREATE TABLE IF NOT EXISTS _postel_meta (
+  key   text PRIMARY KEY,
+  value text NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenants (
+  id         text PRIMARY KEY,
+  metadata   jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS endpoints (
+  id           text PRIMARY KEY,
+  tenant_id    text,
+  url          text NOT NULL,
+  state        text NOT NULL DEFAULT 'active',
+  types        jsonb,
+  channels     jsonb,
+  retry_policy jsonb,
+  headers      jsonb,
+  signing      jsonb,
+  metadata     jsonb,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS endpoints_tenant_idx ON endpoints (tenant_id);
+CREATE INDEX IF NOT EXISTS endpoints_state_idx ON endpoints (state);
+
+CREATE TABLE IF NOT EXISTS endpoint_secrets (
+  id              text PRIMARY KEY,
+  endpoint_id     text NOT NULL,
+  algorithm       text NOT NULL,
+  status          text NOT NULL,
+  priority        integer NOT NULL,
+  encrypted_value bytea NOT NULL,
+  not_after       timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS endpoint_secrets_endpoint_idx ON endpoint_secrets (endpoint_id, priority);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id               text PRIMARY KEY,
+  tenant_id        text,
+  type             text NOT NULL,
+  data             jsonb NOT NULL,
+  channels         jsonb,
+  idempotency_key  text,
+  version          text,
+  ttl_seconds      integer,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  expires_at       timestamptz,
+  reserved_by      text,
+  reserved_at      timestamptz,
+  lease_expires_at timestamptz,
+  status           text NOT NULL DEFAULT 'pending'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS messages_tenant_idem_idx
+  ON messages (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS messages_pending_idx
+  ON messages (status, created_at) WHERE status = 'pending';
+
+CREATE TABLE IF NOT EXISTS attempts (
+  id               text PRIMARY KEY,
+  message_id       text NOT NULL,
+  endpoint_id      text NOT NULL,
+  tenant_id        text,
+  attempt_number   integer NOT NULL,
+  status           text NOT NULL,
+  scheduled_for    timestamptz,
+  started_at       timestamptz,
+  completed_at     timestamptz,
+  response_code    integer,
+  response_headers jsonb,
+  response_body    text,
+  latency_ms       integer,
+  error            text,
+  replay_of        text
+);
+CREATE INDEX IF NOT EXISTS attempts_message_idx ON attempts (message_id);
+CREATE INDEX IF NOT EXISTS attempts_endpoint_idx ON attempts (endpoint_id, scheduled_for);
+CREATE INDEX IF NOT EXISTS attempts_tenant_idx ON attempts (tenant_id);
+CREATE INDEX IF NOT EXISTS attempts_status_idx ON attempts (status);
+
+CREATE TABLE IF NOT EXISTS endpoint_state_transitions (
+  id          text PRIMARY KEY,
+  endpoint_id text NOT NULL,
+  from_state  text,
+  to_state    text NOT NULL,
+  reason      text NOT NULL,
+  actor       text,
+  metadata    jsonb,
+  occurred_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS endpoint_state_transitions_endpoint_idx
+  ON endpoint_state_transitions (endpoint_id, occurred_at DESC);
+
+CREATE OR REPLACE VIEW dead_letter AS SELECT a.* FROM attempts a WHERE a.status = 'dead-letter';
+
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '1')
+  ON CONFLICT (key) DO NOTHING;
+`,
+  },
+  {
+    version: 2,
+    name: "endpoint_secret_public_key",
+    sql: `
+ALTER TABLE endpoint_secrets ADD COLUMN IF NOT EXISTS public_key bytea;
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '2')
+  ON CONFLICT (key) DO UPDATE SET value = '2';
+`,
+  },
+  {
+    version: 3,
+    name: "message_dispatch_columns",
+    sql: `
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS attempt_number integer NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS scheduled_for timestamptz;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS replay_of text;
+CREATE INDEX IF NOT EXISTS messages_scheduled_idx ON messages (scheduled_for) WHERE status = 'pending';
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '3')
+  ON CONFLICT (key) DO UPDATE SET value = '3';
+`,
+  },
+  {
+    version: 4,
+    name: "endpoint_config_columns",
+    sql: `
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS allow_http boolean NOT NULL DEFAULT false;
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS max_inflight integer;
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS http jsonb;
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS circuit_breaker jsonb;
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS auto_disable jsonb;
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
+  ON CONFLICT (key) DO UPDATE SET value = '4';
+`,
+  },
+];

@@ -6,6 +6,7 @@
   "pages": [
     "index",
     "---Adapters---",
+    "pg",
     "sqlite",
     "---Reference---",
     "schema",
