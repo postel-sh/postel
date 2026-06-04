@@ -16,7 +16,7 @@ The factory identifier is the PascalCase `Postel` — a callable function, not a
 
 #### Scenario: Type inference for the outbound surface
 
-- **WHEN** a TypeScript caller writes `const postel = Postel({ outbound: { storage: postelDrizzle(db) } })`
+- **WHEN** a TypeScript caller writes `const postel = Postel({ outbound: { storage: DrizzleStorage(db) } })`
 - **THEN** `postel.outbound.send(...)` is typed without explicit type parameters
 - **AND** `postel.inbound` does not exist on the instance type
 
@@ -171,7 +171,7 @@ The shape of the instance returned by `Postel({...})` SHALL be conditional on wh
 
 #### Scenario: Outbound-only consumer
 
-- **WHEN** a consumer writes `const postel = Postel({ outbound: { storage: postelDrizzle(db) } })`
+- **WHEN** a consumer writes `const postel = Postel({ outbound: { storage: DrizzleStorage(db) } })`
 - **THEN** `postel.inbound` is a TypeScript error (the property is not on the instance type)
 - **AND** `postel.outbound.send({ type, data })` type-checks
 

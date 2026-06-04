@@ -119,13 +119,13 @@ For Postel 1.0, the library MUST ship at least one adapter in each category for 
 #### Scenario: Drop-in standalone usage
 
 - **WHEN** a new host has no existing DB layer and installs `@postel/pg`
-- **THEN** `Postel({ adapter: postelPg({ connectionString }) })` is the entire setup
+- **THEN** `Postel({ adapter: PgStorage({ connectionString }) })` is the entire setup
 - **AND** Postel owns the connection pool and runs migrations on first boot
 
 #### Scenario: Drizzle host wraps its own db
 
 - **WHEN** an existing host already runs Drizzle and installs `@postel/drizzle`
-- **THEN** `Postel({ adapter: postelDrizzle(db) })` reuses the host's Drizzle instance
+- **THEN** `Postel({ adapter: DrizzleStorage(db) })` reuses the host's Drizzle instance
 - **AND** Postel does NOT open its own connection or pool
 
 #### Scenario: Adapter category declared in package metadata
