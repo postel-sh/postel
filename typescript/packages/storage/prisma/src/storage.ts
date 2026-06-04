@@ -38,12 +38,13 @@ import {
   encodeMessageInsert,
   encodeSecretInsert,
 } from "@postel/storage-helpers";
+import type { PrismaClient } from "@prisma/client";
 
 export type PrismaDialect = "postgres" | "sqlite";
 
-// The slice of a PrismaClient the adapter needs — every generated client has
-// these. The host passes their client; the adapter never imports
-// `@prisma/client`, so there is no generate-time coupling.
+// The raw slice of a PrismaClient the adapter calls, and the handle it threads
+// through `HostTxOption`. Every generated client — and the interactive
+// transaction client — exposes these regardless of which models you declare.
 export interface PrismaLike {
   $queryRawUnsafe<R = unknown>(query: string, ...values: unknown[]): Promise<R[]>;
   $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
@@ -51,7 +52,12 @@ export interface PrismaLike {
 }
 
 export interface PrismaStorageOptions {
-  readonly prisma: PrismaLike;
+  /**
+   * Your `PrismaClient`. Postel talks to it purely through the raw query surface
+   * (`$queryRawUnsafe` / `$executeRawUnsafe` / `$transaction`), so no Postel
+   * models are required in your `schema.prisma`.
+   */
+  readonly prisma: PrismaClient;
   readonly dialect: PrismaDialect;
   readonly clock?: Clock;
   readonly autoMigrate?: boolean;
@@ -71,7 +77,8 @@ function statements(migrationSql: string): string[] {
 }
 
 export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike> {
-  const { prisma, dialect } = options;
+  const prisma = options.prisma as unknown as PrismaLike;
+  const { dialect } = options;
   const isPg = dialect === "postgres";
   const codec = isPg ? PG_CODEC : SQLITE_CODEC;
   const distinctSql = isPg ? "is not distinct from" : "is";

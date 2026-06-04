@@ -36,6 +36,7 @@ import {
   encodeMessageInsert,
   encodeSecretInsert,
 } from "@postel/storage-helpers";
+import type { Pool } from "pg";
 
 // node-postgres returns native Date for timestamptz and parsed JS for jsonb, but
 // binds arrays as PG arrays — so encode JSON as text (Postgres parses it into
@@ -62,9 +63,9 @@ export interface PgPool extends PgQueryable {
 }
 
 export interface PgStorageOptions {
-  // An existing pg Pool (or compatible) — or a connectionString for Postel to
-  // open its own pool.
-  readonly pool?: PgPool;
+  // An existing node-postgres `Pool` — or a connectionString for Postel to open
+  // its own pool.
+  readonly pool?: Pool;
   readonly connectionString?: string;
   readonly clock?: Clock;
   readonly autoMigrate?: boolean;
@@ -105,7 +106,11 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
   // handed in (keeps `pg` out of the import graph for shim-backed tests).
   let ownedPool: PgPool | undefined;
   function pool(): PgPool {
-    if (options.pool) return options.pool;
+    // A real node-postgres `Pool` is structurally close but its `client.on`
+    // overloads are wider than the slice we use (only `notification`); the
+    // adapter calls just `query` / `connect` / `on("notification")`, so the
+    // internal shim is the safe runtime contract.
+    if (options.pool) return options.pool as unknown as PgPool;
     if (!ownedPool) {
       const require_ = createRequire(import.meta.url);
       const pg = require_("pg") as {

@@ -1,0 +1,14 @@
+// Minimal schema used only for @postel/prisma's own typecheck/build: it
+// generates a baseline PrismaClient so the adapter can `import type
+// { PrismaClient }` for the public option type. Postel talks to Prisma purely
+// through the raw query surface ($queryRawUnsafe / $executeRawUnsafe /
+// $transaction), which every generated client has regardless of models — so no
+// models are declared here. Hosts bring their own generated client at runtime.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./.postel-prisma-fixture.db"
+}
