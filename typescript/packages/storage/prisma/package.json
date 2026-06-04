@@ -24,8 +24,9 @@
   },
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --target es2022 --clean",
-    "typecheck": "tsc --noEmit",
+    "generate": "prisma generate",
+    "build": "prisma generate && tsup src/index.ts --format esm,cjs --dts --sourcemap --target es2022 --clean",
+    "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
@@ -40,14 +41,19 @@
       "category": "orm"
     }
   },
+  "peerDependencies": {
+    "@prisma/client": ">=6"
+  },
   "dependencies": {
     "@postel/core": "workspace:*",
     "@postel/storage-helpers": "workspace:*"
   },
   "devDependencies": {
     "@postel/storage-testkit": "workspace:*",
+    "@prisma/client": "^6.19.3",
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "20.17.10",
-    "better-sqlite3": "12.10.0"
+    "better-sqlite3": "12.10.0",
+    "prisma": "^6.19.3"
   }
 }

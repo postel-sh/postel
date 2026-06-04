@@ -1,13 +1,14 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { Pool } from "pg";
 
-import type { PgPool, PgPoolClient, PgQueryResult } from "../src/index.js";
+import type { PgPoolClient, PgQueryResult } from "../src/index.js";
 
 // Wrap an in-process PGlite (real Postgres in WASM) as the slice of node-postgres
 // the adapter needs. PGlite is single-connection, so `connect()` hands back the
 // same instance — hence the always-on tier declares notify=false and
 // txIsolation=false; those guarantees need real multiple connections and are
 // proven on real Postgres in testcontainers.test.ts.
-export function pgliteShim(pglite: PGlite): PgPool {
+export function pgliteShim(pglite: PGlite): Pool {
   async function query<R = Record<string, unknown>>(
     text: string,
     values?: unknown[],
@@ -22,5 +23,7 @@ export function pgliteShim(pglite: PGlite): PgPool {
     return { rows, rowCount: last?.affectedRows ?? rows.length };
   }
   const client: PgPoolClient = { query, release() {}, on() {} };
-  return { query, connect: async () => client };
+  // PGlite exposes only the slice the adapter calls; present it as a `Pool` for
+  // the public option type (the adapter narrows back to its internal contract).
+  return { query, connect: async () => client } as unknown as Pool;
 }

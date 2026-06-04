@@ -1,4 +1,5 @@
 import { makeFakeClock, runStorageTests } from "@postel/storage-testkit";
+import type { PrismaClient } from "@prisma/client";
 import Database from "better-sqlite3";
 
 import { type PrismaLike, PrismaStorage } from "../src/index.js";
@@ -9,7 +10,7 @@ import { type PrismaLike, PrismaStorage } from "../src/index.js";
 // better-sqlite3-backed shim of that surface — proving the SQL and control flow
 // without a `prisma generate` pipeline. A real-PrismaClient integration test is
 // a follow-up, like @postel/pg's testcontainers tier.
-function prismaShim(db: Database.Database): PrismaLike {
+function prismaShim(db: Database.Database): PrismaClient {
   const shim: PrismaLike = {
     async $queryRawUnsafe<R>(query: string, ...values: unknown[]): Promise<R[]> {
       return db.prepare(query).all(...(values as never[])) as R[];
@@ -33,7 +34,9 @@ function prismaShim(db: Database.Database): PrismaLike {
       }
     },
   };
-  return shim;
+  // The adapter only calls the raw surface above; present it as a PrismaClient
+  // for the option type without standing up a real database + generated models.
+  return shim as unknown as PrismaClient;
 }
 
 runStorageTests({

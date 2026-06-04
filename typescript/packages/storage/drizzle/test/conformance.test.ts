@@ -2,7 +2,7 @@ import { makeFakeClock, runStorageTests } from "@postel/storage-testkit";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 
-import { type DrizzleDb, DrizzleStorage } from "../src/index.js";
+import { DrizzleStorage } from "../src/index.js";
 
 // Exercises the adapter through a Drizzle better-sqlite3 database. Single
 // connection, so notify and tx-isolation are skipped; the Postgres dialect
@@ -15,7 +15,7 @@ runStorageTests({
     const clock = makeFakeClock();
     const db = drizzle(new Database(":memory:"));
     return {
-      storage: DrizzleStorage({ db: db as unknown as DrizzleDb, dialect: "sqlite", clock }),
+      storage: DrizzleStorage({ db, dialect: "sqlite", clock }),
       clock,
     };
   },

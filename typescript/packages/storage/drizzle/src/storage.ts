@@ -39,12 +39,23 @@ import {
   encodeSecretInsert,
 } from "@postel/storage-helpers";
 import { type SQL, sql } from "drizzle-orm";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 
 export type DrizzleDialect = "postgres" | "sqlite";
 
-// The slice of a Drizzle database the adapter needs. A Postgres Drizzle db
-// exposes async `execute`; a SQLite (better-sqlite3) db exposes sync `all` /
-// `run`. The host passes whichever they built.
+/**
+ * A real Drizzle database instance. Every driver's `db` extends one of Drizzle's
+ * public base classes — `BaseSQLiteDatabase` (better-sqlite3, bun:sqlite, libSQL,
+ * …) or `PgDatabase` (node-postgres, postgres-js, …) — so you hand Postel the
+ * `db` you already built, with no Postel-specific wrapper type.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: mirrors Drizzle's own base-class generics
+export type DrizzleDatabase = BaseSQLiteDatabase<any, any> | PgDatabase<any, any, any>;
+
+// The structural slice the adapter calls internally, and the handle it threads
+// through `HostTxOption`. A Postgres db exposes async `execute`; a SQLite db
+// exposes sync `all` / `run`.
 export interface DrizzleDb {
   execute?(query: SQL): Promise<{ rows: unknown[]; rowCount?: number | null }>;
   all?(query: SQL): unknown[];
@@ -53,7 +64,7 @@ export interface DrizzleDb {
 }
 
 export interface DrizzleStorageOptions {
-  readonly db: DrizzleDb;
+  readonly db: DrizzleDatabase;
   readonly dialect: DrizzleDialect;
   readonly clock?: Clock;
   readonly autoMigrate?: boolean;
@@ -69,7 +80,8 @@ function statements(migrationSql: string): string[] {
 }
 
 export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleDb> {
-  const { db, dialect } = options;
+  const db = options.db as unknown as DrizzleDb;
+  const { dialect } = options;
   const isPg = dialect === "postgres";
   const codec = isPg ? PG_CODEC : SQLITE_CODEC;
   const distinctOp = isPg ? sql.raw("is not distinct from") : sql.raw("is");
