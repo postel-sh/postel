@@ -1,1 +1,6 @@
-export const __postelPackage = "@postel/drizzle" as const;
+export {
+  type DrizzleDb,
+  type DrizzleDialect,
+  type DrizzleStorageOptions,
+  DrizzleStorage,
+} from "./storage.js";

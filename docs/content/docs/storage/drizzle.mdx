@@ -1,0 +1,47 @@
+---
+title: Drizzle
+description: "@postel/drizzle — run Postel's storage through your existing Drizzle instance (Postgres or SQLite)."
+---
+
+`@postel/drizzle` is an **ORM** adapter: hand Postel the Drizzle `db` you already use and it issues its storage queries through it, so outbox writes share your connection and transactions.
+
+```bash
+pnpm add @postel/drizzle drizzle-orm
+# or: npm i @postel/drizzle drizzle-orm
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { DrizzleStorage } from "@postel/drizzle";
+import { db } from "./db"; // your Drizzle instance
+
+export const postel = Postel({
+  outbound: { storage: DrizzleStorage({ db, dialect: "postgres" }) },
+});
+```
+
+## Options
+
+| Option | Notes |
+|---|---|
+| `db` | Your Drizzle database. A Postgres Drizzle db drives async `execute`; a SQLite (better-sqlite3) db drives `all` / `run`. |
+| `dialect` | `"postgres"` or `"sqlite"` — selects `FOR UPDATE SKIP LOCKED` vs ordered reservation, the capability flags, and the column codecs. |
+| `autoMigrate` | Run migrations on first use (default `true`). |
+| `clock` | Inject a clock for deterministic time in tests. |
+
+`drizzle-orm` is a peer dependency. Postel runs through Drizzle's `sql` tag, so no Postel-specific table definitions are required in your schema.
+
+## Shared transactions
+
+Pass a Drizzle transaction to `send()` so the outbox insert commits atomically with your business writes:
+
+```ts
+await db.transaction(async (tx) => {
+  await tx.insert(orders).values({ /* ... */ });
+  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+});
+```
+
+## Migrations
+
+`autoMigrate` runs the canonical migrations for the configured dialect through your Drizzle connection (version-gated, idempotent). Or run your own tooling against the [canonical schema](/docs/storage/schema).

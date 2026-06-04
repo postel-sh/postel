@@ -19,6 +19,7 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/sqlite`** | [SQLite storage adapter](/docs/storage/sqlite) | Standalone — Postel owns the SQLite database (`postelSqlite`). Full outbound `Storage`; also exports `sqliteDedupAdapter` for inbound dedup. |
 | **`@postel/pg`** | [Postgres storage adapter](/docs/storage/pg) | Standalone — `postelPg({ connectionString })`. Full outbound `Storage` (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`); also exports `pgDedupAdapter` for inbound dedup. |
 | **`@postel/kysely`** | [Kysely storage adapter](/docs/storage/kysely) | ORM/query-builder — `postelKysely({ db, dialect })` runs Postel's storage through your Kysely (Postgres or SQLite). |
+| **`@postel/drizzle`** | [Drizzle storage adapter](/docs/storage/drizzle) | ORM — `postelDrizzle({ db, dialect })` runs Postel's storage through your Drizzle instance (Postgres or SQLite). |
 | **`@postel/storage-helpers`** | Zero-DB helpers for [custom adapters](/docs/storage/custom-adapters) | Dialect codecs, capability flags, row encode/decode, migration SQL, callback registry — what every adapter reuses. |
 
 ## Stubs today (name reserved, no runtime yet)
@@ -32,11 +33,10 @@ Each "stub" package exports only `__postelPackage` today. Don't depend on them i
 
 ## Storage adapters
 
-The `postel.outbound.*` runtime runs against any `Storage` adapter: the in-process `InMemoryStorage` (in `@postel/core`), the standalone [`@postel/pg`](/docs/storage/pg) / [`@postel/sqlite`](/docs/storage/sqlite), the query-builder [`@postel/kysely`](/docs/storage/kysely), or — landing next — the ORM adapters:
+The `postel.outbound.*` runtime runs against any `Storage` adapter: the in-process `InMemoryStorage` (in `@postel/core`), the standalone [`@postel/pg`](/docs/storage/pg) / [`@postel/sqlite`](/docs/storage/sqlite), the query-builder [`@postel/kysely`](/docs/storage/kysely), the ORM [`@postel/drizzle`](/docs/storage/drizzle), or — landing next:
 
 | Package | Will be |
 |---|---|
-| `@postel/drizzle` | Drizzle ORM storage adapter |
 | `@postel/prisma` | Prisma storage adapter |
 
 The storage adapter matrix is per [ADR 0007](https://github.com/postel-sh/postel/blob/main/decisions/0007-storage-strategy.md) — Postgres / SQLite as the canonical first-class databases, ORM-specific adapters in their own packages. The external worker strategies (`BullMQ`, `PgBoss`) are likewise config slots today and throw `NotImplementedError` until their adapters ship; the in-process worker pool is the supported runtime.
