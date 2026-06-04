@@ -35,10 +35,10 @@ Postel ships an **adapter matrix** in which the host's existing database access 
 A host running Drizzle does this:
 
 ```ts
-import { postelDrizzle } from '@postel/drizzle';
+import { DrizzleStorage } from '@postel/drizzle';
 import { db } from './db';
 
-const postel = Postel({ adapter: postelDrizzle(db) });
+const postel = Postel({ adapter: DrizzleStorage(db) });
 
 // Outbox insert participates in the host's transaction — for free:
 await db.transaction(async (tx) => {

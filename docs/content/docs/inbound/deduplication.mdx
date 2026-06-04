@@ -52,13 +52,13 @@ A few things to note:
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
-import { pgDedupAdapter } from "@postel/pg";
+import { PgDedup } from "@postel/pg";
 
 const postel = Postel({
   inbound: {
     vendor: {
       verify: Secret(process.env.WEBHOOK_SECRET!),
-      dedup: pgDedupAdapter({
+      dedup: PgDedup({
         client: pgPool,        // node-postgres pool or compatible
         // tableName: "postel_received_messages",  (default)
         // schema: undefined,                       (search_path)
@@ -75,13 +75,13 @@ The adapter uses `INSERT … ON CONFLICT … DO UPDATE WHERE expires_at <= now()
 ### SQLite — `@postel/sqlite`
 
 ```ts title="lib/postel.ts"
-import { sqliteDedupAdapter } from "@postel/sqlite";
+import { SqliteDedup } from "@postel/sqlite";
 
 const postel = Postel({
   inbound: {
     vendor: {
       verify: Secret(s),
-      dedup: sqliteDedupAdapter({ db: betterSqlite3Db }),
+      dedup: SqliteDedup({ db: betterSqlite3Db }),
       dedupTtl: "24h",
     },
   },
