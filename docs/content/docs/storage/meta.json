@@ -8,6 +8,7 @@
     "---Adapters---",
     "pg",
     "sqlite",
+    "kysely",
     "---Reference---",
     "schema",
     "custom-adapters"

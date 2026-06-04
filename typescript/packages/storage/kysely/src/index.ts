@@ -1,1 +1,1 @@
-export const __postelPackage = "@postel/kysely" as const;
+export { type KyselyDialect, type KyselyStorageOptions, KyselyStorage } from "./storage.js";
