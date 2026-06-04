@@ -1,0 +1,47 @@
+---
+title: Kysely
+description: "@postel/kysely — run Postel's storage through your existing Kysely query builder (Postgres or SQLite)."
+---
+
+`@postel/kysely` is an **ORM/query-builder** adapter: you hand Postel the `Kysely` instance you already use, and it issues its queries (and transactions) through it. That means an outbox insert shares your connection and composes with your own writes — no second pool.
+
+```bash
+pnpm add @postel/kysely kysely
+# or: npm i @postel/kysely kysely
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { KyselyStorage } from "@postel/kysely";
+import { db } from "./db"; // your Kysely<DB>
+
+export const postel = Postel({
+  outbound: { storage: KyselyStorage({ db, dialect: "postgres" }) },
+});
+```
+
+## Options
+
+| Option | Notes |
+|---|---|
+| `db` | Your `Kysely` instance. |
+| `dialect` | `"postgres"` or `"sqlite"` — selects `FOR UPDATE SKIP LOCKED` vs ordered reservation, the capability flags (`notify` on for Postgres), and the column codecs. |
+| `autoMigrate` | Run migrations on first use (default `true`). |
+| `clock` | Inject a clock for deterministic time in tests. |
+
+`kysely` is a peer dependency. Postel runs through Kysely's `sql` tag, so your `Kysely<DB>` needs no Postel-specific table typing.
+
+## Shared transactions
+
+Open a Kysely transaction and pass it to `send()` — the outbox insert commits atomically with your business writes:
+
+```ts
+await db.transaction().execute(async (trx) => {
+  await trx.insertInto("orders").values({ /* ... */ }).execute();
+  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx: trx });
+});
+```
+
+## Migrations
+
+`autoMigrate` runs the canonical migrations for the configured dialect through your Kysely connection (version-gated and idempotent). Or run your own migration tooling against the [canonical schema](/docs/storage/schema).

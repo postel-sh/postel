@@ -1,9 +1,16 @@
 {
   "name": "@postel/kysely",
-  "private": true,
   "version": "0.0.0",
   "description": "Postel storage adapter — host hands Postel a Kysely query-builder instance.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/storage/kysely"
+  },
+  "homepage": "https://postel.dev",
+  "bugs": "https://github.com/postel-sh/postel/issues",
+  "keywords": ["webhooks", "standard-webhooks", "kysely", "storage", "postel"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -32,5 +39,19 @@
     "adapter": {
       "category": "orm"
     }
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*",
+    "@postel/storage-helpers": "workspace:*"
+  },
+  "peerDependencies": {
+    "kysely": ">=0.27"
+  },
+  "devDependencies": {
+    "@postel/storage-testkit": "workspace:*",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "20.17.10",
+    "better-sqlite3": "12.10.0",
+    "kysely": "0.27.4"
   }
 }
