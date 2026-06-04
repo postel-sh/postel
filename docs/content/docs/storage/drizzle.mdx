@@ -25,7 +25,7 @@ export const postel = Postel({
 
 | Option | Notes |
 |---|---|
-| `db` | Your Drizzle database. A Postgres Drizzle db drives async `execute`; a SQLite (better-sqlite3) db drives `all` / `run`. |
+| `db` | The Drizzle database you already built — any driver (`drizzle-orm/node-postgres`, `drizzle-orm/better-sqlite3`, …). Postel issues its queries through it. |
 | `dialect` | `"postgres"` or `"sqlite"` — selects `FOR UPDATE SKIP LOCKED` vs ordered reservation, the capability flags, and the column codecs. |
 | `autoMigrate` | Run migrations on first use (default `true`). |
 | `clock` | Inject a clock for deterministic time in tests. |
