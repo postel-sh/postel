@@ -1,7 +1,7 @@
 import { dedup } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
-import { type PgClient, pgDedupAdapter } from "../src/index.js";
+import { type PgClient, PgDedup } from "../src/index.js";
 
 interface MockRow {
   message_id: string;
@@ -49,7 +49,7 @@ describe("Idempotency dedup helper", () => {
   describe("First receipt", () => {
     it("returns { duplicate: false } the first time a message id is seen (Postgres)", async () => {
       const client = new MockPgClient();
-      const adapter = pgDedupAdapter({ client });
+      const adapter = PgDedup({ client });
       const result = await dedup("msg_first_pg", { ttl: "1h", adapter });
       expect(result).toEqual({ duplicate: false });
     });
@@ -58,7 +58,7 @@ describe("Idempotency dedup helper", () => {
   describe("Duplicate receipt", () => {
     it("returns { duplicate: true } on the second call within the TTL (Postgres)", async () => {
       const client = new MockPgClient();
-      const adapter = pgDedupAdapter({ client });
+      const adapter = PgDedup({ client });
       await dedup("msg_dup_pg", { ttl: "1h", adapter });
       const second = await dedup("msg_dup_pg", { ttl: "1h", adapter });
       expect(second).toEqual({ duplicate: true });
@@ -67,7 +67,7 @@ describe("Idempotency dedup helper", () => {
     it("entries past their TTL are treated as fresh first receipts (Postgres)", async () => {
       let nowMs = Date.parse("2026-05-14T15:00:00Z");
       const client = new MockPgClient();
-      const adapter = pgDedupAdapter({ client, now: () => new Date(nowMs) });
+      const adapter = PgDedup({ client, now: () => new Date(nowMs) });
       expect(await dedup("msg_ttl_pg", { ttl: 60, adapter })).toEqual({ duplicate: false });
       nowMs += 61_000;
       expect(await dedup("msg_ttl_pg", { ttl: 60, adapter })).toEqual({ duplicate: false });
@@ -77,7 +77,7 @@ describe("Idempotency dedup helper", () => {
   describe("Concurrent dedup calls", () => {
     it("relies on Postgres INSERT ... ON CONFLICT atomicity (verified at SQL level)", async () => {
       const client = new MockPgClient();
-      const adapter = pgDedupAdapter({ client });
+      const adapter = PgDedup({ client });
       const [a, b] = await Promise.all([
         dedup("msg_race_pg", { ttl: "1h", adapter }),
         dedup("msg_race_pg", { ttl: "1h", adapter }),
@@ -88,7 +88,7 @@ describe("Idempotency dedup helper", () => {
 
   it("uses INSERT ... ON CONFLICT (message_id) DO UPDATE ... WHERE expires_at <= now()", async () => {
     const client = new MockPgClient();
-    const adapter = pgDedupAdapter({ client });
+    const adapter = PgDedup({ client });
     await dedup("msg_inspect", { ttl: 60, adapter });
     const insertSql = client.queries.find((q) => q.text.includes("INSERT INTO"))?.text ?? "";
     expect(insertSql).toMatch(/ON CONFLICT \(message_id\) DO UPDATE/u);
@@ -97,7 +97,7 @@ describe("Idempotency dedup helper", () => {
 
   it("runs DDL once (auto-migrate) and reuses the table across record() calls", async () => {
     const client = new MockPgClient();
-    const adapter = pgDedupAdapter({ client });
+    const adapter = PgDedup({ client });
     await dedup("a", { ttl: 60, adapter });
     await dedup("b", { ttl: 60, adapter });
     expect(client.ddlCalls).toBe(2);
@@ -105,7 +105,7 @@ describe("Idempotency dedup helper", () => {
 
   it("skips DDL when autoMigrate: false (the host owns migrations)", async () => {
     const client = new MockPgClient();
-    const adapter = pgDedupAdapter({ client, autoMigrate: false });
+    const adapter = PgDedup({ client, autoMigrate: false });
     await dedup("x", { ttl: 60, adapter });
     expect(client.ddlCalls).toBe(0);
   });

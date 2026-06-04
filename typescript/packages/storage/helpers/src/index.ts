@@ -9,7 +9,7 @@ import type {
   StorageCapabilities,
 } from "@postel/core";
 
-export { type Migration, SQLITE_MIGRATIONS } from "./migrations.js";
+export { type Migration, PG_MIGRATIONS, SQLITE_MIGRATIONS } from "./migrations.js";
 
 // --- Capability flag sets -------------------------------------------------
 // Canonical declarations so adapters don't hand-roll them. Postgres can push

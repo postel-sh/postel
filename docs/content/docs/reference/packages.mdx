@@ -17,7 +17,7 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/nestjs`** | [NestJS](/docs/web-adapters/nestjs) framework adapter | `PostelModule.forRoot(postel)` + `WebhookGuard(key)` guard + `@Event()` / `@WebhookResult()` decorators. |
 | **`@postel/admin`** | [Admin control plane](/docs/outbound/admin) over the outbound sender | `adminRouter(postel, { authorize })` Fetch router (endpoint CRUD, replay, keys) with default-deny auth + tenant scoping; mount via Hono / `fetchToExpress` / `fetchToFastify`. |
 | **`@postel/sqlite`** | [SQLite storage adapter](/docs/storage/sqlite) | Standalone — Postel owns the SQLite database (`postelSqlite`). Full outbound `Storage`; also exports `sqliteDedupAdapter` for inbound dedup. |
-| **`@postel/pg`** | [Postgres dedup adapter](/docs/inbound/deduplication) | `pgDedupAdapter` for `inbound.<source>.dedup`. The full Postgres `Storage` adapter is landing. |
+| **`@postel/pg`** | [Postgres storage adapter](/docs/storage/pg) | Standalone — `postelPg({ connectionString })`. Full outbound `Storage` (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`); also exports `pgDedupAdapter` for inbound dedup. |
 | **`@postel/storage-helpers`** | Zero-DB helpers for [custom adapters](/docs/storage/custom-adapters) | Dialect codecs, capability flags, row encode/decode, migration SQL, callback registry — what every adapter reuses. |
 
 ## Stubs today (name reserved, no runtime yet)
@@ -31,11 +31,10 @@ Each "stub" package exports only `__postelPackage` today. Don't depend on them i
 
 ## Storage adapters
 
-The `postel.outbound.*` runtime runs against any `Storage` adapter: the in-process `InMemoryStorage` (in `@postel/core`), the standalone [`@postel/sqlite`](/docs/storage/sqlite) (shipping), or — landing across the matrix — the Postgres and query-builder/ORM adapters:
+The `postel.outbound.*` runtime runs against any `Storage` adapter: the in-process `InMemoryStorage` (in `@postel/core`), the shipping standalone adapters [`@postel/pg`](/docs/storage/pg) and [`@postel/sqlite`](/docs/storage/sqlite), or — landing next — the query-builder/ORM adapters:
 
 | Package | Will be |
 |---|---|
-| `@postel/pg` | Standalone Postgres storage adapter (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`) |
 | `@postel/kysely` | Kysely query-builder storage adapter |
 | `@postel/drizzle` | Drizzle ORM storage adapter |
 | `@postel/prisma` | Prisma storage adapter |

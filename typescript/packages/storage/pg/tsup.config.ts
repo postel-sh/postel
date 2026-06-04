@@ -8,6 +8,6 @@ export default defineConfig({
   clean: true,
   target: "es2022",
   platform: "node",
-  external: ["@postel/core", "pg"],
+  external: ["@postel/core", "@postel/storage-helpers", "pg"],
   treeshake: true,
 });
