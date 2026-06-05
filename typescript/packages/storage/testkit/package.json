@@ -20,7 +20,9 @@
     "@postel/core": "workspace:*"
   },
   "devDependencies": {
+    "@testcontainers/mysql": "10.13.2",
     "@types/node": "20.17.10",
+    "mysql2": "3.11.5",
     "vitest": "2.1.8"
   }
 }
