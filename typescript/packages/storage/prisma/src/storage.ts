@@ -22,6 +22,9 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  MYSQL_CAPABILITIES,
+  MYSQL_CODEC,
+  MYSQL_MIGRATIONS,
   PG_CAPABILITIES,
   PG_MIGRATIONS,
   SQLITE_CAPABILITIES,
@@ -40,7 +43,7 @@ import {
 } from "@postel/storage-helpers";
 import type { PrismaClient } from "@prisma/client";
 
-export type PrismaDialect = "postgres" | "sqlite";
+export type PrismaDialect = "postgres" | "mysql" | "sqlite";
 
 // The raw slice of a PrismaClient the adapter calls, and the handle it threads
 // through `HostTxOption`. Every generated client — and the interactive
@@ -48,7 +51,10 @@ export type PrismaDialect = "postgres" | "sqlite";
 export interface PrismaLike {
   $queryRawUnsafe<R = unknown>(query: string, ...values: unknown[]): Promise<R[]>;
   $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
-  $transaction<R>(fn: (tx: PrismaLike) => Promise<R>): Promise<R>;
+  $transaction<R>(
+    fn: (tx: PrismaLike) => Promise<R>,
+    options?: { isolationLevel?: string },
+  ): Promise<R>;
 }
 
 export interface PrismaStorageOptions {
@@ -80,8 +86,16 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
   const prisma = options.prisma as unknown as PrismaLike;
   const { dialect } = options;
   const isPg = dialect === "postgres";
-  const codec = isPg ? PG_CODEC : SQLITE_CODEC;
-  const distinctSql = isPg ? "is not distinct from" : "is";
+  const isMysql = dialect === "mysql";
+  // MySQL: order by the indexed created_at (the (status, created_at) index) so the
+  // FOR UPDATE SKIP LOCKED scan streams instead of filesorting — a FOR UPDATE
+  // filesort locks every examined row, starving concurrent workers.
+  const reserveOrder = isMysql ? "created_at, id" : "coalesce(scheduled_for, created_at), id";
+  const codec = isPg ? PG_CODEC : isMysql ? MYSQL_CODEC : SQLITE_CODEC;
+  // Null-safe equality: Postgres IS NOT DISTINCT FROM; MySQL <=>; SQLite IS.
+  const distinctSql = isPg ? "is not distinct from" : isMysql ? "<=>" : "is";
+  // `key` is a reserved word in MySQL; the other dialects accept it unquoted.
+  const metaKey = isMysql ? "`key`" : "key";
   const clock: Clock = options.clock ?? { now: () => new Date(), sleep: async () => {} };
   const registry = createCallbackRegistry();
   let migrated = false;
@@ -94,7 +108,8 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
   }
 
   function tsParam(date: Date): unknown {
-    return isPg ? date : date.toISOString();
+    // MySQL stores epoch-ms BIGINT; SQLite ISO-8601 text; Postgres native Date.
+    return isPg ? date : isMysql ? date.getTime() : date.toISOString();
   }
 
   // Accumulates bind values and emits the dialect's placeholder ($1.. / ?).
@@ -115,28 +130,33 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
     fn: (q: PrismaLike) => Promise<R>,
   ): Promise<R> {
     if (tx) return fn(tx);
-    return prisma.$transaction((trx) => fn(trx));
+    // READ COMMITTED on MySQL avoids the REPEATABLE READ gap locks that break the
+    // FOR UPDATE SKIP LOCKED queue partition.
+    return isMysql
+      ? prisma.$transaction((trx) => fn(trx), { isolationLevel: "ReadCommitted" })
+      : prisma.$transaction((trx) => fn(trx));
   }
 
   async function migrate(): Promise<void> {
     let current = 0;
     try {
       const res = await prisma.$queryRawUnsafe<{ value: string }>(
-        "select value from _postel_meta where key = 'schema_version'",
+        `select value from _postel_meta where ${metaKey} = 'schema_version'`,
       );
       if (res[0]?.value !== undefined) current = Number(res[0].value);
     } catch {
       current = 0;
     }
-    for (const m of isPg ? PG_MIGRATIONS : SQLITE_MIGRATIONS) {
+    for (const m of isPg ? PG_MIGRATIONS : isMysql ? MYSQL_MIGRATIONS : SQLITE_MIGRATIONS) {
       if (m.version <= current) continue;
       for (const stmt of statements(m.sql)) await prisma.$executeRawUnsafe(stmt);
     }
-    await prisma.$executeRawUnsafe(
-      `create table if not exists postel_received_messages (message_id text primary key, expires_at ${
-        isPg ? "timestamptz" : "text"
-      } not null)`,
-    );
+    const dedupDdl = isPg
+      ? "create table if not exists postel_received_messages (message_id text primary key, expires_at timestamptz not null)"
+      : isMysql
+        ? "create table if not exists postel_received_messages (message_id varchar(191) primary key, expires_at bigint not null)"
+        : "create table if not exists postel_received_messages (message_id text primary key, expires_at text not null)";
+    await prisma.$executeRawUnsafe(dedupDdl);
     migrated = true;
   }
 
@@ -189,12 +209,12 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
   ]);
 
   return {
-    capabilities: isPg ? PG_CAPABILITIES : SQLITE_CAPABILITIES,
+    capabilities: isPg ? PG_CAPABILITIES : isMysql ? MYSQL_CAPABILITIES : SQLITE_CAPABILITIES,
 
     async schemaVersion() {
       await ready();
       const rows = await prisma.$queryRawUnsafe<{ value: string }>(
-        "select value from _postel_meta where key = 'schema_version'",
+        `select value from _postel_meta where ${metaKey} = 'schema_version'`,
       );
       return rows[0]?.value === undefined ? 0 : Number(rows[0].value);
     },
@@ -226,6 +246,38 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
 
     async reserveBatch(opts: ReserveBatchOpts): Promise<ReadonlyArray<ReservedMessage>> {
       await ready();
+      // MySQL has no RETURNING: lock due rows (FOR UPDATE SKIP LOCKED), stamp
+      // them, then read them back inside one interactive transaction.
+      if (isMysql) {
+        return atomic(undefined, async (q) => {
+          const sp = new Params();
+          const tenantClause =
+            opts.tenantId !== undefined ? `and tenant_id = ${sp.add(opts.tenantId)}` : "";
+          const dueAt = sp.add(tsParam(opts.now));
+          const limit = sp.add(opts.batchSize);
+          const selected = await q.$queryRawUnsafe<{ id: string }>(
+            `select id from messages where status = 'pending' and reserved_by is null ${tenantClause} and (scheduled_for is null or scheduled_for <= ${dueAt}) order by ${reserveOrder} limit ${limit} for update skip locked`,
+            ...sp.values,
+          );
+          if (selected.length === 0) return [];
+          const up = new Params();
+          const worker = up.add(opts.workerId);
+          const reservedAt = up.add(tsParam(opts.now));
+          const lease = up.add(tsParam(new Date(opts.now.getTime() + opts.leaseMs)));
+          const updIds = selected.map((r) => up.add(r.id)).join(", ");
+          await q.$executeRawUnsafe(
+            `update messages set reserved_by = ${worker}, reserved_at = ${reservedAt}, lease_expires_at = ${lease}, attempt_number = attempt_number + 1 where id in (${updIds})`,
+            ...up.values,
+          );
+          const rp = new Params();
+          const selIds = selected.map((r) => rp.add(r.id)).join(", ");
+          const reserved = await q.$queryRawUnsafe<Record<string, unknown>>(
+            `select * from messages where id in (${selIds}) order by ${reserveOrder}`,
+            ...rp.values,
+          );
+          return reserved.map((row) => decodeReservedMessage(row, codec));
+        });
+      }
       // Add one param per placeholder occurrence, in left-to-right SQL order:
       // SQLite uses positional `?`, so a value can't be referenced twice.
       const p = new Params();
@@ -245,7 +297,7 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
           where status = 'pending' and reserved_by is null
             ${tenantClause}
             and (scheduled_for is null or scheduled_for <= ${dueAt})
-          order by coalesce(scheduled_for, created_at), id
+          order by ${reserveOrder}
           ${lock}
           limit ${limit}
         )
@@ -650,6 +702,19 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
       await ready();
       const q = exec(opts);
       const expiresDate = new Date(clock.now().getTime() + opts.ttlSeconds * 1000);
+      // INSERT IGNORE has a clean affected count (1 inserted / 0 duplicate);
+      // MySQL's ON DUPLICATE KEY UPDATE can't distinguish a no-op refresh from a
+      // live duplicate.
+      if (isMysql) {
+        const ip = new Params();
+        const insSql = `insert ignore into postel_received_messages (message_id, expires_at) values (${ip.add(messageId)}, ${ip.add(tsParam(expiresDate))})`;
+        const inserted = await q.$executeRawUnsafe(insSql, ...ip.values);
+        if (inserted > 0) return { duplicate: false };
+        const up = new Params();
+        const updSql = `update postel_received_messages set expires_at = ${up.add(tsParam(expiresDate))} where message_id = ${up.add(messageId)} and expires_at <= ${up.add(tsParam(clock.now()))}`;
+        const refreshed = await q.$executeRawUnsafe(updSql, ...up.values);
+        return { duplicate: refreshed === 0 };
+      }
       const p = new Params();
       const idP = p.add(messageId);
       const expires1 = p.add(tsParam(expiresDate));
