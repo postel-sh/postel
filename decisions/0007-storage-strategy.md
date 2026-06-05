@@ -5,6 +5,7 @@
 - **Supersedes**: the previously-separate `0004-postgres-and-sqlite-only`, `0008-storage-abstraction`, and `0009-byo-storage-interface` drafts. Nothing shipped against those; they are consolidated here.
 - **Decision drivers**: outbox-pattern correctness, **host-transaction interop** (the biggest single win), edge-runtime support, ecosystem fit (work with whatever DB layer the host already uses), polyglot port portability
 - **Amendment (2026-06-03)**: the standalone adapters are renamed **`@postel/pg`** and **`@postel/sqlite`** (the obvious package per database). The three-category model is retained; the raw-client node-postgres adapter is renamed **`@postel/node-postgres`** to free the `@postel/pg` name. The internal SQL-writer open question below is resolved — each adapter is **hand-written against its own driver** (no shared internal SQL builder / Kysely core); `@postel/storage-helpers` carries the zero-DB glue every adapter reuses.
+- **Amendment (2026-06-04)**: **MySQL is promoted from Tier 2 to a shipped first-party adapter set** — a standalone **`@postel/mysql`** (Postel owns a `mysql2` pool; also exports `MysqlDedup` for inbound dedup) plus MySQL-dialect support across every ORM / query-builder adapter. Two ORMs join the matrix: **`@postel/typeorm`** and **`@postel/mikro-orm`** (each Postgres + MySQL + SQLite). All MySQL-targeting adapters share one canonical MySQL schema in `@postel/storage-helpers` (`MYSQL_MIGRATIONS` / `MYSQL_CODEC` / `MYSQL_CAPABILITIES`), translating the canonical DDL per dialect: timestamps stored as `BIGINT` epoch-milliseconds (tz-independent, robust to any host pool config — sidesteps the mysql2 `timezone`/`dateStrings` footgun), `JSON` columns, `VARCHAR` keys; reservation via `FOR UPDATE SKIP LOCKED` done as select-then-update (MySQL has no `RETURNING`); `capabilities.notify = false` → polling fallback. Postgres + SQLite remain the **benchmarked** first-class databases (see *What "first-class" means*); MySQL is fully supported and compliance-gated but not yet in the published benchmark set.
 
 ## Context
 
@@ -28,9 +29,9 @@ Postel ships an **adapter matrix** in which the host's existing database access 
 
 | Category | Examples | Postel owns connection? | When to use |
 |---|---|---|---|
-| **Standalone** | `@postel/pg`, `@postel/sqlite` | Yes | Hosts who don't yet have a DB layer; demos; the simplest "drop it in" path |
+| **Standalone** | `@postel/pg`, `@postel/sqlite`, `@postel/mysql` | Yes | Hosts who don't yet have a DB layer; demos; the simplest "drop it in" path |
 | **Client** | `@postel/node-postgres`, `@postel/postgres-js`, `@postel/better-sqlite3` | No — host hands us a pool/client | Hosts using raw SQL drivers but no query builder/ORM |
-| **Query-builder / ORM** | `@postel/kysely`, `@postel/drizzle`, `@postel/prisma` | No — host hands us their `db` or `tx` | The majority — hosts already running Drizzle/Prisma/Kysely against their DB |
+| **Query-builder / ORM** | `@postel/kysely`, `@postel/drizzle`, `@postel/prisma`, `@postel/typeorm`, `@postel/mikro-orm` | No — host hands us their `db` or `tx` | The majority — hosts already running Drizzle/Prisma/Kysely/TypeORM/MikroORM against their DB |
 
 A host running Drizzle does this:
 
@@ -120,26 +121,29 @@ A `@postel/storage-helpers` package (zero DB deps) exports utilities every adapt
 **Tier 1 (must ship for 1.0):**
 - `@postel/pg` — zero-config "drop it in" for Postgres.
 - `@postel/sqlite` — same for SQLite.
-- `@postel/drizzle` — ORM adapter for Drizzle.
-- `@postel/prisma` — ORM adapter for Prisma.
-- `@postel/kysely` — query-builder adapter for Kysely.
+- `@postel/mysql` — same for MySQL (`mysql2`); also exports `MysqlDedup`.
+- `@postel/drizzle` — ORM adapter for Drizzle (Postgres / MySQL / SQLite).
+- `@postel/prisma` — ORM adapter for Prisma (Postgres / MySQL / SQLite).
+- `@postel/kysely` — query-builder adapter for Kysely (Postgres / MySQL / SQLite).
+- `@postel/typeorm` — ORM adapter for TypeORM (Postgres / MySQL / SQLite).
+- `@postel/mikro-orm` — ORM adapter for MikroORM (Postgres / MySQL / SQLite).
 
 These cover ≥90% of the TypeScript ecosystem.
 
 **Tier 2 (post-1.0, demand-driven):**
 - `@postel/node-postgres`, `@postel/postgres-js`, `@postel/better-sqlite3` (raw client adapters).
-- MySQL / MariaDB support via whichever adapter category gains traction first.
+- MariaDB is reachable today through `@postel/mysql` (the `mysql2` driver speaks the MariaDB protocol); a dedicated adapter is demand-driven.
 
 **Polyglot cross-port:** each future language port introduces its own equivalents — `@postel/go-pgx`, `@postel/go-gorm`, `@postel/py-sqlalchemy`, etc. Same matrix, same `Storage` interface contract, gated on the compliance suite. The pattern carries across languages.
 
 ## What "first-class" means
 
-Two databases — **Postgres ≥ 14** and **SQLite ≥ 3.40** — are the first-class **databases**. We own correctness for them end-to-end across all Tier 1 adapters and publish benchmarks against them. Other relational stores (PlanetScale, CockroachDB, libSQL, Turso, MySQL, …) connect via:
+Two databases — **Postgres ≥ 14** and **SQLite ≥ 3.40** — are the **benchmarked** first-class databases: we own correctness for them end-to-end across all Tier 1 adapters and publish benchmarks against them. **MySQL ≥ 8.0.1** is also fully supported by first-party adapters (`@postel/mysql` plus every ORM dialect) and gated on the same compliance + storage battery; it is not yet in the published benchmark set. Other relational stores (PlanetScale, CockroachDB, libSQL, Turso, …) connect via:
 
 - One of the existing client/ORM adapters if the store is wire-compatible (e.g., libSQL via the Drizzle adapter), or
 - A community-maintained adapter implementing the same `Storage` interface — same contract, same compliance gate.
 
-The DDL in `specs/db-schema/0001_init.sql` is Postgres dialect with SQLite variants commented inline. Adapters for non-PG/non-SQLite stores translate where dialects diverge.
+The DDL in `specs/db-schema/0001_init.sql` is Postgres dialect with SQLite variants commented inline; the MySQL dialect translation ships as `MYSQL_MIGRATIONS` in `@postel/storage-helpers`. Adapters for other stores translate where dialects diverge.
 
 ## Why operation-shaped (not CRUD)
 
