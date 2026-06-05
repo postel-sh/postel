@@ -31,7 +31,7 @@ No second connection, no dual-write race: if the order rolls back, so does the w
 
 ## Capabilities
 
-Each adapter declares a `capabilities` object. The one that affects behavior most is `notify`: Postgres adapters use `LISTEN`/`NOTIFY` to wake idle workers the instant a message is enqueued; adapters without it (SQLite) fall back to polling the outbox at a short interval. Both deliver the same messages — `notify` only changes dispatch latency.
+Each adapter declares a `capabilities` object. The one that affects behavior most is `notify`: Postgres adapters use `LISTEN`/`NOTIFY` to wake idle workers the instant a message is enqueued; adapters without it (SQLite, MySQL) fall back to polling the outbox at a short interval. Both deliver the same messages — `notify` only changes dispatch latency.
 
 ## Worker leases
 
@@ -43,8 +43,22 @@ Three integration shapes, all implementing the same `Storage` interface:
 
 | Category | Packages | Postel owns the connection? | Use when |
 |---|---|---|---|
-| **Standalone** | [`@postel/sqlite`](/docs/storage/sqlite), `@postel/pg` | Yes | You don't have a DB layer yet, or want the simplest drop-in |
-| **Query-builder / ORM** | `@postel/kysely`, `@postel/drizzle`, `@postel/prisma` | No — you hand Postel your `db` | You already run Kysely / Drizzle / Prisma and want outbox writes in your transactions |
-| **Bring your own** | [custom adapter](/docs/storage/custom-adapters) | Your call | Any other backend (libSQL, D1, CockroachDB, …) |
+| **Standalone** | [`@postel/sqlite`](/docs/storage/sqlite), [`@postel/pg`](/docs/storage/pg), [`@postel/mysql`](/docs/storage/mysql) | Yes | You don't have a DB layer yet, or want the simplest drop-in |
+| **Query-builder / ORM** | [`@postel/kysely`](/docs/storage/kysely), [`@postel/drizzle`](/docs/storage/drizzle), [`@postel/prisma`](/docs/storage/prisma), [`@postel/typeorm`](/docs/storage/typeorm), [`@postel/mikro-orm`](/docs/storage/mikro-orm) | No — you hand Postel your `db` | You already run Kysely / Drizzle / Prisma / TypeORM / MikroORM and want outbox writes in your transactions |
+| **Bring your own** | [custom adapter](/docs/storage/custom-adapters) | Your call | A backend with no compatible SQL dialect (MSSQL, Oracle, a KV store, …) |
+
+## Dialects and compatible databases
+
+The query-builder / ORM adapters take a `dialect` — `"postgres"`, `"mysql"`, or `"sqlite"`. It selects a **SQL dialect family** (the column codec, migrations, reservation strategy, and capability flags) rather than a specific product: Postel runs raw, operation-shaped SQL through your `db` (the outbox primitives — `FOR UPDATE SKIP LOCKED` reservation, streaming queries, conditional-upsert dedup — don't decompose into portable query-builder calls), so it owns the dialect instead of delegating to the ORM.
+
+That means any engine wire-compatible with one of the three families works by passing the matching dialect:
+
+| `dialect` | Also works with |
+|---|---|
+| `"postgres"` | Aurora Postgres, Yugabyte, … |
+| `"mysql"` | MariaDB, PlanetScale / Vitess, TiDB, Aurora MySQL, … |
+| `"sqlite"` | libSQL, Turso, Cloudflare D1, … |
+
+Engines that diverge from all three — MSSQL, Oracle, or CockroachDB (no `LISTEN`/`NOTIFY`, different `SKIP LOCKED` semantics) — aren't covered by a first-party dialect yet; reach them with a [custom `Storage` adapter](/docs/storage/custom-adapters). (Broadening the dialect set — and an extensible "bring your own dialect" option — is on the roadmap.)
 
 The full canonical schema is documented in [Schema & migrations](/docs/storage/schema).

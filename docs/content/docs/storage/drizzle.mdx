@@ -1,7 +1,7 @@
 ---
 title: Drizzle
 icon: drizzle
-description: "@postel/drizzle — run Postel's storage through your existing Drizzle instance (Postgres or SQLite)."
+description: "@postel/drizzle — run Postel's storage through your existing Drizzle instance (Postgres, MySQL, or SQLite)."
 ---
 
 `@postel/drizzle` is an **ORM** adapter: hand Postel the Drizzle `db` you already use and it issues its storage queries through it, so outbox writes share your connection and transactions.
@@ -26,11 +26,11 @@ export const postel = Postel({
 | Option | Notes |
 |---|---|
 | `db` | The Drizzle database you already built — any driver (`drizzle-orm/node-postgres`, `drizzle-orm/better-sqlite3`, …). Postel issues its queries through it. |
-| `dialect` | `"postgres"` or `"sqlite"` — selects `FOR UPDATE SKIP LOCKED` vs ordered reservation, the capability flags, and the column codecs. |
+| `dialect` | `"postgres"`, `"mysql"`, or `"sqlite"` — selects the reservation strategy (`FOR UPDATE SKIP LOCKED` on Postgres/MySQL, ordered on SQLite), the capability flags, and the column codecs. |
 | `autoMigrate` | Run migrations on first use (default `true`). |
 | `clock` | Inject a clock for deterministic time in tests. |
 
-`drizzle-orm` is a peer dependency. Postel runs through Drizzle's `sql` tag, so no Postel-specific table definitions are required in your schema.
+`drizzle-orm` is a peer dependency. Postel runs through Drizzle's `sql` tag, so no Postel-specific table definitions are required in your schema. The `dialect` names a SQL *family*, so wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …) work via the matching dialect — see [compatible databases](/docs/storage#dialects-and-compatible-databases).
 
 ## Shared transactions
 

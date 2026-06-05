@@ -1,0 +1,54 @@
+---
+title: MySQL
+icon: database
+description: "@postel/mysql — a standalone MySQL storage adapter built on mysql2, with SKIP LOCKED reservation and polling dispatch."
+---
+
+`@postel/mysql` is a **standalone** adapter for MySQL: hand it a connection string and Postel owns the pool, or hand it a `mysql2` pool you already manage. Requires **MySQL ≥ 8.0.1** (for `FOR UPDATE SKIP LOCKED`); MariaDB ≥ 10.6 also works through the same `mysql2` driver.
+
+```bash
+pnpm add @postel/mysql mysql2
+# or: npm i @postel/mysql mysql2
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { MysqlStorage } from "@postel/mysql";
+
+export const postel = Postel({
+  outbound: { storage: MysqlStorage({ connectionString: process.env.DATABASE_URL }) },
+});
+```
+
+## Options
+
+| Option | Notes |
+|---|---|
+| `connectionString` | Postel opens and owns a `mysql2` pool for this URL. |
+| `pool` | An existing `mysql2` pool to reuse instead — pass this to share a connection (and transactions) with your app. |
+| `autoMigrate` | Run migrations on first use (default `true`). |
+| `clock` | Inject a clock for deterministic time in tests. |
+
+Pass exactly one of `connectionString` or `pool`. `mysql2` is a peer dependency you install alongside.
+
+## SKIP LOCKED reservation
+
+Workers reserve outbox rows under `FOR UPDATE SKIP LOCKED`. MySQL has no `RETURNING`, so reservation runs as a select-then-update inside one transaction: lock a batch of due rows, stamp the lease, then read them back. Concurrent workers each grab a disjoint batch without blocking — so you can scale delivery across many worker processes against one database.
+
+The reservation runs at **`READ COMMITTED`** (the adapter issues `SET TRANSACTION ISOLATION LEVEL READ COMMITTED` before each reservation). MySQL's default `REPEATABLE READ` gap-locks the range a `SKIP LOCKED` scan touches, which makes concurrent workers under-reserve; `READ COMMITTED` takes only record locks. For multi-worker MySQL deployments, configuring `READ COMMITTED` as the server or session default is recommended.
+
+## Polling dispatch
+
+MySQL has no `LISTEN`/`NOTIFY`, so the adapter declares `capabilities.notify = false` and the worker scheduler polls the outbox at its configured interval. Delivery is identical to Postgres — only dispatch latency differs.
+
+## Schema
+
+Timestamps are stored as `BIGINT` epoch-milliseconds (timezone-independent — it round-trips identically regardless of the connection's `timezone` setting), JSON as `JSON` columns, and ids/keys as `VARCHAR(191)`. This is one canonical MySQL schema, shared with the [Drizzle](/docs/storage/drizzle) / [Kysely](/docs/storage/kysely) / [Prisma](/docs/storage/prisma) / [TypeORM](/docs/storage/typeorm) / [MikroORM](/docs/storage/mikro-orm) adapters' MySQL dialect — so you can switch adapters on the same database.
+
+## Transactions compose with yours
+
+Open a transaction on a `mysql2` connection and pass it to `send()` so the outbox insert commits atomically with your business writes. See the [Storage overview](/docs/storage#the-outbox-and-why-it-composes-with-your-transaction).
+
+## Receiver-side dedup
+
+The package also exports `MysqlDedup` (and `ensureMysqlDedupTable`) for the inbound idempotency-dedup helper, independent of the outbound storage.

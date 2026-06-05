@@ -1,7 +1,7 @@
 ---
 title: Prisma
 icon: prisma
-description: "@postel/prisma — run Postel's storage through your existing PrismaClient (Postgres or SQLite)."
+description: "@postel/prisma — run Postel's storage through your existing PrismaClient (Postgres, MySQL, or SQLite)."
 ---
 
 `@postel/prisma` is an **ORM** adapter: hand Postel your `PrismaClient` and it runs its storage through Prisma's raw query surface, sharing your connection and transactions.
@@ -26,11 +26,11 @@ export const postel = Postel({
 | Option | Notes |
 |---|---|
 | `prisma` | Your `PrismaClient` instance. |
-| `dialect` | `"postgres"` or `"sqlite"` — selects `FOR UPDATE SKIP LOCKED` vs ordered reservation, the capability flags, and the column codecs. |
+| `dialect` | `"postgres"`, `"mysql"`, or `"sqlite"` — selects the reservation strategy (`FOR UPDATE SKIP LOCKED` on Postgres/MySQL, ordered on SQLite), the capability flags, and the column codecs. |
 | `autoMigrate` | Run migrations on first use (default `true`). |
 | `clock` | Inject a clock for deterministic time in tests. |
 
-At runtime Postel calls Prisma only through its raw query surface (`$queryRawUnsafe` / `$executeRawUnsafe` / `$transaction`), so you add **no Postel models to your `schema.prisma`** — it works against any generated `PrismaClient`. `@prisma/client` is a peer dependency; the adapter imports only its type.
+At runtime Postel calls Prisma only through its raw query surface (`$queryRawUnsafe` / `$executeRawUnsafe` / `$transaction`), so you add **no Postel models to your `schema.prisma`** — it works against any generated `PrismaClient`. `@prisma/client` is a peer dependency; the adapter imports only its type. The `dialect` names a SQL *family*, so wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …) work via the matching dialect — see [compatible databases](/docs/storage#dialects-and-compatible-databases).
 
 ## Shared transactions
 

@@ -33,7 +33,7 @@ The library has a narrow scope on purpose.
 | Property | Postel today | Postel v1.0 plan |
 |---|---|---|
 | Runtime | Node, Bun, Deno | Same + Go, Python, Rust (each at its own cadence) |
-| Database | Postgres, SQLite (via standalone adapters) | Postgres, MySQL, SQLite, … — anything the Drizzle / Kysely / Prisma ORM adapters reach, on top of the same `Storage` interface |
+| Database | Postgres, SQLite, MySQL (via standalone adapters) | The Postgres / MySQL / SQLite families — including wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …) through the standalone or ORM adapters — plus any other backend via a custom `Storage` adapter |
 | Broker / queue | **None required.** Uses your existing DB transaction. | Same. Will stay broker-free forever ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). |
 | Framework adapters | Hono (others: factory pattern works directly) | Express, Fastify, Next.js, Bun, Deno, SvelteKit, Astro, Nitro |
 | Hosting model | Embedded in your app | Same. Never a hosted service. |
@@ -45,7 +45,7 @@ If you need Redis-backed queues, a separate dispatcher service, multi-region rep
 Answer YES or NO to each. Mostly YES → Postel is a strong fit.
 
 1. My app is on Node, Bun, or Deno (and I can wait for Go/Python/Rust ports). **YES / NO**
-2. My data store is a relational database — Postgres, MySQL, SQLite, or anything else the Drizzle / Kysely / Prisma adapters reach. **YES / NO**
+2. My data store is in the Postgres, MySQL, or SQLite family — including a wire-compatible engine like MariaDB, PlanetScale, or libSQL/Turso — or I'll implement the `Storage` interface for another backend. **YES / NO**
 3. I want webhooks to be a *feature* of my product, not the product itself. **YES / NO**
 4. I want the receiver and (eventually) the sender to share the same transaction as my business writes. **YES / NO**
 5. I'm fine with both halves running against the in-process `InMemoryStorage` adapter today, with database-backed storage adapters still planned. **YES / NO**

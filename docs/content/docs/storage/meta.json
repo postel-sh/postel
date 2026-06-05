@@ -8,9 +8,12 @@
     "---Adapters---",
     "pg",
     "sqlite",
+    "mysql",
     "kysely",
     "drizzle",
     "prisma",
+    "typeorm",
+    "mikro-orm",
     "---Reference---",
     "schema",
     "custom-adapters"

@@ -5,7 +5,7 @@ description: Send Standard Webhooks to your customers' endpoints. Transactional 
 
 import { BoxIcon, RepeatIcon, HistoryIcon, LinkIcon } from "@/components/icons";
 
-> **Status: available.** The outbound runtime is implemented and runs against the in-process `InMemoryStorage` adapter today. Database-backed storage adapters (Postgres, SQLite, …) are planned — until then, bring the in-memory adapter for single-process deployments and tests, or implement the `Storage` interface against your own database.
+> **Status: available.** The outbound runtime is implemented and runs against the in-process `InMemoryStorage` adapter or any database-backed `Storage` adapter — standalone [`@postel/pg`](/docs/storage/pg) / [`@postel/sqlite`](/docs/storage/sqlite) / [`@postel/mysql`](/docs/storage/mysql), or the Drizzle / Kysely / Prisma / TypeORM / MikroORM adapters over the ORM you already run. See [Storage](/docs/storage).
 
 The outbound half of Postel delivers Standard Webhooks to your customers' HTTP endpoints. It's the half you reach for when *your* product emits webhooks — order.created, deployment.finished, message.posted — and someone else's app is the receiver.
 
@@ -34,7 +34,7 @@ If you're verifying webhooks that other services send to you — that's the [inb
 | **Signing** | ✅ | HMAC (`HmacV1()`) or Ed25519 (`Ed25519V1a()`). Asymmetric signing pairs with JWKS publication so receivers verify without a shared secret. |
 | **Key management** | ✅ | Symmetric (`generateSymmetric`) and asymmetric (`generateAsymmetric`) generation; `rotateSecret` preserves the endpoint's algorithm. Current public keys are retrievable via `keys.publicJwks()` and served through each adapter's [`.jwks()`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side) mount. |
 | **Admin API** | ✅ | [`@postel/admin`](/docs/outbound/admin) — a default-deny HTTP control plane over the outbound API: endpoint CRUD, replay, reconcile, tenants, and key generation. |
-| **Storage** | ✅ in-memory · ⏳ DB | `InMemoryStorage()` ships now; Postgres / SQLite / ORM adapters land later, or implement the `Storage` interface against your own database. |
+| **Storage** | ✅ | `InMemoryStorage()` for single-process/tests, plus database-backed adapters — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql` and the Drizzle / Kysely / Prisma / TypeORM / MikroORM ORM adapters — or implement the `Storage` interface against your own database. |
 | **Multi-tenancy** | ✅ scoping · ⏳ limits | Tenant-scoped fanout and persistence ship; per-tenant rate-limit *enforcement* and fair-scheduling land later (the config persists today). |
 | **Worker strategies** | ✅ in-process · ⏳ queues | The in-process worker pool ships and is the default; `BullMQ` / `PgBoss` / `External` are config slots that throw `NotImplementedError` until their adapters ship. |
 | **KMS integration** | ⏳ later | `PlaintextKms` only today; AWS KMS / GCP KMS / Vault adapters land later. |
@@ -75,10 +75,9 @@ The outbound runtime is implemented and exercised end-to-end by the `@postel/com
 - The sender-side capability specs (sender, retry-policy, replay-reconciliation, endpoint-management, key-management, filtering-transformation) and their TypeScript runtime.
 - The `@postel/compliance` suite driving the sender behaviors against the running runtime.
 - The in-process `InMemoryStorage` adapter — production-shaped for single-process deployments and the natural choice for tests.
+- The full database-backed [storage-adapter matrix](/docs/storage) — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql`, and the Drizzle / Kysely / Prisma / TypeORM / MikroORM ORM adapters — plus a custom-adapter path for any other database.
 
 Still ahead, in a later release:
-
-- The full storage-adapter matrix (`drizzle`, `kysely`, `prisma`, plus standalone Postgres / SQLite clients). Until those land, point `storage` at `InMemoryStorage()` or implement the `Storage` interface against your own database.
 - The external job-queue worker adapters (BullMQ, PgBoss) — the config slots exist but throw `NotImplementedError` today; the in-process worker pool is the supported runtime.
 
 ## Where to read next
