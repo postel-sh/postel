@@ -22,6 +22,9 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  MYSQL_CAPABILITIES,
+  MYSQL_CODEC,
+  MYSQL_MIGRATIONS,
   PG_CAPABILITIES,
   PG_MIGRATIONS,
   SQLITE_CAPABILITIES,
@@ -40,7 +43,7 @@ import {
 } from "@postel/storage-helpers";
 import { type Kysely, type Transaction, sql } from "kysely";
 
-export type KyselyDialect = "postgres" | "sqlite";
+export type KyselyDialect = "postgres" | "mysql" | "sqlite";
 
 export interface KyselyStorageOptions<DB> {
   // The host's Kysely instance — Postel issues its queries through it (and its
@@ -65,12 +68,31 @@ function statements(migrationSql: string): string[] {
 export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Transaction<DB>> {
   const { db, dialect } = options;
   const isPg = dialect === "postgres";
-  const codec = isPg ? PG_CODEC : SQLITE_CODEC;
-  // Null-safe equality: Postgres uses IS NOT DISTINCT FROM; SQLite uses IS.
-  const distinctOp = isPg ? sql.raw("is not distinct from") : sql.raw("is");
+  const isMysql = dialect === "mysql";
+  // MySQL: order by the indexed created_at (the (status, created_at) index) so the
+  // FOR UPDATE SKIP LOCKED scan streams instead of filesorting — a FOR UPDATE
+  // filesort locks every examined row, starving concurrent workers.
+  const reserveOrder = sql.raw(
+    isMysql ? "created_at, id" : "coalesce(scheduled_for, created_at), id",
+  );
+  const codec = isPg ? PG_CODEC : isMysql ? MYSQL_CODEC : SQLITE_CODEC;
+  // Null-safe equality: Postgres uses IS NOT DISTINCT FROM; MySQL uses <=>;
+  // SQLite uses IS.
+  const distinctOp = sql.raw(isPg ? "is not distinct from" : isMysql ? "<=>" : "is");
   const clock: Clock = options.clock ?? { now: () => new Date(), sleep: async () => {} };
   const registry = createCallbackRegistry();
   let migrated = false;
+
+  // Transactions inherit the connection/session isolation. On MySQL the
+  // recommended READ COMMITTED (for FOR UPDATE SKIP LOCKED — REPEATABLE READ
+  // gap-locks the scanned range and under-reserves) is set at the server/session
+  // level, not per-transaction: kysely's setIsolationLevel issues an extra SET
+  // per transaction that, with mysql2, leaked pool connections and made the
+  // tier crawl. The reservation's indexed ORDER BY (no filesort) does the heavy
+  // lifting; see the MySQL docs page for the isolation recommendation.
+  function beginTx() {
+    return db.transaction();
+  }
 
   // SQLite (better-sqlite3) binds only numbers/strings/Buffers; Postgres binds
   // Date/boolean natively. Normalize the dialect-agnostic helper rows.
@@ -82,7 +104,8 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
   }
 
   function tsParam(date: Date): unknown {
-    return isPg ? date : date.toISOString();
+    // MySQL stores epoch-ms BIGINT; SQLite ISO-8601 text; Postgres native Date.
+    return isPg ? date : isMysql ? date.getTime() : date.toISOString();
   }
 
   function insert(exec: Exec<DB>, table: string, row: Record<string, unknown>): Promise<unknown> {
@@ -97,19 +120,21 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
     try {
       const res = await sql<{
         value: string;
-      }>`select value from _postel_meta where key = 'schema_version'`.execute(db);
+      }>`select value from _postel_meta where ${sql.ref("key")} = 'schema_version'`.execute(db);
       if (res.rows[0]?.value !== undefined) current = Number(res.rows[0].value);
     } catch {
       current = 0;
     }
-    for (const m of isPg ? PG_MIGRATIONS : SQLITE_MIGRATIONS) {
+    for (const m of isPg ? PG_MIGRATIONS : isMysql ? MYSQL_MIGRATIONS : SQLITE_MIGRATIONS) {
       if (m.version <= current) continue;
       for (const stmt of statements(m.sql)) await sql.raw(stmt).execute(db);
     }
-    await sql`create table if not exists postel_received_messages (
-      message_id text primary key,
-      expires_at ${sql.raw(isPg ? "timestamptz" : "text")} not null
-    )`.execute(db);
+    const dedupDdl = isPg
+      ? "create table if not exists postel_received_messages (message_id text primary key, expires_at timestamptz not null)"
+      : isMysql
+        ? "create table if not exists postel_received_messages (message_id varchar(191) primary key, expires_at bigint not null)"
+        : "create table if not exists postel_received_messages (message_id text primary key, expires_at text not null)";
+    await sql.raw(dedupDdl).execute(db);
     migrated = true;
   }
 
@@ -127,7 +152,7 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
     fn: (q: Exec<DB>) => Promise<R>,
   ): Promise<R> {
     if (tx) return fn(tx);
-    return db.transaction().execute((trx) => fn(trx));
+    return beginTx().execute((trx) => fn(trx));
   }
 
   async function loadEndpointRecord(
@@ -151,13 +176,13 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
   ]);
 
   return {
-    capabilities: isPg ? PG_CAPABILITIES : SQLITE_CAPABILITIES,
+    capabilities: isPg ? PG_CAPABILITIES : isMysql ? MYSQL_CAPABILITIES : SQLITE_CAPABILITIES,
 
     async schemaVersion() {
       await ready();
       const res = await sql<{
         value: string;
-      }>`select value from _postel_meta where key = 'schema_version'`.execute(db);
+      }>`select value from _postel_meta where ${sql.ref("key")} = 'schema_version'`.execute(db);
       return res.rows[0]?.value === undefined ? 0 : Number(res.rows[0].value);
     },
 
@@ -192,6 +217,27 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
       const lease = tsParam(new Date(opts.now.getTime() + opts.leaseMs));
       const tenantCond =
         opts.tenantId !== undefined ? sql`and tenant_id = ${opts.tenantId}` : sql``;
+      // MySQL has no RETURNING: lock the due rows (FOR UPDATE SKIP LOCKED), stamp
+      // them, then read them back — all inside one transaction so the lock holds.
+      if (isMysql) {
+        return beginTx().execute(async (trx) => {
+          const selected = await sql<{ id: string }>`select id from messages
+            where status = 'pending' and reserved_by is null
+              ${tenantCond}
+              and (scheduled_for is null or scheduled_for <= ${now})
+            order by ${reserveOrder}
+            limit ${opts.batchSize}
+            for update skip locked`.execute(trx);
+          if (selected.rows.length === 0) return [];
+          const idList = sql.join(selected.rows.map((r) => sql`${r.id}`));
+          await sql`update messages set reserved_by = ${opts.workerId}, reserved_at = ${now},
+            lease_expires_at = ${lease}, attempt_number = attempt_number + 1
+            where id in (${idList})`.execute(trx);
+          const reserved = await sql<Record<string, unknown>>`select * from messages
+            where id in (${idList}) order by ${reserveOrder}`.execute(trx);
+          return reserved.rows.map((row) => decodeReservedMessage(row, codec));
+        });
+      }
       const lock = isPg ? sql`for update skip locked` : sql``;
       const res = await sql<Record<string, unknown>>`update messages
         set reserved_by = ${opts.workerId}, reserved_at = ${now}, lease_expires_at = ${lease},
@@ -201,7 +247,7 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
           where status = 'pending' and reserved_by is null
             ${tenantCond}
             and (scheduled_for is null or scheduled_for <= ${now})
-          order by coalesce(scheduled_for, created_at), id
+          order by ${reserveOrder}
           ${lock}
           limit ${opts.batchSize}
         )
@@ -567,6 +613,17 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
       const q = exec(opts);
       const nowMs = clock.now();
       const expires = tsParam(new Date(clock.now().getTime() + opts.ttlSeconds * 1000));
+      // INSERT IGNORE has a clean numAffectedRows (1 inserted / 0 duplicate);
+      // MySQL's ON DUPLICATE KEY UPDATE can't distinguish a no-op refresh from a
+      // live duplicate.
+      if (isMysql) {
+        const ins = await sql`insert ignore into postel_received_messages (message_id, expires_at)
+          values (${messageId}, ${expires})`.execute(q);
+        if ((ins.numAffectedRows ?? 0n) > 0n) return { duplicate: false };
+        const upd = await sql`update postel_received_messages set expires_at = ${expires}
+          where message_id = ${messageId} and expires_at <= ${tsParam(nowMs)}`.execute(q);
+        return { duplicate: (upd.numAffectedRows ?? 0n) === 0n };
+      }
       const res = await sql`insert into postel_received_messages (message_id, expires_at)
         values (${messageId}, ${expires})
         on conflict (message_id) do update set expires_at = ${expires}
@@ -576,7 +633,7 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
 
     async transaction<R>(cb: (tx: Transaction<DB>) => Promise<R>): Promise<R> {
       await ready();
-      return db.transaction().execute((trx) => cb(trx));
+      return beginTx().execute((trx) => cb(trx));
     },
 
     async notify(channel, payload) {

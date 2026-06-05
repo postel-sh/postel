@@ -22,6 +22,9 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  MYSQL_CAPABILITIES,
+  MYSQL_CODEC,
+  MYSQL_MIGRATIONS,
   PG_CAPABILITIES,
   PG_MIGRATIONS,
   SQLITE_CAPABILITIES,
@@ -39,10 +42,11 @@ import {
   encodeSecretInsert,
 } from "@postel/storage-helpers";
 import { type SQL, sql } from "drizzle-orm";
+import type { MySqlDatabase } from "drizzle-orm/mysql-core";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 
-export type DrizzleDialect = "postgres" | "sqlite";
+export type DrizzleDialect = "postgres" | "mysql" | "sqlite";
 
 /**
  * A real Drizzle database instance. Every driver's `db` extends one of Drizzle's
@@ -50,17 +54,26 @@ export type DrizzleDialect = "postgres" | "sqlite";
  * …) or `PgDatabase` (node-postgres, postgres-js, …) — so you hand Postel the
  * `db` you already built, with no Postel-specific wrapper type.
  */
-// biome-ignore lint/suspicious/noExplicitAny: mirrors Drizzle's own base-class generics
-export type DrizzleDatabase = BaseSQLiteDatabase<any, any> | PgDatabase<any, any, any>;
+export type DrizzleDatabase =
+  // biome-ignore lint/suspicious/noExplicitAny: mirrors Drizzle's own base-class generics
+  | BaseSQLiteDatabase<any, any>
+  // biome-ignore lint/suspicious/noExplicitAny: mirrors Drizzle's own base-class generics
+  | PgDatabase<any, any, any>
+  // biome-ignore lint/suspicious/noExplicitAny: mirrors Drizzle's own base-class generics
+  | MySqlDatabase<any, any>;
 
 // The structural slice the adapter calls internally, and the handle it threads
-// through `HostTxOption`. A Postgres db exposes async `execute`; a SQLite db
+// through `HostTxOption`. A Postgres db's `execute` resolves to `{ rows, rowCount }`;
+// a MySQL db's `execute` resolves to a `[rows, ResultSetHeader]` tuple; a SQLite db
 // exposes sync `all` / `run`.
 export interface DrizzleDb {
-  execute?(query: SQL): Promise<{ rows: unknown[]; rowCount?: number | null }>;
+  execute?(query: SQL): Promise<{ rows: unknown[]; rowCount?: number | null } | [unknown, unknown]>;
   all?(query: SQL): unknown[];
   run?(query: SQL): { changes?: number | bigint };
-  transaction?<R>(cb: (tx: DrizzleDb) => Promise<R>): Promise<R>;
+  transaction?<R>(
+    cb: (tx: DrizzleDb) => Promise<R>,
+    config?: { isolationLevel?: string },
+  ): Promise<R>;
 }
 
 export interface DrizzleStorageOptions {
@@ -83,8 +96,16 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
   const db = options.db as unknown as DrizzleDb;
   const { dialect } = options;
   const isPg = dialect === "postgres";
-  const codec = isPg ? PG_CODEC : SQLITE_CODEC;
-  const distinctOp = isPg ? sql.raw("is not distinct from") : sql.raw("is");
+  const isMysql = dialect === "mysql";
+  // MySQL: order by the indexed created_at (the (status, created_at) index) so the
+  // FOR UPDATE SKIP LOCKED scan streams instead of filesorting — a FOR UPDATE
+  // filesort locks every examined row, starving concurrent workers.
+  const reserveOrder = sql.raw(
+    isMysql ? "created_at, id" : "coalesce(scheduled_for, created_at), id",
+  );
+  const codec = isPg ? PG_CODEC : isMysql ? MYSQL_CODEC : SQLITE_CODEC;
+  // Null-safe equality: Postgres IS NOT DISTINCT FROM; MySQL <=>; SQLite IS.
+  const distinctOp = sql.raw(isPg ? "is not distinct from" : isMysql ? "<=>" : "is");
   const clock: Clock = options.clock ?? { now: () => new Date(), sleep: async () => {} };
   const registry = createCallbackRegistry();
   let migrated = false;
@@ -97,16 +118,29 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
   }
 
   function tsParam(date: Date): unknown {
-    return isPg ? date : date.toISOString();
+    // MySQL stores epoch-ms BIGINT; SQLite ISO-8601 text; Postgres native Date.
+    return isPg ? date : isMysql ? date.getTime() : date.toISOString();
   }
 
   async function rows<R>(on: DrizzleDb, query: SQL): Promise<R[]> {
-    if (isPg) return (await on.execute?.(query))?.rows as R[];
+    // MySQL's execute resolves to a [rows, header] tuple; Postgres to { rows }.
+    if (isMysql) {
+      const res = (await on.execute?.(query)) as [R[], unknown] | undefined;
+      return (res?.[0] ?? []) as R[];
+    }
+    if (isPg) return ((await on.execute?.(query)) as { rows: unknown[] } | undefined)?.rows as R[];
     return (on.all?.(query) ?? []) as R[];
   }
 
   async function run(on: DrizzleDb, query: SQL): Promise<number> {
-    if (isPg) return Number((await on.execute?.(query))?.rowCount ?? 0);
+    if (isMysql) {
+      const res = (await on.execute?.(query)) as [{ affectedRows?: number }, unknown] | undefined;
+      return Number(res?.[0]?.affectedRows ?? 0);
+    }
+    if (isPg) {
+      const res = (await on.execute?.(query)) as { rowCount?: number | null } | undefined;
+      return Number(res?.rowCount ?? 0);
+    }
     return Number(on.run?.(query)?.changes ?? 0);
   }
 
@@ -128,24 +162,22 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
     try {
       const res = await rows<{ value: string }>(
         db,
-        sql`select value from _postel_meta where key = 'schema_version'`,
+        sql`select value from _postel_meta where ${sql.identifier("key")} = 'schema_version'`,
       );
       if (res[0]?.value !== undefined) current = Number(res[0].value);
     } catch {
       current = 0;
     }
-    for (const m of isPg ? PG_MIGRATIONS : SQLITE_MIGRATIONS) {
+    for (const m of isPg ? PG_MIGRATIONS : isMysql ? MYSQL_MIGRATIONS : SQLITE_MIGRATIONS) {
       if (m.version <= current) continue;
       for (const stmt of statements(m.sql)) await run(db, sql.raw(stmt));
     }
-    await run(
-      db,
-      sql.raw(
-        `create table if not exists postel_received_messages (message_id text primary key, expires_at ${
-          isPg ? "timestamptz" : "text"
-        } not null)`,
-      ),
-    );
+    const dedupDdl = isPg
+      ? "create table if not exists postel_received_messages (message_id text primary key, expires_at timestamptz not null)"
+      : isMysql
+        ? "create table if not exists postel_received_messages (message_id varchar(191) primary key, expires_at bigint not null)"
+        : "create table if not exists postel_received_messages (message_id text primary key, expires_at text not null)";
+    await run(db, sql.raw(dedupDdl));
     migrated = true;
   }
 
@@ -163,7 +195,14 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
     fn: (q: DrizzleDb) => Promise<R>,
   ): Promise<R> {
     if (tx) return fn(tx);
-    if (isPg && db.transaction) return db.transaction((trx) => fn(trx));
+    if ((isPg || isMysql) && db.transaction) {
+      // READ COMMITTED on MySQL: the default REPEATABLE READ gap-locks the range
+      // a FOR UPDATE SKIP LOCKED scan touches, which makes concurrent workers
+      // under-reserve. READ COMMITTED takes only record locks.
+      return isMysql
+        ? db.transaction((trx) => fn(trx), { isolationLevel: "read committed" })
+        : db.transaction((trx) => fn(trx));
+    }
     // SQLite: drive BEGIN/COMMIT manually so an async callback is supported
     // (better-sqlite3's own transaction() requires a sync callback).
     await run(db, sql.raw("begin"));
@@ -199,13 +238,13 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
   ]);
 
   return {
-    capabilities: isPg ? PG_CAPABILITIES : SQLITE_CAPABILITIES,
+    capabilities: isPg ? PG_CAPABILITIES : isMysql ? MYSQL_CAPABILITIES : SQLITE_CAPABILITIES,
 
     async schemaVersion() {
       await ready();
       const res = await rows<{ value: string }>(
         db,
-        sql`select value from _postel_meta where key = 'schema_version'`,
+        sql`select value from _postel_meta where ${sql.identifier("key")} = 'schema_version'`,
       );
       return res[0]?.value === undefined ? 0 : Number(res[0].value);
     },
@@ -243,6 +282,38 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
       const lease = tsParam(new Date(opts.now.getTime() + opts.leaseMs));
       const tenantCond =
         opts.tenantId !== undefined ? sql`and tenant_id = ${opts.tenantId}` : sql``;
+      // MySQL has no RETURNING: lock due rows (FOR UPDATE SKIP LOCKED), stamp them,
+      // read them back — one transaction so the lock holds.
+      if (isMysql) {
+        return atomic(undefined, async (trx) => {
+          const selected = await rows<{ id: string }>(
+            trx,
+            sql`select id from messages
+              where status = 'pending' and reserved_by is null
+                ${tenantCond}
+                and (scheduled_for is null or scheduled_for <= ${now})
+              order by ${reserveOrder}
+              limit ${opts.batchSize}
+              for update skip locked`,
+          );
+          if (selected.length === 0) return [];
+          const idList = sql.join(
+            selected.map((r) => sql`${r.id}`),
+            sql`, `,
+          );
+          await run(
+            trx,
+            sql`update messages set reserved_by = ${opts.workerId}, reserved_at = ${now},
+              lease_expires_at = ${lease}, attempt_number = attempt_number + 1
+              where id in (${idList})`,
+          );
+          const reservedRows = await rows<Record<string, unknown>>(
+            trx,
+            sql`select * from messages where id in (${idList}) order by ${reserveOrder}`,
+          );
+          return reservedRows.map((row) => decodeReservedMessage(row, codec));
+        });
+      }
       const lock = isPg ? sql`for update skip locked` : sql``;
       const reserved = await rows<Record<string, unknown>>(
         db,
@@ -254,7 +325,7 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
             where status = 'pending' and reserved_by is null
               ${tenantCond}
               and (scheduled_for is null or scheduled_for <= ${now})
-            order by coalesce(scheduled_for, created_at), id
+            order by ${reserveOrder}
             ${lock}
             limit ${opts.batchSize}
           )
@@ -658,6 +729,22 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
       const q = exec(opts);
       const nowMs = clock.now();
       const expires = tsParam(new Date(clock.now().getTime() + opts.ttlSeconds * 1000));
+      // INSERT IGNORE has a clean affectedRows (1 inserted / 0 duplicate); MySQL's
+      // ON DUPLICATE KEY UPDATE can't distinguish a no-op refresh from a live dup.
+      if (isMysql) {
+        const inserted = await run(
+          q,
+          sql`insert ignore into postel_received_messages (message_id, expires_at)
+            values (${messageId}, ${expires})`,
+        );
+        if (inserted > 0) return { duplicate: false };
+        const refreshed = await run(
+          q,
+          sql`update postel_received_messages set expires_at = ${expires}
+            where message_id = ${messageId} and expires_at <= ${tsParam(nowMs)}`,
+        );
+        return { duplicate: refreshed === 0 };
+      }
       const changes = await run(
         q,
         sql`insert into postel_received_messages (message_id, expires_at)
