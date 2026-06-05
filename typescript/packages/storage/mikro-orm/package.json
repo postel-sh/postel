@@ -1,0 +1,58 @@
+{
+  "name": "@postel/mikro-orm",
+  "version": "0.0.0",
+  "description": "Postel storage adapter — host hands Postel a MikroORM EntityManager (Postgres, MySQL, or SQLite).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/storage/mikro-orm"
+  },
+  "homepage": "https://postel.dev",
+  "bugs": "https://github.com/postel-sh/postel/issues",
+  "keywords": ["webhooks", "standard-webhooks", "mikro-orm", "storage", "postel"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --target es2022 --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "postel": {
+    "adapter": {
+      "category": "orm"
+    }
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*",
+    "@postel/storage-helpers": "workspace:*"
+  },
+  "peerDependencies": {
+    "@mikro-orm/core": ">=6"
+  },
+  "devDependencies": {
+    "@mikro-orm/better-sqlite": "6.4.16",
+    "@mikro-orm/core": "6.4.16",
+    "@mikro-orm/mysql": "6.4.16",
+    "@postel/storage-testkit": "workspace:*",
+    "@testcontainers/mysql": "10.13.2",
+    "@types/node": "20.17.10"
+  }
+}
