@@ -52,7 +52,7 @@ Postel ships in multiple languages over time — TypeScript first, then Go, Pyth
 
 - Outbound (sender) delivery: persistence, retry, signing, key rotation, replay, dead-letter, circuit breaker, filtering, transformation
 - Inbound (receiver) verification: middleware adapters, raw-bytes preservation, idempotency dedup, JWKS consumer
-- **Storage adapter matrix**: standalone / client / ORM adapters for Postgres and SQLite (the canonical first-class databases), with host-transaction passthrough as the outbox-pattern enabler. Other relational backends (libSQL, Turso, D1, Cockroach, PlanetScale, …) connect via the same `Storage` interface contract
+- **Storage adapter matrix**: standalone / client / ORM adapters for Postgres, SQLite, and MySQL (Postgres and SQLite are the canonical benchmarked first-class databases), with host-transaction passthrough as the outbox-pattern enabler. Other relational backends (libSQL, Turso, D1, Cockroach, PlanetScale, …) connect via the same `Storage` interface contract
 - Endpoint and key management primitives (programmatic only)
 - Admin HTTP handlers (mounted on the host's router) for ops dashboards
 - TypeScript implementation across Node, Bun, and Deno (ships first)

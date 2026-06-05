@@ -14,9 +14,12 @@ The library SHALL be distributed as the following npm packages, grouped by purpo
 **Storage adapters (Tier 1 — must ship for 1.0, per [ADR 0007](../../../decisions/0007-storage-strategy.md)):**
 - `@postel/pg` — Postel owns the Postgres pool; zero-config drop-in.
 - `@postel/sqlite` — same for SQLite.
+- `@postel/mysql` — Postel owns the MySQL (`mysql2`) pool; zero-config drop-in. Also exports `MysqlDedup` for inbound dedup.
 - `@postel/drizzle` — host hands Postel a Drizzle instance (any dialect Drizzle supports — Postgres, MySQL, SQLite, …).
-- `@postel/prisma` — host hands Postel a `PrismaClient`.
-- `@postel/kysely` — host hands Postel a `Kysely<DB>`.
+- `@postel/prisma` — host hands Postel a `PrismaClient` (Postgres, MySQL, or SQLite dialect).
+- `@postel/kysely` — host hands Postel a `Kysely<DB>` (Postgres, MySQL, or SQLite dialect).
+- `@postel/typeorm` — host hands Postel a TypeORM `DataSource` (Postgres, MySQL, or SQLite dialect).
+- `@postel/mikro-orm` — host hands Postel a MikroORM `EntityManager` (Postgres, MySQL, or SQLite dialect).
 - `@postel/storage-helpers` — zero-DB-dependency helpers package every adapter (first-party or third-party) imports for timestamp normalization, retry-policy JSON serialization, idempotency-key formatting, capability flags, and message/attempt row encode/decode.
 
 (Tier 2 raw-client adapters — `@postel/node-postgres`, `@postel/postgres-js`, `@postel/better-sqlite3` — are explicitly post-1.0 demand-driven additions per ADR 0007, not in this Tier-1 package map.)
@@ -41,12 +44,12 @@ Each package MUST have a single, documented purpose declared in its `package.jso
 #### Scenario: Importing a storage adapter does not pull other adapters
 
 - **WHEN** a host installs only `@postel/drizzle`
-- **THEN** `@postel/prisma`, `@postel/kysely`, `@postel/pg`, and `@postel/sqlite` are NOT transitively installed
+- **THEN** `@postel/prisma`, `@postel/kysely`, `@postel/typeorm`, `@postel/mikro-orm`, `@postel/pg`, `@postel/sqlite`, and `@postel/mysql` are NOT transitively installed
 
 #### Scenario: storage-helpers has no DB dependency
 
 - **WHEN** a consumer installs `@postel/storage-helpers`
-- **THEN** no Postgres / SQLite / other DB client is pulled in transitively
+- **THEN** no Postgres / SQLite / MySQL / other DB client is pulled in transitively
 
 #### Scenario: compliance-driver is not pulled by core
 
