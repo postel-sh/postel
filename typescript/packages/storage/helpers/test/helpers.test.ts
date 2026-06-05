@@ -2,6 +2,8 @@ import type { EndpointRecord, NewAttempt, NewMessage } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
 import {
+  MYSQL_CAPABILITIES,
+  MYSQL_CODEC,
   PG_CAPABILITIES,
   PG_CODEC,
   POSTEL_SCHEMA_VERSION,
@@ -22,6 +24,7 @@ import {
   encodeTimestamp,
   formatIdempotencyKey,
 } from "../src/index.js";
+import { MYSQL_MIGRATIONS } from "../src/migrations.js";
 
 // Requirement: Helpers package for adapter authors
 describe("Helpers package for adapter authors", () => {
@@ -35,6 +38,11 @@ describe("Helpers package for adapter authors", () => {
     expect(SQLITE_CAPABILITIES.notify).toBe(false);
     expect(SQLITE_CAPABILITIES.subscribe).toBe(false);
     expect(SQLITE_CAPABILITIES.transactional).toBe(true);
+    // MySQL falls back to polling like SQLite but stays a real transactional server.
+    expect(MYSQL_CAPABILITIES.notify).toBe(false);
+    expect(MYSQL_CAPABILITIES.subscribe).toBe(false);
+    expect(MYSQL_CAPABILITIES.transactional).toBe(true);
+    expect(MYSQL_CAPABILITIES.streaming).toBe(true);
   });
 
   it("exposes the schema version the library targets", () => {
@@ -51,10 +59,12 @@ describe("Helpers package for adapter authors", () => {
 describe("timestamp codec", () => {
   const d = new Date("2026-05-26T10:00:00.000Z");
 
-  it("Postgres keeps native Date; SQLite serializes to ISO-8601", () => {
+  it("Postgres keeps native Date; SQLite serializes to ISO-8601; MySQL to epoch-ms", () => {
     expect(encodeTimestamp(d, PG_CODEC)).toBe(d);
     expect(encodeTimestamp(d, SQLITE_CODEC)).toBe("2026-05-26T10:00:00.000Z");
+    expect(encodeTimestamp(d, MYSQL_CODEC)).toBe(d.getTime());
     expect(encodeTimestamp(null, SQLITE_CODEC)).toBeNull();
+    expect(encodeTimestamp(null, MYSQL_CODEC)).toBeNull();
   });
 
   it("decodes Date, ISO string, and epoch-ms back to a Date", () => {
@@ -62,6 +72,14 @@ describe("timestamp codec", () => {
     expect(decodeTimestamp("2026-05-26T10:00:00.000Z", SQLITE_CODEC)?.getTime()).toBe(d.getTime());
     expect(decodeTimestamp(d.getTime(), SQLITE_CODEC)?.getTime()).toBe(d.getTime());
     expect(decodeTimestamp(null, PG_CODEC)).toBeNull();
+  });
+
+  it("decodes MySQL epoch-ms from number, numeric string, and bigint", () => {
+    // mysql2 may surface a BIGINT as any of these depending on its bigint config.
+    expect(decodeTimestamp(d.getTime(), MYSQL_CODEC)?.getTime()).toBe(d.getTime());
+    expect(decodeTimestamp(String(d.getTime()), MYSQL_CODEC)?.getTime()).toBe(d.getTime());
+    expect(decodeTimestamp(BigInt(d.getTime()), MYSQL_CODEC)?.getTime()).toBe(d.getTime());
+    expect(decodeTimestamp(null, MYSQL_CODEC)).toBeNull();
   });
 });
 
@@ -94,6 +112,7 @@ describe("message row codec", () => {
   for (const [name, codec] of [
     ["postgres", PG_CODEC],
     ["sqlite", SQLITE_CODEC],
+    ["mysql", MYSQL_CODEC],
   ] as const) {
     it(`round-trips a message through ${name} columns`, () => {
       const row = encodeMessageInsert(buildMessage(), codec);
@@ -227,5 +246,28 @@ describe("callback registry", () => {
 
     registry.delete("ep_1");
     expect(registry.get("ep_1").filter).toBeNull();
+  });
+});
+
+describe("MySQL migrations dialect", () => {
+  it("forward-only versions 1..4 ending at the target schema version", () => {
+    expect(MYSQL_MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4]);
+    expect(MYSQL_MIGRATIONS.at(-1)?.version).toBe(POSTEL_SCHEMA_VERSION);
+  });
+
+  it("translates the canonical DDL to MySQL dialect (no pg/sqlite types)", () => {
+    const init = MYSQL_MIGRATIONS[0]?.sql ?? "";
+    // Epoch-ms BIGINT timestamps, JSON columns, VARCHAR keys, backtick-quoted `key`.
+    expect(init).toContain("created_at BIGINT NOT NULL");
+    expect(init).toContain("data             JSON NOT NULL");
+    expect(init).toContain("VARCHAR(191) PRIMARY KEY");
+    expect(init).toContain("`key`");
+    expect(init).toContain("ON DUPLICATE KEY UPDATE");
+    // No Postgres / SQLite dialect leaking in.
+    expect(init).not.toContain("timestamptz");
+    expect(init).not.toContain("jsonb");
+    expect(init).not.toContain("ON CONFLICT");
+    // No partial indexes (MySQL has none).
+    expect(init).not.toContain("WHERE idempotency_key");
   });
 });

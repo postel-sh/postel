@@ -309,3 +309,157 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
 `,
   },
 ];
+
+// MySQL dialect (>= 8.0.1, for FOR UPDATE SKIP LOCKED). timestamptz -> BIGINT
+// epoch-milliseconds (timezone-independent — see MYSQL_CODEC), jsonb -> JSON,
+// bytea -> BLOB, boolean -> TINYINT(1), text PK / indexed key -> VARCHAR(191)
+// (MySQL can't index TEXT without a prefix length; 191 is utf8mb4-index-safe).
+// MySQL has neither partial indexes (the canonical `WHERE`-filtered indexes
+// become plain indexes — the app-level select-then-insert preserves the
+// null-tenant idempotency the partial unique would otherwise back) nor
+// `ADD COLUMN IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS`, so column/index
+// migrations carry no IF NOT EXISTS and rely on the version gate in each
+// adapter's migrate() to run exactly once. Indexes are declared inline in
+// CREATE TABLE for the init migration. The reserved word `key` is backtick-
+// quoted; adapters split this SQL on `;` and run each statement (mysql2 does
+// not allow multiple statements per query by default). Like the other dialects
+// the canonical FOREIGN KEY constraints are intentionally not declared.
+export const MYSQL_MIGRATIONS: ReadonlyArray<Migration> = [
+  {
+    version: 1,
+    name: "init",
+    sql: `
+CREATE TABLE IF NOT EXISTS _postel_meta (
+  \`key\` VARCHAR(191) PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenants (
+  id         VARCHAR(191) PRIMARY KEY,
+  metadata   JSON,
+  created_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS endpoints (
+  id           VARCHAR(191) PRIMARY KEY,
+  tenant_id    VARCHAR(191),
+  url          TEXT NOT NULL,
+  state        VARCHAR(191) NOT NULL DEFAULT 'active',
+  types        JSON,
+  channels     JSON,
+  retry_policy JSON,
+  headers      JSON,
+  signing      JSON,
+  metadata     JSON,
+  created_at   BIGINT NOT NULL,
+  updated_at   BIGINT NOT NULL,
+  INDEX endpoints_tenant_idx (tenant_id),
+  INDEX endpoints_state_idx (state)
+);
+
+CREATE TABLE IF NOT EXISTS endpoint_secrets (
+  id              VARCHAR(191) PRIMARY KEY,
+  endpoint_id     VARCHAR(191) NOT NULL,
+  algorithm       VARCHAR(191) NOT NULL,
+  status          VARCHAR(191) NOT NULL,
+  priority        INT NOT NULL,
+  encrypted_value BLOB NOT NULL,
+  not_after       BIGINT,
+  created_at      BIGINT NOT NULL,
+  INDEX endpoint_secrets_endpoint_idx (endpoint_id, priority)
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id               VARCHAR(191) PRIMARY KEY,
+  tenant_id        VARCHAR(191),
+  type             VARCHAR(191) NOT NULL,
+  data             JSON NOT NULL,
+  channels         JSON,
+  idempotency_key  VARCHAR(191),
+  version          VARCHAR(191),
+  ttl_seconds      INT,
+  created_at       BIGINT NOT NULL,
+  expires_at       BIGINT,
+  reserved_by      VARCHAR(191),
+  reserved_at      BIGINT,
+  lease_expires_at BIGINT,
+  status           VARCHAR(191) NOT NULL DEFAULT 'pending',
+  UNIQUE KEY messages_tenant_idem_idx (tenant_id, idempotency_key),
+  INDEX messages_pending_idx (status, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS attempts (
+  id               VARCHAR(191) PRIMARY KEY,
+  message_id       VARCHAR(191) NOT NULL,
+  endpoint_id      VARCHAR(191) NOT NULL,
+  tenant_id        VARCHAR(191),
+  attempt_number   INT NOT NULL,
+  status           VARCHAR(191) NOT NULL,
+  scheduled_for    BIGINT,
+  started_at       BIGINT,
+  completed_at     BIGINT,
+  response_code    INT,
+  response_headers JSON,
+  response_body    LONGTEXT,
+  latency_ms       INT,
+  error            TEXT,
+  replay_of        VARCHAR(191),
+  INDEX attempts_message_idx (message_id),
+  INDEX attempts_endpoint_idx (endpoint_id, scheduled_for),
+  INDEX attempts_tenant_idx (tenant_id),
+  INDEX attempts_status_idx (status)
+);
+
+CREATE TABLE IF NOT EXISTS endpoint_state_transitions (
+  id          VARCHAR(191) PRIMARY KEY,
+  endpoint_id VARCHAR(191) NOT NULL,
+  from_state  VARCHAR(191),
+  to_state    VARCHAR(191) NOT NULL,
+  reason      TEXT NOT NULL,
+  actor       VARCHAR(191),
+  metadata    JSON,
+  occurred_at BIGINT NOT NULL,
+  INDEX endpoint_state_transitions_endpoint_idx (endpoint_id, occurred_at)
+);
+
+CREATE OR REPLACE VIEW dead_letter AS SELECT a.* FROM attempts a WHERE a.status = 'dead-letter';
+
+INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '1')
+  ON DUPLICATE KEY UPDATE value = '1';
+`,
+  },
+  {
+    version: 2,
+    name: "endpoint_secret_public_key",
+    sql: `
+ALTER TABLE endpoint_secrets ADD COLUMN public_key BLOB;
+INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '2')
+  ON DUPLICATE KEY UPDATE value = '2';
+`,
+  },
+  {
+    version: 3,
+    name: "message_dispatch_columns",
+    sql: `
+ALTER TABLE messages ADD COLUMN attempt_number INT NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN scheduled_for BIGINT;
+ALTER TABLE messages ADD COLUMN replay_of VARCHAR(191);
+CREATE INDEX messages_scheduled_idx ON messages (scheduled_for);
+INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '3')
+  ON DUPLICATE KEY UPDATE value = '3';
+`,
+  },
+  {
+    version: 4,
+    name: "endpoint_config_columns",
+    sql: `
+ALTER TABLE endpoints ADD COLUMN allow_http TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE endpoints ADD COLUMN max_inflight INT;
+ALTER TABLE endpoints ADD COLUMN http JSON;
+ALTER TABLE endpoints ADD COLUMN circuit_breaker JSON;
+ALTER TABLE endpoints ADD COLUMN auto_disable JSON;
+INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '4')
+  ON DUPLICATE KEY UPDATE value = '4';
+`,
+  },
+];
