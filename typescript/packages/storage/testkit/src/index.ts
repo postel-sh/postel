@@ -26,6 +26,45 @@ export interface StorageTestContext {
   readonly clock: ConformanceClock;
 }
 
+// Spin up a throwaway MySQL 8 for the testcontainers-gated MySQL tiers shared by
+// every MySQL-targeting adapter (native + ORM dialects). Dynamically imported so
+// non-MySQL test runs never load `@testcontainers/mysql` (Docker only). The
+// returned `uri` is a `mysql://` connection string each adapter builds its own
+// client from.
+export async function startMysqlContainer(
+  image = "mysql:8.0",
+): Promise<{ uri: string; stop: () => Promise<void> }> {
+  // Prefer a shared MySQL provided by the CI job (a GitHub Actions service
+  // container) when POSTEL_MYSQL_URL is set. Spinning up a per-tier
+  // testcontainer for all five adapters on a constrained runner is flaky (the
+  // container lifecycle alone blows the hook budget); one healthchecked service
+  // shared across the serially-run tiers is reliable. Set the server default to
+  // READ COMMITTED (recommended for SKIP LOCKED queues) and hand back the URL
+  // without owning the lifecycle.
+  const { POSTEL_MYSQL_URL: sharedUrl } = process.env;
+  if (sharedUrl) {
+    const { createPool } = await import("mysql2/promise");
+    const pool = createPool(sharedUrl);
+    try {
+      await pool.query("SET GLOBAL TRANSACTION ISOLATION LEVEL READ COMMITTED");
+    } finally {
+      await pool.end();
+    }
+    return { uri: sharedUrl, stop: async () => {} };
+  }
+  // Local fallback: own a throwaway container, defaulting it to READ COMMITTED.
+  const { MySqlContainer } = await import("@testcontainers/mysql");
+  const container = await new MySqlContainer(image)
+    .withCommand(["--transaction-isolation=READ-COMMITTED"])
+    .start();
+  return {
+    uri: container.getConnectionUri(),
+    stop: async () => {
+      await container.stop();
+    },
+  };
+}
+
 export interface StorageTestCapabilities {
   // Run the LISTEN/NOTIFY push scenario (adapters that advertise notify).
   readonly notify: boolean;
@@ -41,6 +80,10 @@ export interface StorageTestFactory {
   // The version reserveBatch's backend reports from schemaVersion(). Optional;
   // when omitted the battery only asserts a positive integer.
   readonly expectedSchemaVersion?: number;
+  // Timeout (ms) for the setup/teardown hooks. Testcontainers tiers need a
+  // generous value — spinning up a real DB (image pull + init + healthcheck)
+  // routinely exceeds vitest's 10s default, especially for MySQL.
+  readonly setupTimeoutMs?: number;
   // Once, before the suite: create pools / run migrations.
   setup?(): Promise<void>;
   // Per test: a fresh clock and a clean dataset.
@@ -94,8 +137,8 @@ function buildEndpoint(
 // `*.test.ts`; backend-incapable scenarios are skipped via factory.capabilities.
 export function runStorageTests(factory: StorageTestFactory): void {
   describe(`Storage conformance: ${factory.name}`, () => {
-    if (factory.setup) beforeAll(() => factory.setup?.());
-    if (factory.teardown) afterAll(() => factory.teardown?.());
+    if (factory.setup) beforeAll(() => factory.setup?.(), factory.setupTimeoutMs);
+    if (factory.teardown) afterAll(() => factory.teardown?.(), factory.setupTimeoutMs);
 
     const itNotify = factory.capabilities.notify ? it : it.skip;
     const itTxIsolation = factory.capabilities.txIsolation ? it : it.skip;
@@ -132,7 +175,9 @@ export function runStorageTests(factory: StorageTestFactory): void {
         });
         expect(reserved.map((r) => r.id).sort()).toEqual(["msg_a", "msg_b"]);
         expect(reserved.every((r) => r.leaseExpiresAt instanceof Date)).toBe(true);
-      });
+        // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) can run
+        // this well past vitest's 5s default under CI load.
+      }, 30_000);
     });
 
     describe("Schema is a fixed set of canonical tables", () => {
@@ -323,7 +368,7 @@ export function runStorageTests(factory: StorageTestFactory): void {
         const all = [...a, ...b].map((m) => m.id);
         expect(all.length).toBe(10);
         expect(new Set(all).size).toBe(10);
-      });
+      }, 30_000);
     });
 
     describe("Tenant-scoped row-level access in queries", () => {

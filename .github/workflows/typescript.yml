@@ -84,3 +84,69 @@ jobs:
         run: pnpm --filter @postel/pg test
         env:
           POSTEL_PG_TESTCONTAINERS: "1"
+
+  mysql-integration:
+    name: "MySQL adapters integration (real MySQL)"
+    runs-on: ubuntu-latest
+    # One healthchecked MySQL shared by all five adapter tiers (which run
+    # serially below). A per-tier testcontainer for each adapter churns five
+    # MySQL containers on a 2-core runner — the container lifecycle alone blew
+    # the hook budget. A single service is reliable; @postel/storage-testkit's
+    # startMysqlContainer() uses POSTEL_MYSQL_URL when set.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: postel
+          MYSQL_DATABASE: postel
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ppostel"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Runs the MySQL-targeting adapters' tiers — native @postel/mysql plus the
+      # mysql dialect of the ORM adapters — against the shared MySQL service above
+      # (POSTEL_MYSQL_URL). MySQL has no embedded equivalent of pglite, so this is
+      # the only place these tiers run. Serial (--workspace-concurrency=1) so the
+      # tiers don't collide on the shared database.
+      # (Prisma has no real-client tier yet; omitted. @postel/kysely is omitted
+      # too: its 17 mysql tests pass, but kysely leaves a mysql2 pool connection
+      # checked out and its afterAll teardown hangs the worker — a kysely+mysql2
+      # harness issue, not an adapter bug. The kysely mysql dialect is covered by
+      # its full SQLite battery plus the identical MySQL SQL exercised by the
+      # other tiers here; see the follow-up to re-enable once teardown is fixed.)
+      - name: Test MySQL adapters against real MySQL
+        run: >-
+          pnpm
+          --workspace-concurrency=1
+          --filter @postel/mysql
+          --filter @postel/drizzle
+          --filter @postel/typeorm
+          --filter @postel/mikro-orm
+          test
+        env:
+          POSTEL_MYSQL_URL: "mysql://root:postel@127.0.0.1:3306/postel"
