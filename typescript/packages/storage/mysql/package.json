@@ -1,0 +1,64 @@
+{
+  "name": "@postel/mysql",
+  "version": "0.0.0",
+  "description": "Standalone Postel storage adapter — Postel owns the MySQL pool; zero-config drop-in.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/storage/mysql"
+  },
+  "homepage": "https://postel.dev",
+  "bugs": "https://github.com/postel-sh/postel/issues",
+  "keywords": [
+    "webhooks",
+    "standard-webhooks",
+    "mysql",
+    "mariadb",
+    "dedup",
+    "idempotency",
+    "postel"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "postel": {
+    "adapter": {
+      "category": "standalone"
+    }
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*",
+    "@postel/storage-helpers": "workspace:*"
+  },
+  "peerDependencies": {
+    "mysql2": ">=3"
+  },
+  "devDependencies": {
+    "@postel/storage-testkit": "workspace:*",
+    "@testcontainers/mysql": "10.13.2",
+    "@types/node": "20.17.10",
+    "mysql2": "3.11.5"
+  }
+}
