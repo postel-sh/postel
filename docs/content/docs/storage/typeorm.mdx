@@ -1,0 +1,47 @@
+---
+title: TypeORM
+icon: database
+description: "@postel/typeorm — run Postel's storage through your existing TypeORM DataSource (Postgres, MySQL, or SQLite)."
+---
+
+`@postel/typeorm` is an **ORM** adapter: hand Postel the TypeORM `DataSource` you already use and it issues its storage queries through it (via QueryRunners + raw SQL), so outbox writes share your connection and transactions. **No Postel entities are required** in your schema.
+
+```bash
+pnpm add @postel/typeorm typeorm
+# plus your driver: pg | mysql2 | better-sqlite3
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { TypeOrmStorage } from "@postel/typeorm";
+import { dataSource } from "./data-source"; // your initialized TypeORM DataSource
+
+export const postel = Postel({
+  outbound: { storage: TypeOrmStorage({ dataSource, dialect: "postgres" }) },
+});
+```
+
+## Options
+
+| Option | Notes |
+|---|---|
+| `dataSource` | The initialized TypeORM `DataSource` you already built. Postel talks to it through QueryRunners + raw SQL. |
+| `dialect` | `"postgres"`, `"mysql"`, or `"sqlite"` — selects the reservation strategy, capability flags, and column codecs. |
+| `autoMigrate` | Run migrations on first use (default `true`). |
+| `clock` | Inject a clock for deterministic time in tests. |
+
+`typeorm` is a peer dependency. On Postgres and MySQL workers reserve rows under `FOR UPDATE SKIP LOCKED`; on SQLite in a single statement. MySQL and SQLite poll for dispatch (no `LISTEN`/`NOTIFY`); Postgres pushes. The `dialect` names a SQL *family*, so wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …) work via the matching dialect — see [compatible databases](/docs/storage#dialects-and-compatible-databases).
+
+## Shared transactions
+
+`Postel({...}).outbound.transaction(cb)` hands your callback a connection-bound executor you thread into `send()`, so the outbox insert commits atomically with your business writes:
+
+```ts
+await postel.outbound.transaction(async (tx) => {
+  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+});
+```
+
+## Migrations
+
+`autoMigrate` runs the canonical migrations for the configured dialect through your DataSource (version-gated, idempotent). Or run your own tooling against the [canonical schema](/docs/storage/schema).

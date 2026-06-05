@@ -1,0 +1,47 @@
+---
+title: MikroORM
+icon: database
+description: "@postel/mikro-orm — run Postel's storage through your existing MikroORM EntityManager (Postgres, MySQL, or SQLite)."
+---
+
+`@postel/mikro-orm` is an **ORM** adapter: hand Postel your MikroORM instance (or its `EntityManager`) and it issues its storage queries through the connection's raw `execute`, so outbox writes share your connection and transactions. **No Postel entities are required** in your schema.
+
+```bash
+pnpm add @postel/mikro-orm @mikro-orm/core
+# plus your driver: @mikro-orm/postgresql | @mikro-orm/mysql | @mikro-orm/better-sqlite
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { MikroOrmStorage } from "@postel/mikro-orm";
+import { orm } from "./mikro-orm"; // your initialized MikroORM
+
+export const postel = Postel({
+  outbound: { storage: MikroOrmStorage({ orm, dialect: "postgres" }) },
+});
+```
+
+## Options
+
+| Option | Notes |
+|---|---|
+| `orm` / `em` | Your `MikroORM` instance, or an `EntityManager`. Postel talks to the underlying connection with raw SQL. |
+| `dialect` | `"postgres"`, `"mysql"`, or `"sqlite"` — selects the reservation strategy, capability flags, and column codecs. |
+| `autoMigrate` | Run migrations on first use (default `true`). |
+| `clock` | Inject a clock for deterministic time in tests. |
+
+`@mikro-orm/core` is a peer dependency. On Postgres and MySQL workers reserve rows under `FOR UPDATE SKIP LOCKED`; on SQLite in a single statement. MySQL and SQLite poll for dispatch (no `LISTEN`/`NOTIFY`); Postgres pushes. The `dialect` names a SQL *family*, so wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …) work via the matching dialect — see [compatible databases](/docs/storage#dialects-and-compatible-databases).
+
+## Shared transactions
+
+`Postel({...}).outbound.transaction(cb)` hands your callback a transaction context you thread into `send()`, so the outbox insert commits atomically with your business writes:
+
+```ts
+await postel.outbound.transaction(async (tx) => {
+  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+});
+```
+
+## Migrations
+
+`autoMigrate` runs the canonical migrations for the configured dialect through your MikroORM connection (version-gated, idempotent). Or run your own tooling against the [canonical schema](/docs/storage/schema).

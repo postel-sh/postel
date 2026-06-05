@@ -90,6 +90,24 @@ const postel = Postel({
 
 Uses `INSERT OR IGNORE`. Identical contract. Periodically purges expired rows.
 
+### MySQL — `@postel/mysql`
+
+```ts title="lib/postel.ts"
+import { MysqlDedup } from "@postel/mysql";
+
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: Secret(s),
+      dedup: MysqlDedup({ client: mysql2Pool }),
+      dedupTtl: "24h",
+    },
+  },
+});
+```
+
+Uses `INSERT … ON DUPLICATE KEY UPDATE` keyed off the affected-row count — same contract. The table mirrors the others: `message_id VARCHAR(191) PRIMARY KEY`, `expires_at BIGINT` (epoch-milliseconds), indexed for cheap cleanup.
+
 ### In-memory — `InMemoryDedup` (built into `@postel/core`)
 
 ```ts title="lib/postel.ts"

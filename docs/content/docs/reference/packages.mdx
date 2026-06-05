@@ -18,9 +18,12 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/admin`** | [Admin control plane](/docs/outbound/admin) over the outbound sender | `adminRouter(postel, { authorize })` Fetch router (endpoint CRUD, replay, keys) with default-deny auth + tenant scoping; mount via Hono / `fetchToExpress` / `fetchToFastify`. |
 | **`@postel/sqlite`** | [SQLite storage adapter](/docs/storage/sqlite) | Standalone — Postel owns the SQLite database (`SqliteStorage`). Full outbound `Storage`; also exports `SqliteDedup` for inbound dedup. |
 | **`@postel/pg`** | [Postgres storage adapter](/docs/storage/pg) | Standalone — `PgStorage({ connectionString })`. Full outbound `Storage` (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`); also exports `PgDedup` for inbound dedup. |
-| **`@postel/kysely`** | [Kysely storage adapter](/docs/storage/kysely) | ORM/query-builder — `KyselyStorage({ db, dialect })` runs Postel's storage through your Kysely (Postgres or SQLite). |
-| **`@postel/drizzle`** | [Drizzle storage adapter](/docs/storage/drizzle) | ORM — `DrizzleStorage({ db, dialect })` runs Postel's storage through your Drizzle instance (Postgres or SQLite). |
-| **`@postel/prisma`** | [Prisma storage adapter](/docs/storage/prisma) | ORM — `PrismaStorage({ prisma, dialect })` runs Postel's storage through your PrismaClient's raw surface (Postgres or SQLite). |
+| **`@postel/mysql`** | [MySQL storage adapter](/docs/storage/mysql) | Standalone — `MysqlStorage({ connectionString })` on `mysql2` (`FOR UPDATE SKIP LOCKED`, polling). Full outbound `Storage`; also exports `MysqlDedup` for inbound dedup. |
+| **`@postel/kysely`** | [Kysely storage adapter](/docs/storage/kysely) | ORM/query-builder — `KyselyStorage({ db, dialect })` runs Postel's storage through your Kysely (Postgres, MySQL, or SQLite). |
+| **`@postel/drizzle`** | [Drizzle storage adapter](/docs/storage/drizzle) | ORM — `DrizzleStorage({ db, dialect })` runs Postel's storage through your Drizzle instance (Postgres, MySQL, or SQLite). |
+| **`@postel/prisma`** | [Prisma storage adapter](/docs/storage/prisma) | ORM — `PrismaStorage({ prisma, dialect })` runs Postel's storage through your PrismaClient's raw surface (Postgres, MySQL, or SQLite). |
+| **`@postel/typeorm`** | [TypeORM storage adapter](/docs/storage/typeorm) | ORM — `TypeOrmStorage({ dataSource, dialect })` runs Postel's storage through your TypeORM DataSource (Postgres, MySQL, or SQLite). |
+| **`@postel/mikro-orm`** | [MikroORM storage adapter](/docs/storage/mikro-orm) | ORM — `MikroOrmStorage({ orm, dialect })` runs Postel's storage through your MikroORM EntityManager (Postgres, MySQL, or SQLite). |
 | **`@postel/storage-helpers`** | Zero-DB helpers for [custom adapters](/docs/storage/custom-adapters) | Dialect codecs, capability flags, row encode/decode, migration SQL, callback registry — what every adapter reuses. |
 
 ## Stubs today (name reserved, no runtime yet)
@@ -34,9 +37,9 @@ Each "stub" package exports only `__postelPackage` today. Don't depend on them i
 
 ## Storage adapters
 
-The `postel.outbound.*` runtime runs against any `Storage` adapter. The full Tier-1 matrix now ships: the in-process `InMemoryStorage` (in `@postel/core`), the standalone [`@postel/pg`](/docs/storage/pg) / [`@postel/sqlite`](/docs/storage/sqlite), the query-builder [`@postel/kysely`](/docs/storage/kysely), and the ORM adapters [`@postel/drizzle`](/docs/storage/drizzle) / [`@postel/prisma`](/docs/storage/prisma). See the [Storage](/docs/storage) section for how to choose, and [custom adapters](/docs/storage/custom-adapters) to back Postel with any other database.
+The `postel.outbound.*` runtime runs against any `Storage` adapter. The full Tier-1 matrix now ships: the in-process `InMemoryStorage` (in `@postel/core`), the standalone [`@postel/pg`](/docs/storage/pg) / [`@postel/sqlite`](/docs/storage/sqlite) / [`@postel/mysql`](/docs/storage/mysql), and the query-builder / ORM adapters [`@postel/kysely`](/docs/storage/kysely) / [`@postel/drizzle`](/docs/storage/drizzle) / [`@postel/prisma`](/docs/storage/prisma) / [`@postel/typeorm`](/docs/storage/typeorm) / [`@postel/mikro-orm`](/docs/storage/mikro-orm). See the [Storage](/docs/storage) section for how to choose, and [custom adapters](/docs/storage/custom-adapters) to back Postel with any other database.
 
-The matrix is per [ADR 0007](https://github.com/postel-sh/postel/blob/main/decisions/0007-storage-strategy.md) — Postgres / SQLite as the canonical first-class databases, query-builder / ORM adapters in their own packages. The external worker strategies (`BullMQ`, `PgBoss`) remain config slots that throw `NotImplementedError` until their adapters ship; the in-process worker pool is the supported runtime.
+The matrix is per [ADR 0007](https://github.com/postel-sh/postel/blob/main/decisions/0007-storage-strategy.md) — Postgres / SQLite as the canonical (benchmarked) first-class databases, MySQL as a first-party adapter set, query-builder / ORM adapters in their own packages. The external worker strategies (`BullMQ`, `PgBoss`) remain config slots that throw `NotImplementedError` until their adapters ship; the in-process worker pool is the supported runtime.
 
 ## Polyglot ports (Go, Python, Rust)
 

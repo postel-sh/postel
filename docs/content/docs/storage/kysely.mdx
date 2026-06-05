@@ -1,7 +1,7 @@
 ---
 title: Kysely
 icon: kysely
-description: "@postel/kysely — run Postel's storage through your existing Kysely query builder (Postgres or SQLite)."
+description: "@postel/kysely — run Postel's storage through your existing Kysely query builder (Postgres, MySQL, or SQLite)."
 ---
 
 `@postel/kysely` is an **ORM/query-builder** adapter: you hand Postel the `Kysely` instance you already use, and it issues its queries (and transactions) through it. That means an outbox insert shares your connection and composes with your own writes — no second pool.
@@ -26,11 +26,11 @@ export const postel = Postel({
 | Option | Notes |
 |---|---|
 | `db` | Your `Kysely` instance. |
-| `dialect` | `"postgres"` or `"sqlite"` — selects `FOR UPDATE SKIP LOCKED` vs ordered reservation, the capability flags (`notify` on for Postgres), and the column codecs. |
+| `dialect` | `"postgres"`, `"mysql"`, or `"sqlite"` — selects the reservation strategy (`FOR UPDATE SKIP LOCKED` on Postgres/MySQL, ordered on SQLite), the capability flags (`notify` on for Postgres), and the column codecs. |
 | `autoMigrate` | Run migrations on first use (default `true`). |
 | `clock` | Inject a clock for deterministic time in tests. |
 
-`kysely` is a peer dependency. Postel runs through Kysely's `sql` tag, so your `Kysely<DB>` needs no Postel-specific table typing.
+`kysely` is a peer dependency. Postel runs through Kysely's `sql` tag, so your `Kysely<DB>` needs no Postel-specific table typing. The `dialect` names a SQL *family*, so wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …) work via the matching dialect — see [compatible databases](/docs/storage#dialects-and-compatible-databases).
 
 ## Shared transactions
 
