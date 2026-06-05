@@ -9,11 +9,16 @@ import type {
   StorageCapabilities,
 } from "@postel/core";
 
-export { type Migration, PG_MIGRATIONS, SQLITE_MIGRATIONS } from "./migrations.js";
+export {
+  type Migration,
+  MYSQL_MIGRATIONS,
+  PG_MIGRATIONS,
+  SQLITE_MIGRATIONS,
+} from "./migrations.js";
 
 // --- Capability flag sets -------------------------------------------------
 // Canonical declarations so adapters don't hand-roll them. Postgres can push
-// (LISTEN/NOTIFY); SQLite cannot and falls back to polling.
+// (LISTEN/NOTIFY); SQLite and MySQL cannot and fall back to polling.
 
 export const PG_CAPABILITIES: StorageCapabilities = {
   notify: true,
@@ -29,35 +34,66 @@ export const SQLITE_CAPABILITIES: StorageCapabilities = {
   streaming: true,
 };
 
+// MySQL has no LISTEN/NOTIFY, so it falls back to polling like SQLite — but it
+// is a real multi-connection server with `FOR UPDATE SKIP LOCKED`, so it stays
+// transactional and streaming.
+export const MYSQL_CAPABILITIES: StorageCapabilities = {
+  notify: false,
+  subscribe: false,
+  transactional: true,
+  streaming: true,
+};
+
 // The schema version the current library is built against — kept in lockstep
 // with the latest forward-only migration in specs/db-schema/. A SQL adapter
 // compares this against `_postel_meta.schema_version` for the boot handshake.
 export const POSTEL_SCHEMA_VERSION = 4;
 
 // --- Column codec ---------------------------------------------------------
-// Two dialect axes diverge at the column boundary: how timestamps and JSON are
-// stored. Postgres holds native `timestamptz`/`jsonb` (Date/object round-trip);
-// SQLite holds ISO-8601 `TEXT` and JSON `TEXT`. Bytes are `Buffer` on both.
+// Three dialect axes diverge at the column boundary: how timestamps and JSON
+// are stored. Postgres holds native `timestamptz`/`jsonb` (Date/object
+// round-trip); SQLite holds ISO-8601 `TEXT` and JSON `TEXT`; MySQL holds
+// `BIGINT` epoch-milliseconds and JSON `TEXT`. Bytes are `Buffer` everywhere.
+//
+// MySQL timestamps are epoch-milliseconds, not `DATETIME`, on purpose: a
+// `BIGINT` is timezone-independent and round-trips identically regardless of
+// the host pool's `timezone`/`dateStrings` config — sidestepping the mysql2
+// connection-timezone footgun while staying index- and range-query-friendly.
 
 export interface ColumnCodec {
-  readonly time: "native" | "iso8601";
+  readonly time: "native" | "iso8601" | "epoch-millis";
   readonly json: "native" | "text";
 }
 
 export const PG_CODEC: ColumnCodec = { time: "native", json: "native" };
 export const SQLITE_CODEC: ColumnCodec = { time: "iso8601", json: "text" };
+export const MYSQL_CODEC: ColumnCodec = { time: "epoch-millis", json: "text" };
 
-export function encodeTimestamp(value: Date | null, codec: ColumnCodec): string | Date | null {
+export function encodeTimestamp(
+  value: Date | null,
+  codec: ColumnCodec,
+): string | number | Date | null {
   if (value === null) return null;
-  return codec.time === "iso8601" ? value.toISOString() : value;
+  if (codec.time === "iso8601") return value.toISOString();
+  if (codec.time === "epoch-millis") return value.getTime();
+  return value;
 }
 
 export function decodeTimestamp(value: unknown, codec: ColumnCodec): Date | null {
-  void codec;
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value;
+  // MySQL `BIGINT` epoch-ms may surface as a number, a bigint, or a numeric
+  // string depending on the driver's bigint config — coerce all three.
+  if (codec.time === "epoch-millis") {
+    const ms = typeof value === "string" || typeof value === "bigint" ? Number(value) : value;
+    if (typeof ms === "number" && Number.isFinite(ms)) return new Date(ms);
+    throw new TypeError(
+      `storage-helpers: cannot decode epoch-millis timestamp from ${typeof value}`,
+    );
+  }
   if (typeof value === "string") return new Date(value);
   if (typeof value === "number") return new Date(value);
+  if (typeof value === "bigint") return new Date(Number(value));
   throw new TypeError(`storage-helpers: cannot decode timestamp from ${typeof value}`);
 }
 
