@@ -47,24 +47,22 @@ if (process.env.POSTEL_MYSQL_TESTCONTAINERS || process.env.POSTEL_MYSQL_URL) {
     setupTimeoutMs: 120_000,
     capabilities: { notify: false, txIsolation: true },
     async setup() {
-      const { createPool } = await import("mysql2/promise");
+      // kysely's MysqlDialect speaks the callback-style mysql2 pool API
+      // (pool.getConnection(cb) / pool.end(cb)) — the entry point kysely
+      // documents. A mysql2/promise pool ignores those callbacks, so kysely's
+      // acquireConnection never resolves: every query hangs and leaks a
+      // checked-out connection, and teardown stalls the worker. Use the callback
+      // factory from "mysql2" (NOT "mysql2/promise").
+      const { createPool } = await import("mysql2");
       const { MysqlDialect } = await import("kysely");
       const container = await startMysqlContainer();
       const pool = createPool(container.uri);
       db = new Kysely<Record<string, never>>({ dialect: new MysqlDialect({ pool }) });
       stop = async () => {
-        // NOTE: kysely + mysql2 leaves a pooled connection checked out after the
-        // battery here, so pool.end()/db.destroy() hangs and the open socket
-        // stalls the worker — which is why this tier is excluded from CI (see
-        // .github/workflows/typescript.yml). Bound the close so opt-in local runs
-        // don't hang forever; the underlying leak is a tracked follow-up.
+        // Close the pool first (db.destroy() drives pool.end's callback), then
+        // stop the server — connections quit gracefully and the worker exits.
+        await db?.destroy();
         await container.stop();
-        await Promise.race([
-          pool.end().catch(() => {}),
-          new Promise<void>((resolve) => {
-            setTimeout(resolve, 10_000);
-          }),
-        ]);
       };
       await KyselyStorage({ db, dialect: "mysql", autoMigrate: true }).schemaVersion();
     },

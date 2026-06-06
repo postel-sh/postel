@@ -83,15 +83,14 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
   const registry = createCallbackRegistry();
   let migrated = false;
 
-  // Transactions inherit the connection/session isolation. On MySQL the
-  // recommended READ COMMITTED (for FOR UPDATE SKIP LOCKED — REPEATABLE READ
-  // gap-locks the scanned range and under-reserves) is set at the server/session
-  // level, not per-transaction: kysely's setIsolationLevel issues an extra SET
-  // per transaction that, with mysql2, leaked pool connections and made the
-  // tier crawl. The reservation's indexed ORDER BY (no filesort) does the heavy
-  // lifting; see the MySQL docs page for the isolation recommendation.
+  // MySQL transactions run at READ COMMITTED: the default REPEATABLE READ
+  // gap-locks the range a FOR UPDATE SKIP LOCKED scan touches, so concurrent
+  // workers under-reserve; READ COMMITTED takes only record locks. kysely emits
+  // `set transaction isolation level read committed` before `begin` on the same
+  // pooled connection. (Postgres already defaults to READ COMMITTED; SQLite has a
+  // single writer — neither needs the per-tx override.)
   function beginTx() {
-    return db.transaction();
+    return isMysql ? db.transaction().setIsolationLevel("read committed") : db.transaction();
   }
 
   // SQLite (better-sqlite3) binds only numbers/strings/Buffers; Postgres binds

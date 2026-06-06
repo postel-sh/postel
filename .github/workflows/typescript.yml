@@ -133,17 +133,13 @@ jobs:
       # (POSTEL_MYSQL_URL). MySQL has no embedded equivalent of pglite, so this is
       # the only place these tiers run. Serial (--workspace-concurrency=1) so the
       # tiers don't collide on the shared database.
-      # (Prisma has no real-client tier yet; omitted. @postel/kysely is omitted
-      # too: its 17 mysql tests pass, but kysely leaves a mysql2 pool connection
-      # checked out and its afterAll teardown hangs the worker — a kysely+mysql2
-      # harness issue, not an adapter bug. The kysely mysql dialect is covered by
-      # its full SQLite battery plus the identical MySQL SQL exercised by the
-      # other tiers here; see the follow-up to re-enable once teardown is fixed.)
+      # (Prisma has no real-client tier yet; omitted.)
       - name: Test MySQL adapters against real MySQL
         run: >-
           pnpm
           --workspace-concurrency=1
           --filter @postel/mysql
+          --filter @postel/kysely
           --filter @postel/drizzle
           --filter @postel/typeorm
           --filter @postel/mikro-orm

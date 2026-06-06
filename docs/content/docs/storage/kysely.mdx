@@ -32,6 +32,8 @@ export const postel = Postel({
 
 `kysely` is a peer dependency. Postel runs through Kysely's `sql` tag, so your `Kysely<DB>` needs no Postel-specific table typing. The `dialect` names a SQL *family*, so wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …) work via the matching dialect — see [compatible databases](/docs/storage#dialects-and-compatible-databases).
 
+On **MySQL**, build your Kysely instance with a callback-style `mysql2` pool — `import { createPool } from "mysql2"`, as Kysely's `MysqlDialect` documents. A `mysql2/promise` pool leaves Kysely's `getConnection`/`end` callbacks unfired, so every query hangs; this is a Kysely requirement, not Postel-specific.
+
 ## Shared transactions
 
 Open a Kysely transaction and pass it to `send()` — the outbox insert commits atomically with your business writes:
