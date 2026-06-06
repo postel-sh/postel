@@ -137,3 +137,27 @@ html.dark {
 .shiki::-webkit-scrollbar-corner {
   display: none;
 }
+
+/* Sidebar group separators ("---Label---" entries in a section's meta.json)
+ * styled as subsection headers: an uppercase, tracked-out muted label trailed
+ * by a hairline rule that fills the rest of the row. Fumadocs renders each as
+ * an inline-flex <p class="... mt-6 ..."> with no rule; we promote it to a
+ * full-width flex row so the ::after rule can stretch to the sidebar edge, and
+ * the existing gap-2 supplies the space between label and rule. */
+#nd-sidebar p.inline-flex.mt-6 {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  text-transform: uppercase;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--color-fd-muted-foreground);
+}
+
+#nd-sidebar p.inline-flex.mt-6::after {
+  content: "";
+  flex: 1 1 0%;
+  height: 1px;
+  background: var(--color-fd-border);
+}

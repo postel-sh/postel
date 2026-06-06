@@ -6,9 +6,14 @@ description: Verify webhooks in Express â€” verifyWebhook mounts express.raw() +
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
+import { config } from "./config.js";
 
 export const postel = Postel({
-  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+  inbound: {
+    vendor: {
+      verify: Secret(config.webhookSecret),
+    },
+  },
 });
 ```
 
@@ -55,5 +60,6 @@ Mount the [`@postel/admin`](/docs/outbound/admin) router with the generic Fetchâ
 import { adminRouter } from "@postel/admin";
 import { fetchToExpress } from "@postel/express";
 
-app.use("/admin", fetchToExpress(adminRouter(postel, { authorize: (req) => checkAdminToken(req) })));
+const admin = adminRouter(postel, { authorize: (req) => checkAdminToken(req) });
+app.use("/admin", fetchToExpress(admin));
 ```

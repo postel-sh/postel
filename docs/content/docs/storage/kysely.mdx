@@ -6,10 +6,7 @@ description: "@postel/kysely — run Postel's storage through your existing Kyse
 
 `@postel/kysely` is an **ORM/query-builder** adapter: you hand Postel the `Kysely` instance you already use, and it issues its queries (and transactions) through it. That means an outbox insert shares your connection and composes with your own writes — no second pool.
 
-```bash
-pnpm add @postel/kysely kysely
-# or: npm i @postel/kysely kysely
-```
+<Install packages="@postel/kysely kysely" />
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
@@ -47,4 +44,4 @@ await db.transaction().execute(async (trx) => {
 
 ## Migrations
 
-`autoMigrate` runs the canonical migrations for the configured dialect through your Kysely connection (version-gated and idempotent). Or run your own migration tooling against the [canonical schema](/docs/storage/schema).
+`autoMigrate` (default `true`) runs the [canonical migrations](/docs/storage/schema) through your connection, version-gated and idempotent — or run your own tooling against that schema.

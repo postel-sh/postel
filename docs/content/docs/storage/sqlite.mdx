@@ -6,10 +6,7 @@ description: "@postel/sqlite — a standalone SQLite storage adapter built on be
 
 `@postel/sqlite` is a **standalone** adapter: Postel owns the SQLite database. It's the simplest way to get durable, single-node webhook delivery — no server to run.
 
-```bash
-pnpm add @postel/sqlite better-sqlite3
-# or: npm i @postel/sqlite better-sqlite3
-```
+<Install packages="@postel/sqlite better-sqlite3" />
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
@@ -51,6 +48,11 @@ The package also exports `SqliteDedup` for the inbound idempotency-dedup helper,
 import { SqliteDedup } from "@postel/sqlite";
 
 const postel = Postel({
-  inbound: { vendor: { verify: secret, dedup: SqliteDedup({ db }) } },
+  inbound: {
+    vendor: {
+      verify: secret,
+      dedup: SqliteDedup({ db }),
+    },
+  },
 });
 ```

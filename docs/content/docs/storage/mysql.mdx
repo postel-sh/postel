@@ -1,15 +1,12 @@
 ---
 title: MySQL
-icon: database
+icon: mysql
 description: "@postel/mysql — a standalone MySQL storage adapter built on mysql2, with SKIP LOCKED reservation and polling dispatch."
 ---
 
 `@postel/mysql` is a **standalone** adapter for MySQL: hand it a connection string and Postel owns the pool, or hand it a `mysql2` pool you already manage. Requires **MySQL ≥ 8.0.1** (for `FOR UPDATE SKIP LOCKED`); MariaDB ≥ 10.6 also works through the same `mysql2` driver.
 
-```bash
-pnpm add @postel/mysql mysql2
-# or: npm i @postel/mysql mysql2
-```
+<Install packages="@postel/mysql mysql2" />
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
@@ -51,4 +48,17 @@ Open a transaction on a `mysql2` connection and pass it to `send()` so the outbo
 
 ## Receiver-side dedup
 
-The package also exports `MysqlDedup` (and `ensureMysqlDedupTable`) for the inbound idempotency-dedup helper, independent of the outbound storage.
+The package also exports `MysqlDedup` (and `ensureMysqlDedupTable`) for the inbound idempotency-dedup helper, independent of the outbound storage:
+
+```ts
+import { MysqlDedup } from "@postel/mysql";
+
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: secret,
+      dedup: MysqlDedup({ client: pool }),
+    },
+  },
+});
+```

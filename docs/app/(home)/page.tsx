@@ -12,6 +12,7 @@ import {
   HonoIcon,
   NestjsIcon,
 } from "@/components/icons";
+import { Install } from "@/components/install-tabs";
 import { HeroAdapterTabs } from "./hero-adapter-tabs";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -31,8 +32,6 @@ function GithubIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
-const installCode = `pnpm add @postel/core`;
 
 const heroHono = `import { Hono } from "hono";
 import { verifyWebhook, POSTEL_CONTEXT_KEY } from "@postel/hono";
@@ -322,9 +321,8 @@ export default async function HomePage() {
                 <GithubIcon className="size-5" />
               </Link>
             </div>
-            <div className="text-fd-muted-foreground mt-6 inline-flex items-center gap-3 font-mono text-xs">
-              <span className="text-fd-foreground">$</span>
-              <span>{installCode}</span>
+            <div className="mt-6 max-w-sm">
+              <Install packages="@postel/core" />
             </div>
           </div>
 

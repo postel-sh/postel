@@ -1,15 +1,14 @@
 ---
 title: TypeORM
-icon: database
+icon: typeorm
 description: "@postel/typeorm — run Postel's storage through your existing TypeORM DataSource (Postgres, MySQL, or SQLite)."
 ---
 
 `@postel/typeorm` is an **ORM** adapter: hand Postel the TypeORM `DataSource` you already use and it issues its storage queries through it (via QueryRunners + raw SQL), so outbox writes share your connection and transactions. **No Postel entities are required** in your schema.
 
-```bash
-pnpm add @postel/typeorm typeorm
-# plus your driver: pg | mysql2 | better-sqlite3
-```
+<Install packages="@postel/typeorm typeorm" />
+
+Plus your database driver — `pg`, `mysql2`, or `better-sqlite3`.
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
@@ -44,4 +43,4 @@ await postel.outbound.transaction(async (tx) => {
 
 ## Migrations
 
-`autoMigrate` runs the canonical migrations for the configured dialect through your DataSource (version-gated, idempotent). Or run your own tooling against the [canonical schema](/docs/storage/schema).
+`autoMigrate` (default `true`) runs the [canonical migrations](/docs/storage/schema) through your connection, version-gated and idempotent — or run your own tooling against that schema.

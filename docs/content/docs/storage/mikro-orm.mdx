@@ -1,15 +1,14 @@
 ---
 title: MikroORM
-icon: database
+icon: mikro-orm
 description: "@postel/mikro-orm — run Postel's storage through your existing MikroORM EntityManager (Postgres, MySQL, or SQLite)."
 ---
 
 `@postel/mikro-orm` is an **ORM** adapter: hand Postel your MikroORM instance (or its `EntityManager`) and it issues its storage queries through the connection's raw `execute`, so outbox writes share your connection and transactions. **No Postel entities are required** in your schema.
 
-```bash
-pnpm add @postel/mikro-orm @mikro-orm/core
-# plus your driver: @mikro-orm/postgresql | @mikro-orm/mysql | @mikro-orm/better-sqlite
-```
+<Install packages="@postel/mikro-orm @mikro-orm/core" />
+
+Plus your MikroORM driver — `@mikro-orm/postgresql`, `@mikro-orm/mysql`, or `@mikro-orm/better-sqlite`.
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
@@ -44,4 +43,4 @@ await postel.outbound.transaction(async (tx) => {
 
 ## Migrations
 
-`autoMigrate` runs the canonical migrations for the configured dialect through your MikroORM connection (version-gated, idempotent). Or run your own tooling against the [canonical schema](/docs/storage/schema).
+`autoMigrate` (default `true`) runs the [canonical migrations](/docs/storage/schema) through your connection, version-gated and idempotent — or run your own tooling against that schema.

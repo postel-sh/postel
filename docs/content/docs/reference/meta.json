@@ -2,7 +2,6 @@
   "title": "Reference",
   "icon": "book",
   "description": "Packages, API, errors, and specs.",
-  "root": true,
   "pages": [
     "index",
     "packages",
