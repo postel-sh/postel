@@ -4,8 +4,8 @@
     "index",
     "get-started",
     "inbound",
-    "web-adapters",
     "outbound",
+    "web-adapters",
     "storage",
     "reference"
   ]

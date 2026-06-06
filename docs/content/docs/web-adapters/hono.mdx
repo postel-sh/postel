@@ -6,9 +6,14 @@ description: Verify webhooks in Hono — a middleware gate bound to your configu
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
+import { config } from "./config.js";
 
 export const postel = Postel({
-  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+  inbound: {
+    vendor: {
+      verify: Secret(config.webhookSecret),
+    },
+  },
 });
 ```
 
@@ -56,7 +61,3 @@ import { adminRouter } from "@postel/admin";
 const admin = adminRouter(postel, { authorize: (req) => checkAdminToken(req) });
 app.all("/admin/*", (c) => admin(c.req.raw));
 ```
-
-## Deprecated
-
-The raw-secret helpers `honoVerify` / `postelHono` remain as `@deprecated` aliases — prefer the gate above.

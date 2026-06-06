@@ -6,10 +6,9 @@ description: "@postel/prisma — run Postel's storage through your existing Pris
 
 `@postel/prisma` is an **ORM** adapter: hand Postel your `PrismaClient` and it runs its storage through Prisma's raw query surface, sharing your connection and transactions.
 
-```bash
-pnpm add @postel/prisma
-# @prisma/client is a peer dependency — you already have it in a Prisma app
-```
+<Install packages="@postel/prisma" />
+
+`@prisma/client` is a peer dependency — you already have it in a Prisma app.
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";

@@ -15,7 +15,10 @@ import { Module } from "@nestjs/common";
 import { PostelModule } from "@postel/nestjs";
 import { postel } from "./lib/postel";
 
-@Module({ imports: [PostelModule.forRoot(postel)], controllers: [WebhooksController] })
+@Module({
+  imports: [PostelModule.forRoot(postel)],
+  controllers: [WebhooksController],
+})
 export class AppModule {}
 ```
 

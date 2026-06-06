@@ -6,9 +6,14 @@ description: Verify webhooks in Fastify — the fastifyPostel raw-body plugin pl
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
+import { config } from "./config.js";
 
 export const postel = Postel({
-  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+  inbound: {
+    vendor: {
+      verify: Secret(config.webhookSecret),
+    },
+  },
 });
 ```
 
@@ -60,5 +65,6 @@ app.get(
 import { adminRouter } from "@postel/admin";
 import { fetchToFastify } from "@postel/fastify";
 
-app.all("/admin/*", fetchToFastify(adminRouter(postel, { authorize: (req) => checkAdminToken(req) })));
+const admin = adminRouter(postel, { authorize: (req) => checkAdminToken(req) });
+app.all("/admin/*", fetchToFastify(admin));
 ```

@@ -6,10 +6,7 @@ description: "@postel/drizzle — run Postel's storage through your existing Dri
 
 `@postel/drizzle` is an **ORM** adapter: hand Postel the Drizzle `db` you already use and it issues its storage queries through it, so outbox writes share your connection and transactions.
 
-```bash
-pnpm add @postel/drizzle drizzle-orm
-# or: npm i @postel/drizzle drizzle-orm
-```
+<Install packages="@postel/drizzle drizzle-orm" />
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
@@ -45,4 +42,4 @@ await db.transaction(async (tx) => {
 
 ## Migrations
 
-`autoMigrate` runs the canonical migrations for the configured dialect through your Drizzle connection (version-gated, idempotent). Or run your own tooling against the [canonical schema](/docs/storage/schema).
+`autoMigrate` (default `true`) runs the [canonical migrations](/docs/storage/schema) through your connection, version-gated and idempotent — or run your own tooling against that schema.
