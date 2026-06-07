@@ -3,9 +3,9 @@ title: Why Postel
 description: The positioning, the tradeoffs, and the design rationale. Why a library, not a service. Why polyglot. Why reliability and security are the differentiator.
 ---
 
-Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, multi-secret windows, JWKS, raw-bytes preservation. That's where Postel comes in.
+Most teams reach for webhooks expecting a weekend feature and find a long tail instead: retries, replay, key rotation, idempotency, multi-secret windows, JWKS, raw-bytes preservation. Postel exists to absorb that tail — as a library you embed, not a service you operate.
 
-If you skipped here from [Is Postel for me?](/docs/get-started/is-postel-for-me): this page is the long version of the same content. The fast filter is there; the rationale is here.
+This is the long-form rationale. For a 30-second fit check, use [Is Postel for me?](/docs/get-started/is-postel-for-me) instead.
 
 ## The problem
 

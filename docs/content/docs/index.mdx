@@ -17,7 +17,7 @@ Postel has two independent halves. Use either alone, or both together.
 | Half | What it does | Status |
 |---|---|---|
 | **[Inbound](/docs/inbound)** | Verify Standard Webhooks-signed requests other services send to you. Constant-time signature checks, multi-secret rotation windows, JWKS, idempotent dedup, raw-bytes preservation. | **Available** in `@postel/core`. |
-| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter. | **Available** against the in-process `InMemoryStorage` adapter (database adapters planned). |
+| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter. | **Available** in `@postel/core`, with durable Postgres, MySQL, and SQLite [storage adapters](/docs/storage). |
 
 The `Postel({ inbound, outbound })` factory composes both — but everywhere else in these docs they're separated. You shouldn't have to wade through outbound material to integrate the receiver, or vice versa.
 
@@ -25,15 +25,19 @@ The `Postel({ inbound, outbound })` factory composes both — but everywhere els
 
 <Cards>
   <Card icon={<CompassIcon />} title="Is Postel for me?" href="/docs/get-started/is-postel-for-me" description="A six-line decision gate. Run it before you read more." />
-  <Card icon={<RocketIcon />} title="Quickstart" href="/docs/get-started/quickstart" description="60 seconds — verify your first webhook. TypeScript, Hono or framework-agnostic." />
+  <Card icon={<RocketIcon />} title="Quickstart" href="/docs/get-started/quickstart" description="60 seconds — verify your first signed webhook with @postel/core." />
   <Card icon={<BookIcon />} title="Why Postel" href="/docs/get-started/why" description="The tradeoffs; comparison vs Svix, comparison vs hand-rolled." />
   <Card icon={<GlobeIcon />} title="Polyglot" href="/docs/get-started/polyglot" description="For port authors — what conformance means and where the suite lives." />
 </Cards>
 
-## Pre-1.0 reality check
+## Where the project stands
 
-Postel is pre-alpha. The receiver is feature-complete against its capability specs, but no `@postel/*` package has cut a numbered release yet — none are published to npm. The receiver works; you can clone and use it. We don't recommend production deployment until a tagged release ships on npm.
+Both halves are implemented and exercised end-to-end by the [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) suite. The receiver verifies any Standard Webhooks producer. The sender runs the transactional outbox, retries, replay, fanout, and signing against durable [Postgres, MySQL, and SQLite adapters](/docs/storage) — or the in-process `InMemoryStorage` for tests and demos.
 
-The sender runtime is available too — `send`, the transactional outbox, retries, replay, fanout, and signing all run against the in-process `InMemoryStorage` adapter. Database-backed storage adapters are planned; until they land, bring the in-memory adapter or implement the `Storage` interface against your own database. Pages under [Outbound](/docs/outbound) note what's available now versus planned.
+What's still ahead is tracked honestly, not hidden:
 
-This documentation site is the public surface of that work. If something here suggests behavior that isn't in the source — call it out in an issue.
+- **No release is cut yet.** Every `@postel/*` package sits at `0.0.0` with no git tag, so nothing is on npm. Clone the repo to use it today; pin to a minor once releases ship.
+- **Some config slots aren't wired.** External job-queue workers (BullMQ, PgBoss), KMS-backed keys, and OpenTelemetry are accepted in config but not implemented — [Outbound](/docs/outbound) marks each one.
+- **Other languages are on the way.** Go, Python, and Rust are on the [roadmap](/docs/get-started/polyglot); TypeScript ships first.
+
+This site is the public surface of that work. If a page describes behavior the source doesn't have, [open an issue](https://github.com/postel-sh/postel/issues).

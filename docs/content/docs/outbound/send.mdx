@@ -3,8 +3,6 @@ title: Sending & the outbox
 description: The transactional outbox pattern, implemented inside the host application's database.
 ---
 
-> **Status: available.** The outbound runtime is implemented and runs today against the in-process `InMemoryStorage` adapter; database-backed adapters (Postgres, SQLite, …) are planned.
-
 `postel.outbound.send(event, options?)` is the single entry point for emitting a webhook. Under the hood it's an INSERT into a `postel_outbox` table, scoped to whichever DB transaction you pass.
 
 ## The shape
