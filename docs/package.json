@@ -9,10 +9,7 @@
     "dev": "next dev",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "postinstall": "fumadocs-mdx",
-    "prebuild": "node scripts/build-api-reference.mjs",
-    "predev": "node scripts/build-api-reference.mjs",
-    "typedoc": "typedoc"
+    "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
     "fumadocs-core": "^16.8.11",

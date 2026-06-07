@@ -3,8 +3,6 @@ title: Endpoints
 description: Manage the receivers your application sends to — create, update, filter, rotate secrets.
 ---
 
-> **Status: available.** Implemented and runs against the in-process `InMemoryStorage` adapter today; database-backed adapters are planned.
-
 Endpoints are the receiver-of-record for fanout. A `send()` reaches every endpoint whose `types` filter matches the event.
 
 ## Lifecycle

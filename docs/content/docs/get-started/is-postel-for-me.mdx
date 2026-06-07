@@ -18,13 +18,14 @@ If yes, go to [Quickstart](/docs/get-started/quickstart).
 
 ## Is *sending* webhooks part of what you need? (today)
 
-If you need to deliver webhooks to your customers' endpoints — outbox, retries, replay, fanout — **that's available**, today against the in-process `InMemoryStorage` adapter (database-backed storage adapters are planned; bring your own `Storage` implementation in the meantime).
+If you need to deliver webhooks to your customers' endpoints — outbox, retries, replay, fanout — **that's available too**, with durable persistence on Postgres, MySQL, or SQLite.
 
-If the in-memory adapter doesn't fit your deployment yet, your options are:
+- ✅ Transactional outbox that joins your business write — no broker, no dispatcher process.
+- ✅ Retries, circuit breaker, dead-letter, first-class replay, endpoint lifecycle, secret rotation.
+- ✅ [Storage adapters](/docs/storage) for raw `pg` / `better-sqlite3` / `mysql2`, or your existing Kysely / Drizzle / Prisma / TypeORM / MikroORM instance.
+- ⏳ External job-queue workers (BullMQ, PgBoss) and KMS-backed keys are config slots, not yet wired — the in-process worker pool is the supported runtime.
 
-- [Svix](https://www.svix.com/) (or Hookdeck Outpost) if webhooks are *the* product.
-- A hand-rolled Sidekiq / BullMQ / Oban worker if you're patient and your team owns the operational risk.
-- Use the [Outbound](/docs/outbound) section as your guide, and implement the `Storage` interface against your own database until the packaged adapters land.
+Reach for [Svix](https://www.svix.com/) or [Hookdeck Outpost](https://hookdeck.com/outpost) instead when webhooks are *the* product — a customer-facing portal, multi-region delivery, or a 99.999% SLA.
 
 ## Does your stack match?
 
@@ -33,9 +34,9 @@ The library has a narrow scope on purpose.
 | Property | Postel today | Postel v1.0 plan |
 |---|---|---|
 | Runtime | Node, Bun, Deno | Same + Go, Python, Rust (each at its own cadence) |
-| Database | Postgres, SQLite, MySQL (via standalone adapters) | The Postgres / MySQL / SQLite families — including wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …) through the standalone or ORM adapters — plus any other backend via a custom `Storage` adapter |
+| Database | Postgres, MySQL, SQLite — standalone or via your ORM | The same families, including wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …), plus any other backend via a custom `Storage` adapter |
 | Broker / queue | **None required.** Uses your existing DB transaction. | Same. Will stay broker-free forever ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). |
-| Framework adapters | Hono (others: factory pattern works directly) | Express, Fastify, Next.js, Bun, Deno, SvelteKit, Astro, Nitro |
+| Framework adapters | Hono, Express, Fastify, NestJS (Next.js / Bun via the framework-agnostic factory) | + dedicated Next.js, Bun, Deno, SvelteKit adapters |
 | Hosting model | Embedded in your app | Same. Never a hosted service. |
 
 If you need Redis-backed queues, a separate dispatcher service, multi-region replication, or a customer-facing webhook portal as a packaged product — Postel won't grow into any of those. Use Svix or Hookdeck Outpost.
@@ -47,8 +48,8 @@ Answer YES or NO to each. Mostly YES → Postel is a strong fit.
 1. My app is on Node, Bun, or Deno (and I can wait for Go/Python/Rust ports). **YES / NO**
 2. My data store is in the Postgres, MySQL, or SQLite family — including a wire-compatible engine like MariaDB, PlanetScale, or libSQL/Turso — or I'll implement the `Storage` interface for another backend. **YES / NO**
 3. I want webhooks to be a *feature* of my product, not the product itself. **YES / NO**
-4. I want the receiver and (eventually) the sender to share the same transaction as my business writes. **YES / NO**
-5. I'm fine with both halves running against the in-process `InMemoryStorage` adapter today, with database-backed storage adapters still planned. **YES / NO**
+4. I want the receiver and sender to share the same transaction as my business writes. **YES / NO**
+5. I'd rather run delivery inside my app process than operate a separate dispatcher service or a Redis / queue dependency. **YES / NO**
 6. I prefer a library I configure in code over a DSL or a hosted dashboard. **YES / NO**
 
 If most of those are NO, you'll be happier with [Svix](https://www.svix.com/), [Hookdeck Outpost](https://hookdeck.com/outpost), or a hand-rolled queue worker.

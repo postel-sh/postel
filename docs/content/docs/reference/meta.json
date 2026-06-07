@@ -1,12 +1,11 @@
 {
   "title": "Reference",
   "icon": "book",
-  "description": "Packages, API, errors, and specs.",
+  "description": "Packages, errors, and specs.",
   "pages": [
     "index",
     "packages",
     "http",
-    "core",
     "errors",
     "specs"
   ]
