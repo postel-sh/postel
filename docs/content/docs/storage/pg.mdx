@@ -4,16 +4,38 @@ icon: postgres
 description: "@postel/pg — a standalone Postgres storage adapter built on node-postgres, with SKIP LOCKED reservation and LISTEN/NOTIFY."
 ---
 
-`@postel/pg` is a **standalone** adapter for Postgres: hand it a connection string and Postel owns the pool, or hand it a `pg.Pool` you already manage. It's the adapter for multi-node, high-throughput delivery.
+`@postel/pg` is a **standalone** adapter for Postgres: hand it a `pg.Pool` you already manage, or a connection string and Postel owns the pool. It's the adapter for multi-node, high-throughput delivery.
 
 <Install packages="@postel/pg pg" />
+
+Hand `PgStorage` a `pg.Pool` your app already manages — Postel reuses it, so the outbox insert can share your transactions:
+
+```ts title="lib/postel.ts"
+import { Pool } from "pg";
+import { Postel } from "@postel/core";
+import { PgStorage } from "@postel/pg";
+import { config } from "./config.js";
+
+const pool = new Pool({ connectionString: config.databaseUrl });
+
+export const postel = Postel({
+  outbound: {
+    storage: PgStorage({ pool }),
+  },
+});
+```
+
+Or pass a connection string and let Postel open and own the pool:
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
 import { PgStorage } from "@postel/pg";
+import { config } from "./config.js";
 
 export const postel = Postel({
-  outbound: { storage: PgStorage({ connectionString: process.env.DATABASE_URL }) },
+  outbound: {
+    storage: PgStorage({ connectionString: config.databaseUrl }),
+  },
 });
 ```
 
@@ -42,7 +64,7 @@ Because Postel runs through node-postgres, you can share a transaction: open one
 
 ## Receiver-side dedup
 
-The package also exports `PgDedup` (and `ensurePgDedupTable`) for the inbound idempotency-dedup helper, independent of the outbound storage:
+`@postel/pg` also exports `PgDedup` (and `ensurePgDedupTable`) — the inbound idempotency-dedup helper, independent of the outbound storage. Wire it onto an inbound source, reusing the same pool:
 
 ```ts
 import { PgDedup } from "@postel/pg";
@@ -50,9 +72,17 @@ import { PgDedup } from "@postel/pg";
 const postel = Postel({
   inbound: {
     vendor: {
-      verify: secret,
-      dedup: PgDedup({ client: pool }),
+      verify: Secret(config.webhookSecret),
+      dedup: PgDedup({
+        client: pool,
+        // tableName: "postel_received_messages",  (default)
+        // schema: undefined,                       (search_path)
+        // autoMigrate: true,                       (creates the table on first use)
+      }),
+      dedupTtl: "24h",
     },
   },
 });
 ```
+
+The adapter uses `INSERT … ON CONFLICT … DO UPDATE WHERE expires_at <= now()` — atomic at the DB level, no application-level locks. The table is two columns: `message_id text PRIMARY KEY`, `expires_at timestamptz`, with an index on `expires_at` for cheap cleanup. See [Deduplication](/docs/inbound/deduplication) for the dedup contract and where to place the call.

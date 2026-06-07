@@ -4,16 +4,38 @@ icon: mysql
 description: "@postel/mysql — a standalone MySQL storage adapter built on mysql2, with SKIP LOCKED reservation and polling dispatch."
 ---
 
-`@postel/mysql` is a **standalone** adapter for MySQL: hand it a connection string and Postel owns the pool, or hand it a `mysql2` pool you already manage. Requires **MySQL ≥ 8.0.1** (for `FOR UPDATE SKIP LOCKED`); MariaDB ≥ 10.6 also works through the same `mysql2` driver.
+`@postel/mysql` is a **standalone** adapter for MySQL: hand it a `mysql2` pool you already manage, or a connection string and Postel owns the pool. Requires **MySQL ≥ 8.0.1** (for `FOR UPDATE SKIP LOCKED`); MariaDB ≥ 10.6 also works through the same `mysql2` driver.
 
 <Install packages="@postel/mysql mysql2" />
+
+Hand `MysqlStorage` a `mysql2` pool your app already manages — Postel reuses it, so the outbox insert can share your transactions:
+
+```ts title="lib/postel.ts"
+import { createPool } from "mysql2/promise";
+import { Postel } from "@postel/core";
+import { MysqlStorage } from "@postel/mysql";
+import { config } from "./config.js";
+
+const pool = createPool(config.databaseUrl);
+
+export const postel = Postel({
+  outbound: {
+    storage: MysqlStorage({ pool }),
+  },
+});
+```
+
+Or pass a connection string and let Postel open and own the pool:
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
 import { MysqlStorage } from "@postel/mysql";
+import { config } from "./config.js";
 
 export const postel = Postel({
-  outbound: { storage: MysqlStorage({ connectionString: process.env.DATABASE_URL }) },
+  outbound: {
+    storage: MysqlStorage({ connectionString: config.databaseUrl }),
+  },
 });
 ```
 
@@ -48,7 +70,7 @@ Open a transaction on a `mysql2` connection and pass it to `send()` so the outbo
 
 ## Receiver-side dedup
 
-The package also exports `MysqlDedup` (and `ensureMysqlDedupTable`) for the inbound idempotency-dedup helper, independent of the outbound storage:
+`@postel/mysql` also exports `MysqlDedup` (and `ensureMysqlDedupTable`) — the inbound idempotency-dedup helper, independent of the outbound storage. Wire it onto an inbound source, reusing the same pool:
 
 ```ts
 import { MysqlDedup } from "@postel/mysql";
@@ -56,9 +78,12 @@ import { MysqlDedup } from "@postel/mysql";
 const postel = Postel({
   inbound: {
     vendor: {
-      verify: secret,
+      verify: Secret(config.webhookSecret),
       dedup: MysqlDedup({ client: pool }),
+      dedupTtl: "24h",
     },
   },
 });
 ```
+
+Uses `INSERT … ON DUPLICATE KEY UPDATE` keyed off the affected-row count — same contract. The table mirrors the others: `message_id VARCHAR(191) PRIMARY KEY`, `expires_at BIGINT` (epoch-milliseconds), indexed for cheap cleanup. See [Deduplication](/docs/inbound/deduplication) for the contract and where to place the call.

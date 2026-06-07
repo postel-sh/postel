@@ -8,13 +8,25 @@ description: "@postel/kysely — run Postel's storage through your existing Kyse
 
 <Install packages="@postel/kysely kysely" />
 
+Plus your database driver — `pg`, `mysql2`, or `better-sqlite3`.
+
 ```ts title="lib/postel.ts"
+import { Kysely, PostgresDialect } from "kysely";
+import { Pool } from "pg";
 import { Postel } from "@postel/core";
 import { KyselyStorage } from "@postel/kysely";
-import { db } from "./db"; // your Kysely<DB>
+import { config } from "./config.js";
+
+const db = new Kysely<DB>({
+  dialect: new PostgresDialect({
+    pool: new Pool({ connectionString: config.databaseUrl }),
+  }),
+});
 
 export const postel = Postel({
-  outbound: { storage: KyselyStorage({ db, dialect: "postgres" }) },
+  outbound: {
+    storage: KyselyStorage({ db, dialect: "postgres" }),
+  },
 });
 ```
 

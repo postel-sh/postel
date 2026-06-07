@@ -6,7 +6,11 @@ description: Implement the Storage interface for any backend, with zero-DB helpe
 The `Storage` interface is technology-agnostic on purpose: you can back Postel with anything — libSQL, Turso, D1, CockroachDB, a backend the first-party adapters don't cover — by implementing it yourself. Wire your adapter in exactly like a first-party one:
 
 ```ts
-const postel = Postel({ outbound: { storage: myAdapter } });
+const postel = Postel({
+  outbound: {
+    storage: myAdapter,
+  },
+});
 ```
 
 ## What you implement

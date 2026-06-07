@@ -1,6 +1,6 @@
 ---
 title: Deduplication
-description: Webhooks are at-least-once. The dedup helper makes them once-effectively, atomically, in Postgres, SQLite, or memory.
+description: Webhooks are at-least-once. The dedup helper makes them once-effectively — atomically, across concurrent workers and crashes.
 ---
 
 Every webhook delivery system worth using is **at-least-once**. The producer retries on failure; the network drops packets; the receiver acks but its acknowledgment doesn't make it back. Plan for the same message arriving twice. Plan for it arriving twice within the same second from two competing workers.
@@ -15,11 +15,12 @@ Configure a dedup adapter on the inbound source, then call `dedup(messageId, opt
 
 ```ts
 import { Postel, Secret, InMemoryDedup } from "@postel/core";
+import { config } from "./config.js";
 
 const postel = Postel({
   inbound: {
     vendor: {
-      verify: Secret(process.env.WEBHOOK_SECRET!),
+      verify: Secret(config.webhookSecret),
       dedup: InMemoryDedup(),
       dedupTtl: "24h",  // org-wide default; overridable per call
     },
@@ -44,96 +45,19 @@ A few things to note:
 - **Concurrent calls race exactly once.** Two parallel `dedup('msg_X')` calls return `{ duplicate: false }` from exactly one of them. The other(s) return `{ duplicate: true }`. The compliance suite tests this.
 - **`postel.inbound.<source>.dedup` only exists when an adapter is configured.** Omit `dedup` from the source config and the method is not on the instance type — TypeScript catches the mistake at compile time.
 
-## Adapters
+## Storage adapters
 
-`dedup` is wired through an adapter that controls storage. Postel ships three first-party adapters; you can plug others in by implementing the `DedupAdapter` interface (one method, `record(id, ttlSeconds, options?) → { duplicate }`).
+`dedup` is wired through a `DedupAdapter` — one method, `record(id, ttlSeconds, options?) → { duplicate }`. Each database storage adapter ships a matching dedup helper alongside its outbound storage; configure it on the inbound source, reusing the same connection. The per-adapter details (options, table schema, SQL strategy) live on each adapter's page:
 
-### Postgres — `@postel/pg`
+| Adapter | Helper | Strategy |
+|---|---|---|
+| [`@postel/pg`](/docs/storage/pg#receiver-side-dedup) | `PgDedup` | `INSERT … ON CONFLICT` |
+| [`@postel/sqlite`](/docs/storage/sqlite#receiver-side-dedup) | `SqliteDedup` | `INSERT OR IGNORE` |
+| [`@postel/mysql`](/docs/storage/mysql#receiver-side-dedup) | `MysqlDedup` | `INSERT … ON DUPLICATE KEY UPDATE` |
 
-```ts title="lib/postel.ts"
-import { Postel, Secret } from "@postel/core";
-import { PgDedup } from "@postel/pg";
+`InMemoryDedup()` (shown above) is built into `@postel/core` — per-instance and not shared, so it's fine for tests and single-process development but **not** for production with more than one process, where concurrent receivers can both accept the same message. For anything multi-process, use a database-backed adapter.
 
-const postel = Postel({
-  inbound: {
-    vendor: {
-      verify: Secret(process.env.WEBHOOK_SECRET!),
-      dedup: PgDedup({
-        client: pgPool,        // node-postgres pool or compatible
-        // tableName: "postel_received_messages",  (default)
-        // schema: undefined,                       (search_path)
-        // autoMigrate: true,                       (creates the table on first use)
-      }),
-      dedupTtl: "24h",
-    },
-  },
-});
-```
-
-The adapter uses `INSERT … ON CONFLICT … DO UPDATE WHERE expires_at <= now()` — atomic at the DB level, no application-level locks. The table is two columns: `message_id text PRIMARY KEY`, `expires_at timestamptz`. An index on `expires_at` keeps cleanup cheap.
-
-### SQLite — `@postel/sqlite`
-
-```ts title="lib/postel.ts"
-import { SqliteDedup } from "@postel/sqlite";
-
-const postel = Postel({
-  inbound: {
-    vendor: {
-      verify: Secret(s),
-      dedup: SqliteDedup({ db: betterSqlite3Db }),
-      dedupTtl: "24h",
-    },
-  },
-});
-```
-
-Uses `INSERT OR IGNORE`. Identical contract. Periodically purges expired rows.
-
-### MySQL — `@postel/mysql`
-
-```ts title="lib/postel.ts"
-import { MysqlDedup } from "@postel/mysql";
-
-const postel = Postel({
-  inbound: {
-    vendor: {
-      verify: Secret(s),
-      dedup: MysqlDedup({ client: mysql2Pool }),
-      dedupTtl: "24h",
-    },
-  },
-});
-```
-
-Uses `INSERT … ON DUPLICATE KEY UPDATE` keyed off the affected-row count — same contract. The table mirrors the others: `message_id VARCHAR(191) PRIMARY KEY`, `expires_at BIGINT` (epoch-milliseconds), indexed for cheap cleanup.
-
-### In-memory — `InMemoryDedup` (built into `@postel/core`)
-
-```ts title="lib/postel.ts"
-import { Postel, Secret, InMemoryDedup } from "@postel/core";
-
-const postel = Postel({
-  inbound: {
-    vendor: {
-      verify: Secret(s),
-      dedup: InMemoryDedup(),
-      dedupTtl: "1h",
-    },
-  },
-});
-```
-
-Per-instance, not shared. Fine for development; **not** fine for production with more than one process — concurrent receivers can both accept the same message. Use it when:
-
-- You're running tests.
-- You're pairing it with at-least-once application-level idempotency anyway.
-
-For anything else, use a database-backed dedup adapter.
-
-### Redis — opt-in (not bundled)
-
-A Redis dedup adapter ships as a separate package for hosts that already run Redis. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, use it. If you don't, don't stand one up just for dedup; one of the SQL dedup adapters works.
+Implement `DedupAdapter` yourself to plug in another backend — e.g. Redis, for hosts that already run it. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, use it; if you don't, don't stand one up just for dedup.
 
 ## Where to put the dedup call
 
@@ -150,7 +74,7 @@ This is correct as long as `processOrder` is itself idempotent on its own writes
 The cleanest pattern is the **transactional outbox** in reverse: the dedup insert participates in the same DB transaction as the work. Every dedup call accepts an optional `tx` parameter that the adapter threads through to its storage.
 
 ```ts
-await pgPool.tx(async (tx) => {
+await db.transaction(async (tx) => {
   const { duplicate } = await postel.inbound.vendor.dedup(event.id, { tx });
   if (duplicate) return; // tx commits with no work; safe.
 

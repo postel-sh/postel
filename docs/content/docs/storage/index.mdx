@@ -12,7 +12,9 @@ import { Postel } from "@postel/core";
 import { SqliteStorage } from "@postel/sqlite";
 
 export const postel = Postel({
-  outbound: { storage: SqliteStorage({ filename: "postel.db" }) },
+  outbound: {
+    storage: SqliteStorage({ filename: "postel.db" }),
+  },
 });
 ```
 
