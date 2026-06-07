@@ -9,10 +9,13 @@ The full receiver surface is two calls: a factory at module scope, and a `verify
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
+import { config } from "./config.js";
 
 export const postel = Postel({
   inbound: {
-    vendor: { verify: Secret(process.env.VENDOR_WEBHOOK_SECRET!) },
+    vendor: {
+      verify: Secret(config.vendorWebhookSecret),
+    },
   },
 });
 ```

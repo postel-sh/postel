@@ -11,12 +11,16 @@ description: "@postel/prisma — run Postel's storage through your existing Pris
 `@prisma/client` is a peer dependency — you already have it in a Prisma app.
 
 ```ts title="lib/postel.ts"
+import { PrismaClient } from "@prisma/client";
 import { Postel } from "@postel/core";
 import { PrismaStorage } from "@postel/prisma";
-import { prisma } from "./db"; // your PrismaClient
+
+const prisma = new PrismaClient();
 
 export const postel = Postel({
-  outbound: { storage: PrismaStorage({ prisma, dialect: "postgres" }) },
+  outbound: {
+    storage: PrismaStorage({ prisma, dialect: "postgres" }),
+  },
 });
 ```
 

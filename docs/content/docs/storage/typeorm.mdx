@@ -11,12 +11,18 @@ description: "@postel/typeorm — run Postel's storage through your existing Typ
 Plus your database driver — `pg`, `mysql2`, or `better-sqlite3`.
 
 ```ts title="lib/postel.ts"
+import { DataSource } from "typeorm";
 import { Postel } from "@postel/core";
 import { TypeOrmStorage } from "@postel/typeorm";
-import { dataSource } from "./data-source"; // your initialized TypeORM DataSource
+import { config } from "./config.js";
+
+const dataSource = new DataSource({ type: "postgres", url: config.databaseUrl });
+await dataSource.initialize();
 
 export const postel = Postel({
-  outbound: { storage: TypeOrmStorage({ dataSource, dialect: "postgres" }) },
+  outbound: {
+    storage: TypeOrmStorage({ dataSource, dialect: "postgres" }),
+  },
 });
 ```
 

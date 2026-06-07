@@ -132,7 +132,7 @@ await postel.outbound.endpoints.create({
   types:   ["*"],
   headers: {
     "x-tenant-id":     "cust_42",
-    "x-environment":   process.env.NODE_ENV ?? "production",
+    "x-environment":   config.environment,
   },
 });
 

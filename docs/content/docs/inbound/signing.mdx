@@ -25,9 +25,14 @@ ${webhook-id}.${webhook-timestamp}.${body-bytes}
 
 ```ts
 import { Postel, Secret } from "@postel/core";
+import { config } from "./config.js";
 
 const postel = Postel({
-  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+  inbound: {
+    vendor: {
+      verify: Secret(config.webhookSecret),
+    },
+  },
 });
 
 const { event, matchedVerifierIndex } = await postel.inbound.vendor.verify(body, headers);
@@ -74,8 +79,8 @@ const postel = Postel({
   inbound: {
     vendor: {
       verify: [
-        Secret(process.env.WEBHOOK_SECRET_CURRENT!),
-        Secret(process.env.WEBHOOK_SECRET_PREVIOUS!),
+        Secret(config.webhookSecretCurrent),
+        Secret(config.webhookSecretPrevious),
       ],
     },
   },

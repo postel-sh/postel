@@ -35,9 +35,14 @@ The same conceptual contract — verify raw bytes + headers against one or more 
 
 ```ts
 import { Postel, Secret, SignatureInvalid } from "@postel/core";
+import { config } from "./config.js";
 
 const postel = Postel({
-  inbound: { vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) } },
+  inbound: {
+    vendor: {
+      verify: Secret(config.webhookSecret),
+    },
+  },
 });
 
 export async function POST(req: Request) {

@@ -115,14 +115,21 @@ await db.tx(async (tx) => {
 });`;
 
 const inboundConfig = `import { Postel, Secret, Keyset } from "@postel/core";
+import { config } from "./config.js";
 
 export const postel = Postel({
   inbound: {
-    stripe: { verify: Secret(process.env.STRIPE_SECRET!) },
+    stripe: {
+      verify: Secret(config.stripeSecret),
+    },
     // rotate keys with zero downtime — accept either during the window
-    github: { verify: [Secret(process.env.NEW!), Secret(process.env.OLD!)] },
+    github: {
+      verify: [Secret(config.githubSecretNew), Secret(config.githubSecretOld)],
+    },
     // or verify asymmetric signatures straight from a JWKS endpoint
-    partner: { verify: Keyset({ jwksUri: "https://partner.example/jwks" }) },
+    partner: {
+      verify: Keyset({ jwksUri: "https://partner.example/jwks" }),
+    },
   },
 });`;
 

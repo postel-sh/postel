@@ -13,13 +13,14 @@ Each inbound source's `verify` slot accepts a single `Verifier` or a `ReadonlyAr
 
 ```ts
 import { Postel, Secret } from "@postel/core";
+import { config } from "./config.js";
 
 const postel = Postel({
   inbound: {
     vendor: {
       verify: [
-        Secret(process.env.WEBHOOK_SECRET_CURRENT!),  // new
-        Secret(process.env.WEBHOOK_SECRET_PREVIOUS!), // grace-window
+        Secret(config.webhookSecretCurrent), // new
+        Secret(config.webhookSecretPrevious), // grace-window
       ],
     },
   },

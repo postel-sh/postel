@@ -29,12 +29,15 @@ Once per process, at module scope. One entry per webhook *source* — keep them 
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
+import { config } from "./config.js";
 
 export const postel = Postel({
   inbound: {
-    github: { verify: Secret(process.env.GITHUB_WEBHOOK_SECRET!) },
+    github: {
+      verify: Secret(config.githubWebhookSecret),
+    },
     // Add more sources as you grow:
-    // stripe: { verify: Secret(process.env.STRIPE_WEBHOOK_SECRET!) },
+    // stripe: { verify: Secret(config.stripeWebhookSecret) },
   },
 });
 ```
@@ -92,8 +95,9 @@ You need a signed request to verify. The library ships a fixture helper for exac
 
 ```ts title="scripts/send-fixture.ts"
 import { signFixture } from "@postel/core";
+import { config } from "../lib/config.js";
 
-const secret = process.env.GITHUB_WEBHOOK_SECRET!;
+const secret = config.githubWebhookSecret;
 const fixture = await signFixture({
   secret,
   payload: { type: "issue.opened", data: { id: 42 } },

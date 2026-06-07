@@ -8,13 +8,20 @@ description: "@postel/drizzle — run Postel's storage through your existing Dri
 
 <Install packages="@postel/drizzle drizzle-orm" />
 
+Plus your database driver — `pg`, `mysql2`, or `better-sqlite3`.
+
 ```ts title="lib/postel.ts"
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Postel } from "@postel/core";
 import { DrizzleStorage } from "@postel/drizzle";
-import { db } from "./db"; // your Drizzle instance
+import { config } from "./config.js";
+
+const db = drizzle(config.databaseUrl);
 
 export const postel = Postel({
-  outbound: { storage: DrizzleStorage({ db, dialect: "postgres" }) },
+  outbound: {
+    storage: DrizzleStorage({ db, dialect: "postgres" }),
+  },
 });
 ```
 

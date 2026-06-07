@@ -11,12 +11,20 @@ description: "@postel/mikro-orm — run Postel's storage through your existing M
 Plus your MikroORM driver — `@mikro-orm/postgresql`, `@mikro-orm/mysql`, or `@mikro-orm/better-sqlite`.
 
 ```ts title="lib/postel.ts"
+import { MikroORM } from "@mikro-orm/postgresql";
 import { Postel } from "@postel/core";
 import { MikroOrmStorage } from "@postel/mikro-orm";
-import { orm } from "./mikro-orm"; // your initialized MikroORM
+import { config } from "./config.js";
+
+const orm = await MikroORM.init({
+  clientUrl: config.databaseUrl,
+  entities: ["./entities"], // your entities
+});
 
 export const postel = Postel({
-  outbound: { storage: MikroOrmStorage({ orm, dialect: "postgres" }) },
+  outbound: {
+    storage: MikroOrmStorage({ orm, dialect: "postgres" }),
+  },
 });
 ```
 

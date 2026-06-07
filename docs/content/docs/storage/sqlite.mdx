@@ -8,12 +8,32 @@ description: "@postel/sqlite — a standalone SQLite storage adapter built on be
 
 <Install packages="@postel/sqlite better-sqlite3" />
 
+Hand `SqliteStorage` a `better-sqlite3` database your app already opened — Postel reuses the handle instead of opening its own:
+
+```ts title="lib/postel.ts"
+import Database from "better-sqlite3";
+import { Postel } from "@postel/core";
+import { SqliteStorage } from "@postel/sqlite";
+
+const db = new Database("postel.db");
+
+export const postel = Postel({
+  outbound: {
+    storage: SqliteStorage({ db }),
+  },
+});
+```
+
+Or give it a filename and Postel opens and owns the database — the simplest path (use `":memory:"` for tests):
+
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
 import { SqliteStorage } from "@postel/sqlite";
 
 export const postel = Postel({
-  outbound: { storage: SqliteStorage({ filename: "postel.db" }) },
+  outbound: {
+    storage: SqliteStorage({ filename: "postel.db" }),
+  },
 });
 ```
 
@@ -42,7 +62,7 @@ SQLite serializes writes through a single writer. The adapter reserves outbox ro
 
 ## Receiver-side dedup
 
-The package also exports `SqliteDedup` for the inbound idempotency-dedup helper, independent of the outbound storage:
+`@postel/sqlite` also exports `SqliteDedup` — the inbound idempotency-dedup helper, independent of the outbound storage. Wire it onto an inbound source, reusing the same database:
 
 ```ts
 import { SqliteDedup } from "@postel/sqlite";
@@ -50,9 +70,12 @@ import { SqliteDedup } from "@postel/sqlite";
 const postel = Postel({
   inbound: {
     vendor: {
-      verify: secret,
+      verify: Secret(config.webhookSecret),
       dedup: SqliteDedup({ db }),
+      dedupTtl: "24h",
     },
   },
 });
 ```
+
+Uses `INSERT OR IGNORE` — same contract as the other adapters. Expired rows are purged periodically. See [Deduplication](/docs/inbound/deduplication) for the contract and where to place the call.
