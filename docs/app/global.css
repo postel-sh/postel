@@ -56,16 +56,22 @@ html.dark {
 }
 
 /* Fumadocs's <TabsContent> ships an inner card by default
- * (p-4 bg-fd-background rounded-xl) and an escape hatch that strips
- * the padding when the panel wraps a <figure> as its only child —
- * which is what docs-page CodeBlocks render. The landing page renders
- * shiki HTML directly inside a plain <div>, so the escape hatch never
- * fires and the inner panel becomes a visible card-within-a-card. Strip
- * the panel chrome for the non-figure case so the outer Tabs container
- * is the only visual frame; docs pages keep their current behavior. */
-[role="tabpanel"][data-orientation="horizontal"]:not(:has(> figure:only-child)) {
+ * (p-4 bg-fd-background rounded-xl). It only gets stripped flush when the
+ * panel wraps a <figure> as its only child (Fumadocs's own escape hatch).
+ * A panel that mixes a prose line with a code block — or renders shiki
+ * directly, like the landing page — keeps that inner bg-fd-background, so
+ * the surface visibly FLIPS between a black inset and the gray container as
+ * you switch between a code-only tab and a prose-plus-code tab. Make every
+ * panel transparent so the outer Tabs container is the single surface. */
+[role="tabpanel"][data-orientation="horizontal"] {
   background: transparent;
   border-radius: 0;
+}
+
+/* Restore the panel padding for the panels Fumadocs's figure:only-child
+ * escape hatch doesn't cover (prose-plus-code, or direct shiki). Code-only
+ * panels keep Fumadocs's p-4 + the figure's -m-4 flush, untouched. */
+[role="tabpanel"][data-orientation="horizontal"]:not(:has(> figure:only-child)) {
   padding: 1rem;
 }
 
