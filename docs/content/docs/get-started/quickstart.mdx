@@ -1,13 +1,15 @@
 ---
 title: Quickstart
-description: Install @postel/core and verify your first signed webhook in under a minute. Node, Bun, or Deno.
+description: Zero to a verified inbound webhook and a signed outbound one, in a few minutes. Node, Bun, or Deno.
 ---
 
 import { Steps, Step } from "fumadocs-ui/components/steps";
 
-This page takes you from zero to a verified webhook on your laptop. It uses only the receiver half of `@postel/core`. For the sending side, see [Outbound](/docs/outbound).
+Postel has two independent halves. This page gets each one working from scratch — do the one you need now, or both. Everything below is TypeScript you can run today; [other languages](/docs/get-started/polyglot) are on the roadmap.
 
-Other languages (Go, Python, Rust) are on the roadmap. The TypeScript examples below are what you can run *right now*. See [Polyglot](/docs/get-started/polyglot) for port status.
+## Receive a webhook
+
+Verify a Standard Webhooks-signed request from Stripe, GitHub, or any compliant producer.
 
 <Steps>
 
@@ -17,15 +19,15 @@ Other languages (Go, Python, Rust) are on the roadmap. The TypeScript examples b
 
 <Install packages="@postel/core" />
 
-Zero runtime dependencies. Tree-shaking keeps outbound code paths out of receiver-only builds.
+Zero runtime dependencies. If you use a web framework, add its adapter too — `@postel/hono`, `@postel/express`, `@postel/fastify`, `@postel/nestjs`, or `@postel/http` for any Fetch runtime.
 
 </Step>
 
 <Step>
 
-### Configure a `Postel` instance
+### Configure a source
 
-Once per process, at module scope. One entry per webhook *source* — keep them keyed by the producer name.
+Once per process, at module scope. One entry per webhook *source*, keyed by the producer's name.
 
 ```ts title="lib/postel.ts"
 import { Postel, Secret } from "@postel/core";
@@ -33,20 +35,13 @@ import { config } from "./config.js";
 
 export const postel = Postel({
   inbound: {
-    github: {
-      verify: Secret(config.githubWebhookSecret),
-    },
-    // Add more sources as you grow:
+    github: { verify: Secret(config.githubWebhookSecret) },
     // stripe: { verify: Secret(config.stripeWebhookSecret) },
   },
 });
 ```
 
-A few things worth noticing now (the [Inbound](/docs/inbound) section explains them properly):
-
-- `Secret(...)` is a *verifier strategy*. You can also use `Keyset({...})` for JWKS, or pass an array of strategies for [rotation](/docs/inbound/key-rotation).
-- Sources are keyed by name. `postel.inbound.github` is fully typed; `postel.inbound.stripe` only exists if you configured it.
-- `postel.outbound` is *absent* on the instance type because you didn't configure `outbound`. TypeScript catches accidental use at compile time.
+`Secret(...)` is a *verifier strategy* — swap in `Keyset({ jwksUri })` for JWKS, or pass an array for [key rotation](/docs/inbound/key-rotation). `postel.inbound.github` is fully typed; sources you didn't configure don't exist on the type.
 
 </Step>
 
@@ -54,36 +49,106 @@ A few things worth noticing now (the [Inbound](/docs/inbound) section explains t
 
 ### Verify a request
 
-This is framework-agnostic — anywhere you can hand off raw bytes and headers, it works:
+The verifier runs over the **exact received bytes** — never re-parse and re-serialize the body first ([here's why](/docs/inbound/raw-bytes)). Pick your framework; each adapter is a thin gate over the same verifier, so your handler only runs once the signature checks out.
+
+<Tabs items={["Framework-agnostic", "Hono", "Express", "Fastify", "NestJS"]}>
+
+<Tab value="Framework-agnostic">
+
+Any Fetch runtime — Next.js Route Handlers, Bun, Deno:
 
 ```ts title="app/api/webhooks/github/route.ts"
+import { fetchWebhook } from "@postel/http";
 import { postel } from "@/lib/postel";
-import {
-  SignatureInvalid,
-  TimestampTooOld,
-  MalformedHeader,
-} from "@postel/core";
 
-export async function POST(req: Request) {
-  // The signature is computed over the EXACT bytes sent.
-  // Never re-serialize the body before verify — see /docs/inbound/raw-bytes.
-  const body = new Uint8Array(await req.arrayBuffer());
-  const headers = Object.fromEntries(req.headers);
-
-  try {
-    const { event } = await postel.inbound.github.verify(body, headers);
+const handler = fetchWebhook(postel.inbound.github, {
+  onVerified: async ({ event }) => {
     console.log("received:", event.type, event.data);
-    return new Response("ok", { status: 200 });
-  } catch (err) {
-    if (err instanceof SignatureInvalid)  return new Response("bad signature", { status: 401 });
-    if (err instanceof TimestampTooOld)   return new Response("timestamp out of window", { status: 401 });
-    if (err instanceof MalformedHeader)   return new Response("malformed headers", { status: 400 });
-    throw err;
+  },
+});
+
+export const POST = (req: Request) => handler(req);
+```
+
+</Tab>
+
+<Tab value="Hono">
+
+```ts title="app.ts"
+import { Hono } from "hono";
+import { verifyWebhook, POSTEL_CONTEXT_KEY } from "@postel/hono";
+import { postel } from "./lib/postel";
+
+const app = new Hono();
+
+app.post("/webhooks/github", verifyWebhook(postel.inbound.github), (c) => {
+  const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · raw bytes intact
+  return c.json({ ok: true, type: event.type });
+});
+```
+
+</Tab>
+
+<Tab value="Express">
+
+```ts title="app.ts"
+import express from "express";
+import { verifyWebhook } from "@postel/express";
+import { postel } from "./lib/postel";
+
+const app = express();
+
+// verifyWebhook mounts express.raw() + the gate — don't put express.json() ahead of it
+app.post("/webhooks/github", verifyWebhook(postel.inbound.github), (req, res) => {
+  res.json({ ok: true, type: req.postel?.event.type });
+});
+```
+
+</Tab>
+
+<Tab value="Fastify">
+
+```ts title="app.ts"
+import Fastify from "fastify";
+import { fastifyPostel, verifyWebhook } from "@postel/fastify";
+import { postel } from "./lib/postel";
+
+const app = Fastify();
+await app.register(fastifyPostel); // raw-body parser; register on a webhook-only scope
+
+app.post(
+  "/webhooks/github",
+  { preHandler: verifyWebhook(postel.inbound.github) },
+  async (req) => ({ ok: true, type: req.postel?.event.type }),
+);
+```
+
+</Tab>
+
+<Tab value="NestJS">
+
+Boot with `rawBody: true`, register `PostelModule.forRoot(postel)`, then guard the route:
+
+```ts title="webhooks.controller.ts"
+import { Controller, Post, UseGuards } from "@nestjs/common";
+import { WebhookGuard, Event } from "@postel/nestjs";
+import type { WebhookEvent } from "@postel/core";
+
+@Controller("webhooks")
+export class WebhooksController {
+  @Post("github")
+  @UseGuards(WebhookGuard("github"))
+  handle(@Event() event: WebhookEvent) {
+    return { ok: true, type: event.type };
   }
 }
 ```
 
-Works unmodified on Next.js Route Handlers, Bun, Deno, and any other runtime whose `Request` exposes `arrayBuffer()`. Hono, Express, Fastify, and NestJS have dedicated adapters that gate the route — verification runs before your handler and the verified event lands on the request context — see [Web adapters](/docs/web-adapters).
+</Tab>
+
+</Tabs>
+
+On a verification failure the gate short-circuits with the right HTTP status and your handler never runs. Each adapter is covered in full under [Web adapters](/docs/web-adapters).
 
 </Step>
 
@@ -91,19 +156,18 @@ Works unmodified on Next.js Route Handlers, Bun, Deno, and any other runtime who
 
 ### Try it locally
 
-You need a signed request to verify. The library ships a fixture helper for exactly this:
+You need a signed request to verify. The library ships a fixture signer for exactly this:
 
 ```ts title="scripts/send-fixture.ts"
 import { signFixture } from "@postel/core";
 import { config } from "../lib/config.js";
 
-const secret = config.githubWebhookSecret;
 const fixture = await signFixture({
-  secret,
+  secret: config.githubWebhookSecret,
   payload: { type: "issue.opened", data: { id: 42 } },
 });
 
-const res = await fetch("http://localhost:3000/api/webhooks/github", {
+const res = await fetch("http://localhost:3000/webhooks/github", {
   method: "POST",
   headers: fixture.headers,
   body: fixture.body,
@@ -112,7 +176,74 @@ const res = await fetch("http://localhost:3000/api/webhooks/github", {
 console.log(res.status); // 200
 ```
 
-`signFixture` is **for tests**, not production signing. Production signing is the sender's job (`postel.outbound.send`) — see [Outbound](/docs/outbound).
+`signFixture` is **for tests** — production signing is the sender's job, next.
+
+</Step>
+
+</Steps>
+
+## Send a webhook
+
+Deliver Standard Webhooks to *your* customers' endpoints, with a transactional outbox, retries, and signing handled for you.
+
+<Steps>
+
+<Step>
+
+### Configure the sender
+
+Pass an `outbound` block to the same factory. `InMemoryStorage` gets you running immediately; point it at a database for production.
+
+```ts title="lib/postel.ts"
+import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff } from "@postel/core";
+
+export const postel = Postel({
+  outbound: {
+    storage: InMemoryStorage(),                 // swap for a DB adapter in production
+    signing: HmacV1(),                          // or Ed25519V1a() for asymmetric + JWKS
+    retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
+  },
+});
+```
+
+For durable delivery, swap `InMemoryStorage()` for a [storage adapter](/docs/storage) — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql`, or your existing Kysely / Drizzle / Prisma / TypeORM / MikroORM instance.
+
+</Step>
+
+<Step>
+
+### Register an endpoint
+
+An endpoint is a receiver URL plus the event types it should get. Postel mints its signing secret automatically.
+
+```ts
+await postel.outbound.endpoints.create({
+  url: "https://customer.example.com/webhooks",
+  types: ["order.*"],
+});
+```
+
+Fan-out is automatic: one `send()` reaches every endpoint whose `types` match the event.
+
+</Step>
+
+<Step>
+
+### Send inside your transaction
+
+`send()` is an outbox INSERT — pass it your transaction handle and the webhook is queued only if your business write commits. A worker delivers it after commit, so you never block on the network inside the transaction.
+
+```ts title="orders.ts"
+await db.tx(async (tx) => {
+  await db.orders.insert({ id: "ord_123", status: "paid" }, { tx });
+  await postel.outbound.send(
+    { type: "order.created", data: { id: "ord_123" } },
+    { tx },                                     // commits or rolls back atomically
+  );
+});
+```
+
+That's the [transactional outbox](/docs/outbound/send) — no broker, no dispatcher process, no dual-write race.
 
 </Step>
 
@@ -120,11 +251,16 @@ console.log(res.status); // 200
 
 ## Where to next
 
-You have a working verifier. The next things you'll hit:
+**Receiving** — the things that bite every integration eventually:
 
-- [Raw bytes](/docs/inbound/raw-bytes) — the single most common silent failure mode. Read this before you ship.
-- [Key rotation](/docs/inbound/key-rotation) — how to rotate without dropping requests.
+- [Raw bytes](/docs/inbound/raw-bytes) — the single most common silent failure. Read this before you ship.
+- [Key rotation](/docs/inbound/key-rotation) — rotate secrets with zero downtime.
 - [Deduplication](/docs/inbound/deduplication) — webhooks are at-least-once; here's the atomic helper.
-- [Inbound overview](/docs/inbound) — the full receiver feature map.
 
-If you're not sure whether the library fits your case, jump to [Is Postel for me?](/docs/get-started/is-postel-for-me).
+**Sending** — on the way to production:
+
+- [Storage](/docs/storage) — pick a durable adapter, or bring your own.
+- [Retries & backoff](/docs/outbound/retries) — circuit breaker, dead-letter, auto-disable.
+- [Replay](/docs/outbound/replay) — re-emit historical messages by id, endpoint, or filter.
+
+Not sure Postel fits your stack? Run the [six-line filter](/docs/get-started/is-postel-for-me).
