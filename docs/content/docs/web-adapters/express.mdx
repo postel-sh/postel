@@ -36,6 +36,14 @@ ewa.inbound.vendor.post("/webhooks/vendor", (req, res) => {
 
 Source keys are type-checked. On failure the gate writes the mapped 4xx and your handler never runs; a non-`PostelError` is forwarded to `next(err)` (your error middleware / 500).
 
+### Other methods
+
+`.post` is sugar for `.on("POST", …)`. For a provider that delivers over `PUT`/`PATCH`, bind the method explicitly — body-bearing verbs (`POST` | `PUT` | `PATCH`) only, since the gate verifies a signature over the body:
+
+```ts
+ewa.inbound.vendor.on("PUT", "/webhooks/vendor", (req, res) => res.json({ ok: true }));
+```
+
 ## JWKS
 
 ```ts
