@@ -75,6 +75,18 @@ html.dark {
   padding: 1rem;
 }
 
+/* Make a code switcher read like a standalone code block, not an elevated
+ * surface. Fumadocs's Tabs container ships bg-fd-secondary (a grey lift); we
+ * pin it to the page canvas so the same pure-black background shows behind the
+ * syntax as a normal .shiki code block (which inherit-the-canvas rule above
+ * makes transparent). The container border + rounded corners stay, so the
+ * widget still frames as one card — just black inside, like every other code
+ * block. The panel + figure rules above already strip every inner surface, so
+ * this container background is what shows behind the code. */
+div:has(> [role="tablist"][data-orientation="horizontal"]) {
+  background: var(--color-fd-background);
+}
+
 /* Inside a Tabs language switcher, the Fumadocs CodeBlock figcaption
  * (file path + lang icon + copy button) is redundant — the tab itself
  * already names the language and the file path either matches every
