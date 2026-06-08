@@ -1,8 +1,9 @@
+import type { StandardSchemaV1 } from "@postel/core";
 import { InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import { HonoWebAdapter, POSTEL_CONTEXT_KEY, verifyWebhook, withWebhook } from "../src/index.js";
+import { HonoWebAdapter, getVerified, verifyWebhook, withWebhook } from "../src/index.js";
 
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
@@ -23,7 +24,7 @@ describe("Framework adapters preserve raw bytes", () => {
   it("HonoWebAdapter inbound routes receive byte-identical input; re-serialized JSON is rejected", async () => {
     const app = new Hono();
     HonoWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", (c) =>
-      c.json({ ok: true, type: c.get(POSTEL_CONTEXT_KEY).event.type }),
+      c.json({ ok: true, type: c.var.postel.event.type }),
     );
 
     const sig = await signed("order.created", "o_1");
@@ -50,7 +51,7 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
   it("inbound.<source>.post gates the route, stashes the verified result, runs the handler", async () => {
     const app = new Hono();
     HonoWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", (c) => {
-      const result = c.get(POSTEL_CONTEXT_KEY);
+      const result = c.var.postel;
       return c.json({ ok: true, type: result.event.type, matched: result.matchedVerifierIndex });
     });
     const sig = await signed("order.created", "o_1");
@@ -84,16 +85,48 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
     });
   });
 
+  it("inbound.<source>.post types c.var.postel with the source's schema output", async () => {
+    const schema: StandardSchemaV1<unknown, { id: string }> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: (value) =>
+          typeof value === "object" &&
+          value !== null &&
+          typeof (value as { id?: unknown }).id === "string"
+            ? { value: value as { id: string } }
+            : { issues: [{ message: "id must be a string" }] },
+      },
+    };
+    const postel = Postel({
+      inbound: { orders: { verify: Secret(SECRET), schema, now: () => NOW } },
+    });
+    const app = new Hono();
+    HonoWebAdapter(postel, app).inbound.orders.post("/webhooks/orders", (c) => {
+      // Compile-time proof the handler context carries the schema's output type.
+      const data: { id: string } | undefined = c.var.postel.event.data;
+      return c.json({ ok: true, id: data?.id });
+    });
+    const sig = await signed("order.created", "o_99");
+    const res = await app.request("/webhooks/orders", {
+      method: "POST",
+      headers: { ...sig.headers, "content-type": "application/json" },
+      body: sig.body,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, id: "o_99" });
+  });
+
   it("verifyWebhook / withWebhook remain as low-level primitives", async () => {
     const postel = vendor();
     const app = new Hono();
     app.post("/mw/vendor", verifyWebhook(postel.inbound.vendor), (c) =>
-      c.json({ ok: true, type: c.get(POSTEL_CONTEXT_KEY).event.type }),
+      c.json({ ok: true, type: getVerified(c).event.type }),
     );
     app.post(
       "/wrap/vendor",
       withWebhook(postel.inbound.vendor, (c) =>
-        c.json({ ok: true, type: c.get(POSTEL_CONTEXT_KEY).event.type }),
+        c.json({ ok: true, type: getVerified(c).event.type }),
       ),
     );
     for (const path of ["/mw/vendor", "/wrap/vendor"]) {

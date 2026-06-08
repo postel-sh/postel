@@ -1,6 +1,7 @@
 import { type AdminRouterOptions, adminRouter } from "@postel/admin";
 import type {
   ComposedVerifyResult,
+  EventOf,
   InboundSource,
   OutboundApi,
   PostelConfig,
@@ -20,10 +21,35 @@ export const POSTEL_CONTEXT_KEY = "postel" as const;
 
 const WELL_KNOWN_JWKS = "/.well-known/webhooks-keys";
 
-declare module "hono" {
-  interface ContextVariableMap {
-    postel: ComposedVerifyResult<unknown>;
+// A Hono context whose `postel` variable is the verified result, typed to the
+// source's event payload. The gate sets it before the handler runs, so reads
+// via `c.var.postel` / `c.get("postel")` are non-optional inside a gated route.
+type VerifiedContext<TData> = Context<{ Variables: { postel: ComposedVerifyResult<TData> } }>;
+
+type HonoHandler = (c: Context) => Response | Promise<Response>;
+type VerifiedHandler<TData> = (c: VerifiedContext<TData>) => Response | Promise<Response>;
+
+function setVerified(c: Context, result: ComposedVerifyResult<unknown>): void {
+  (c as VerifiedContext<unknown>).set(POSTEL_CONTEXT_KEY, result);
+}
+
+/**
+ * Read the verified webhook result off a Hono context on the **primitive**
+ * (`verifyWebhook` / `withWebhook`) path, where the handler context isn't
+ * statically typed. Throws if the gate did not run. Pass `TData` to type the
+ * payload. Routes registered through `HonoWebAdapter(...).inbound.<source>.post`
+ * are already typed via `c.var.postel` and don't need this.
+ */
+export function getVerified<TData = unknown>(c: Context): ComposedVerifyResult<TData> {
+  const result = (c as VerifiedContext<TData>).get(POSTEL_CONTEXT_KEY) as
+    | ComposedVerifyResult<TData>
+    | undefined;
+  if (result === undefined) {
+    throw new Error(
+      "getVerified(): no verified webhook on the context — run verifyWebhook/withWebhook on this route first.",
+    );
   }
+  return result;
 }
 
 function headersFromHono(c: Context): WebhookHeaders {
@@ -41,7 +67,7 @@ function outcomeResponse(status: number, headers: Record<string, string>, body?:
 }
 
 export function verifyWebhook<TData = unknown>(
-  source: GateSource,
+  source: GateSource<TData>,
   opts?: WebhookHandlerOptions<TData>,
 ): MiddlewareHandler {
   return async (c, next) => {
@@ -54,16 +80,16 @@ export function verifyWebhook<TData = unknown>(
     if (outcome.kind === "error")
       return outcomeResponse(outcome.status, outcome.headers, outcome.body);
     if (outcome.kind === "duplicate") return outcomeResponse(outcome.status, outcome.headers);
-    c.set(POSTEL_CONTEXT_KEY, outcome.context.result as ComposedVerifyResult<unknown>);
+    setVerified(c, outcome.context.result);
     await next();
   };
 }
 
 export function withWebhook<TData = unknown>(
-  source: GateSource,
-  handler: (c: Context) => Response | Promise<Response>,
+  source: GateSource<TData>,
+  handler: HonoHandler,
   opts?: WebhookHandlerOptions<TData>,
-): (c: Context) => Promise<Response> {
+): HonoHandler {
   return async (c) => {
     const rawBody = new Uint8Array(await c.req.arrayBuffer());
     const outcome = await handleInbound<TData>(
@@ -74,7 +100,7 @@ export function withWebhook<TData = unknown>(
     if (outcome.kind === "error")
       return outcomeResponse(outcome.status, outcome.headers, outcome.body);
     if (outcome.kind === "duplicate") return outcomeResponse(outcome.status, outcome.headers);
-    c.set(POSTEL_CONTEXT_KEY, outcome.context.result as ComposedVerifyResult<unknown>);
+    setVerified(c, outcome.context.result);
     return handler(c);
   };
 }
@@ -85,14 +111,12 @@ type InboundSourcesOf<C extends PostelConfig> = C extends {
   ? I
   : never;
 
-type HonoHandler = (c: Context) => Response | Promise<Response>;
-
-export interface HonoInboundRoute {
-  post<TData = unknown>(
+export interface HonoInboundRoute<TDefault = unknown> {
+  post<TData = TDefault>(
     route: string,
-    handler: HonoHandler,
+    handler: VerifiedHandler<TData>,
     opts?: WebhookHandlerOptions<TData>,
-  ): HonoInboundRoute;
+  ): HonoInboundRoute<TDefault>;
 }
 
 export interface HonoOutboundBindings {
@@ -106,7 +130,13 @@ export interface HonoAdminBindings {
 type HonoWebAdapter<C extends PostelConfig> = (C extends {
   readonly inbound: Record<string, InboundSource>;
 }
-  ? { readonly inbound: { readonly [K in keyof InboundSourcesOf<C>]: HonoInboundRoute } }
+  ? {
+      readonly inbound: {
+        readonly [K in keyof InboundSourcesOf<C>]: HonoInboundRoute<
+          EventOf<InboundSourcesOf<C>[K]>
+        >;
+      };
+    }
   : object) &
   (C extends { readonly outbound: object }
     ? { readonly outbound: HonoOutboundBindings; readonly admin: HonoAdminBindings }
@@ -132,7 +162,10 @@ export function HonoWebAdapter<const C extends PostelConfig>(
       const source = p.inbound[key] as GateSource;
       const builder: HonoInboundRoute = {
         post(route, handler, opts) {
-          app.post(route, withWebhook(source, handler, opts));
+          app.post(
+            route,
+            withWebhook(source, handler as HonoHandler, opts as WebhookHandlerOptions | undefined),
+          );
           return builder;
         },
       };

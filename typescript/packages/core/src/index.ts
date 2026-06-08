@@ -11,6 +11,7 @@ export type {
 
 export type {
   ComposedVerifyResult,
+  EventOf,
   InboundApi,
   InboundDedupOptions,
   InboundSource,
@@ -44,6 +45,7 @@ export {
   EndpointDisabled,
   EndpointNotFound,
   EndpointValidation,
+  EventValidation,
   IdempotencyKeyConflict,
   MalformedHeader,
   MigrationRequired,
@@ -56,6 +58,7 @@ export {
   UnknownKeyId,
 } from "./errors.js";
 export type { PostelErrorCode } from "./errors.js";
+export type { StandardSchemaV1 } from "./standard-schema.js";
 
 export { dedup, inMemoryDedupAdapter } from "./dedup.js";
 export type { InMemoryDedupOptions } from "./dedup.js";

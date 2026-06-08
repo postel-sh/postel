@@ -1,6 +1,7 @@
 import { type AdminRouterOptions, adminRouter } from "@postel/admin";
 import type {
   ComposedVerifyResult,
+  EventOf,
   InboundSource,
   OutboundApi,
   PostelConfig,
@@ -14,24 +15,50 @@ import {
   jwksFetchHandler,
 } from "@postel/http";
 import { headersFromNode, writeOutcomeToNodeRes, writeResponseToNodeRes } from "@postel/http/node";
-import express, { type RequestHandler } from "express";
-
-declare global {
-  namespace Express {
-    interface Request {
-      postel?: ComposedVerifyResult<unknown>;
-    }
-  }
-}
+import express, {
+  type NextFunction,
+  type Request as ExpressRequest,
+  type RequestHandler,
+  type Response as ExpressResponse,
+} from "express";
 
 const WELL_KNOWN_JWKS = "/.well-known/webhooks-keys";
+
+// The gate sets the verified result on `req.postel`; a handler registered
+// through the facade sees it as a non-optional, source-typed field.
+type VerifiedRequest<TData> = ExpressRequest & { readonly postel: ComposedVerifyResult<TData> };
+type ExpressVerifiedHandler<TData> = (
+  req: VerifiedRequest<TData>,
+  res: ExpressResponse,
+  next: NextFunction,
+) => void | Promise<void>;
+
+function setVerified(req: ExpressRequest, result: ComposedVerifyResult<unknown>): void {
+  (req as { postel?: ComposedVerifyResult<unknown> }).postel = result;
+}
+
+/**
+ * Read the verified webhook result off an Express request on the **primitive**
+ * (`verifyWebhook`) path. Throws if the gate did not run. Pass `TData` to type
+ * the payload. Routes registered through `ExpressWebAdapter(...).inbound.<source>.post`
+ * receive a typed `req.postel` directly and don't need this.
+ */
+export function getVerified<TData = unknown>(req: ExpressRequest): ComposedVerifyResult<TData> {
+  const result = (req as { postel?: ComposedVerifyResult<TData> }).postel;
+  if (result === undefined) {
+    throw new Error(
+      "getVerified(): no verified webhook on the request — run verifyWebhook on this route first.",
+    );
+  }
+  return result;
+}
 
 function rawBuffer(body: unknown): Uint8Array {
   return body instanceof Uint8Array ? body : new Uint8Array(0);
 }
 
 function gate<TData>(
-  source: GateSource,
+  source: GateSource<TData>,
   opts: WebhookHandlerOptions<TData> | undefined,
   onVerified: RequestHandler,
 ): RequestHandler {
@@ -43,7 +70,7 @@ function gate<TData>(
     )
       .then((outcome) => {
         if (outcome.kind === "verified") {
-          req.postel = outcome.context.result;
+          setVerified(req, outcome.context.result);
           onVerified(req, res, next);
           return;
         }
@@ -56,14 +83,14 @@ function gate<TData>(
 const RAW: RequestHandler = express.raw({ type: () => true });
 
 export function verifyWebhook<TData = unknown>(
-  source: GateSource,
+  source: GateSource<TData>,
   opts?: WebhookHandlerOptions<TData>,
 ): RequestHandler[] {
   return [RAW, gate(source, opts, (_req, _res, next) => next())];
 }
 
 export function withWebhook<TData = unknown>(
-  source: GateSource,
+  source: GateSource<TData>,
   handler: RequestHandler,
   opts?: WebhookHandlerOptions<TData>,
 ): RequestHandler[] {
@@ -93,12 +120,12 @@ type InboundSourcesOf<C extends PostelConfig> = C extends {
   ? I
   : never;
 
-export interface ExpressInboundRoute {
-  post<TData = unknown>(
+export interface ExpressInboundRoute<TDefault = unknown> {
+  post<TData = TDefault>(
     route: string,
-    handler: RequestHandler,
+    handler: ExpressVerifiedHandler<TData>,
     opts?: WebhookHandlerOptions<TData>,
-  ): ExpressInboundRoute;
+  ): ExpressInboundRoute<TDefault>;
 }
 
 export interface ExpressOutboundBindings {
@@ -112,7 +139,13 @@ export interface ExpressAdminBindings {
 type ExpressWebAdapter<C extends PostelConfig> = (C extends {
   readonly inbound: Record<string, InboundSource>;
 }
-  ? { readonly inbound: { readonly [K in keyof InboundSourcesOf<C>]: ExpressInboundRoute } }
+  ? {
+      readonly inbound: {
+        readonly [K in keyof InboundSourcesOf<C>]: ExpressInboundRoute<
+          EventOf<InboundSourcesOf<C>[K]>
+        >;
+      };
+    }
   : object) &
   (C extends { readonly outbound: object }
     ? { readonly outbound: ExpressOutboundBindings; readonly admin: ExpressAdminBindings }
@@ -138,7 +171,14 @@ export function ExpressWebAdapter<const C extends PostelConfig>(
       const source = p.inbound[key] as GateSource;
       const builder: ExpressInboundRoute = {
         post(route, handler, opts) {
-          app.post(route, ...withWebhook(source, handler, opts));
+          app.post(
+            route,
+            ...withWebhook(
+              source,
+              handler as RequestHandler,
+              opts as WebhookHandlerOptions | undefined,
+            ),
+          );
           return builder;
         },
       };

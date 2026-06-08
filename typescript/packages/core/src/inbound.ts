@@ -1,4 +1,5 @@
-import { MalformedHeader, SignatureInvalid, TimestampTooOld } from "./errors.js";
+import { EventValidation, MalformedHeader, SignatureInvalid, TimestampTooOld } from "./errors.js";
+import type { StandardSchemaV1 } from "./standard-schema.js";
 import { ttlToSeconds } from "./ttl.js";
 import type {
   DedupAdapter,
@@ -14,8 +15,15 @@ import { verify } from "./verify.js";
 
 import type { Verifier } from "./strategies/verify.js";
 
-export interface InboundSource {
+export interface InboundSource<TData = unknown> {
   readonly verify: Verifier | ReadonlyArray<Verifier>;
+  /**
+   * Optional Standard Schema (zod, valibot, …) describing the event `data`
+   * payload. When present, `verify()` validates `event.data` against it after
+   * the signature check, throws `EventValidation` on mismatch, and narrows the
+   * verified result's `TData` to the schema's output type.
+   */
+  readonly schema?: StandardSchemaV1<unknown, TData>;
   readonly dedup?: DedupAdapter | undefined;
   readonly dedupTtl?: number | string;
   readonly tolerance?: number;
@@ -33,8 +41,15 @@ export interface InboundDedupOptions {
   readonly tx?: unknown;
 }
 
+// The event-data type a source produces: the schema's output when a `schema`
+// is configured, otherwise `unknown`. Drives the default `TData` of `verify()`
+// and lets framework adapters type their handlers off the configured source.
+export type EventOf<S> = S extends { readonly schema?: StandardSchemaV1<unknown, infer T> }
+  ? T
+  : unknown;
+
 export type InboundSourceApi<S extends InboundSource> = {
-  verify<TData = unknown>(
+  verify<TData = EventOf<S>>(
     rawBody: ArrayBuffer | Uint8Array | string,
     headers: WebhookHeaders,
   ): Promise<ComposedVerifyResult<TData>>;
@@ -76,14 +91,14 @@ async function verifySource<TData>(
     ...(source.now ? { now: source.now } : {}),
   };
 
+  let matched: ComposedVerifyResult<TData> | undefined;
   let lastError: unknown;
   for (let i = 0; i < verifiers.length; i++) {
     const v = verifiers[i] as Verifier;
     try {
       const result = await attempt<TData>(v, rawBody, headers, options);
-      const composed: ComposedVerifyResult<TData> = { ...result, matchedVerifierIndex: i };
-      source.onSuccess?.(result.event, composed);
-      return composed;
+      matched = { ...result, matchedVerifierIndex: i };
+      break;
     } catch (err) {
       if (err instanceof TimestampTooOld) {
         source.onFailure?.(err, headers);
@@ -93,13 +108,36 @@ async function verifySource<TData>(
     }
   }
 
-  const cause = lastError instanceof Error ? lastError : undefined;
-  const err = new SignatureInvalid(
-    `no verifier matched (tried ${verifiers.length})`,
-    cause ? { cause } : undefined,
-  );
-  source.onFailure?.(err, headers);
-  throw err;
+  if (!matched) {
+    const cause = lastError instanceof Error ? lastError : undefined;
+    const err = new SignatureInvalid(
+      `no verifier matched (tried ${verifiers.length})`,
+      cause ? { cause } : undefined,
+    );
+    source.onFailure?.(err, headers);
+    throw err;
+  }
+
+  // Schema validation runs only after a verifier matched, so a valid signature
+  // carrying a bad payload throws EventValidation rather than being retried
+  // against the next verifier or surfaced as SignatureInvalid.
+  if (source.schema) {
+    const out = await source.schema["~standard"].validate(matched.event.data);
+    if (out.issues) {
+      const err = new EventValidation(out.issues);
+      source.onFailure?.(err, headers);
+      throw err;
+    }
+    const validated: ComposedVerifyResult<TData> = {
+      ...matched,
+      event: { ...matched.event, data: out.value as TData },
+    };
+    source.onSuccess?.(validated.event, validated);
+    return validated;
+  }
+
+  source.onSuccess?.(matched.event, matched);
+  return matched;
 }
 
 function buildSourceApi<S extends InboundSource>(key: string, source: S): InboundSourceApi<S> {

@@ -1,6 +1,7 @@
 import { type AdminRouterOptions, adminRouter } from "@postel/admin";
 import type {
   ComposedVerifyResult,
+  EventOf,
   InboundSource,
   OutboundApi,
   PostelConfig,
@@ -19,17 +20,40 @@ import type {
   FastifyPluginAsync,
   FastifyReply,
   FastifyRequest,
+  RouteShorthandOptions,
   preHandlerHookHandler,
 } from "fastify";
 import fp from "fastify-plugin";
 
-declare module "fastify" {
-  interface FastifyRequest {
-    postel?: ComposedVerifyResult<unknown>;
-  }
+const WELL_KNOWN_JWKS = "/.well-known/webhooks-keys";
+
+// The gate sets the verified result on `req.postel`; a handler registered
+// through the facade sees it as a non-optional, source-typed field.
+type VerifiedRequest<TData> = FastifyRequest & { readonly postel: ComposedVerifyResult<TData> };
+type FastifyVerifiedHandler<TData> = (
+  req: VerifiedRequest<TData>,
+  reply: FastifyReply,
+) => unknown | Promise<unknown>;
+
+function setVerified(req: FastifyRequest, result: ComposedVerifyResult<unknown>): void {
+  (req as { postel?: ComposedVerifyResult<unknown> }).postel = result;
 }
 
-const WELL_KNOWN_JWKS = "/.well-known/webhooks-keys";
+/**
+ * Read the verified webhook result off a Fastify request on the **primitive**
+ * (`verifyWebhook` preHandler) path. Throws if the gate did not run. Pass
+ * `TData` to type the payload. Routes registered through
+ * `FastifyWebAdapter(...).inbound.<source>.post` receive a typed `req.postel`.
+ */
+export function getVerified<TData = unknown>(req: FastifyRequest): ComposedVerifyResult<TData> {
+  const result = (req as { postel?: ComposedVerifyResult<TData> }).postel;
+  if (result === undefined) {
+    throw new Error(
+      "getVerified(): no verified webhook on the request — run verifyWebhook on this route first.",
+    );
+  }
+  return result;
+}
 
 export const fastifyPostel: FastifyPluginAsync = fp(
   async (fastify) => {
@@ -61,7 +85,7 @@ function sendOutcome(
 }
 
 export function verifyWebhook<TData = unknown>(
-  source: GateSource,
+  source: GateSource<TData>,
   opts?: WebhookHandlerOptions<TData>,
 ): preHandlerHookHandler {
   return async (req, reply) => {
@@ -71,7 +95,7 @@ export function verifyWebhook<TData = unknown>(
       opts,
     );
     if (outcome.kind === "verified") {
-      req.postel = outcome.context.result;
+      setVerified(req, outcome.context.result);
       return;
     }
     return sendOutcome(reply, outcome.status, outcome.headers, outcome.body);
@@ -79,7 +103,7 @@ export function verifyWebhook<TData = unknown>(
 }
 
 export function withWebhook<TData = unknown>(
-  source: GateSource,
+  source: GateSource<TData>,
   handler: (req: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>,
   opts?: WebhookHandlerOptions<TData>,
 ): (req: FastifyRequest, reply: FastifyReply) => Promise<unknown> {
@@ -92,7 +116,7 @@ export function withWebhook<TData = unknown>(
     if (outcome.kind !== "verified") {
       return sendOutcome(reply, outcome.status, outcome.headers, outcome.body);
     }
-    req.postel = outcome.context.result;
+    setVerified(req, outcome.context.result);
     return handler(req, reply);
   };
 }
@@ -122,12 +146,46 @@ type InboundSourcesOf<C extends PostelConfig> = C extends {
 
 type FastifyHandler = (req: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>;
 
-export interface FastifyInboundRoute {
-  post<TData = unknown>(
+/**
+ * Route options for a gated webhook route. This is Fastify's own
+ * `RouteShorthandOptions` — so `onRequest`, `preHandler`, `schema`, `bodyLimit`,
+ * `config`, … all behave exactly as they do on `fastify.post` — plus one extra
+ * key:
+ *
+ * - `webhook` — Postel's gate options (`dedup`, `successStatus`, `onVerified`).
+ *   They are namespaced under this single key rather than passed as a separate
+ *   argument, so the object you hand to `.post` stays a plain Fastify route
+ *   options object that reads like any other `fastify.post(...)` call. The
+ *   adapter reads `webhook`, strips it, and forwards everything else to Fastify
+ *   untouched.
+ *
+ * The verification gate is injected as the FIRST `preHandler`, so Fastify's
+ * lifecycle gives you the split for free: `onRequest` runs BEFORE verification
+ * (body not parsed yet — good for rate-limit / IP allow-listing) and any
+ * `preHandler` you supply runs AFTER it, with the verified result already on
+ * `req.postel`.
+ */
+export type FastifyWebhookRouteOptions = RouteShorthandOptions & {
+  webhook?: WebhookHandlerOptions;
+};
+
+export interface FastifyInboundRoute<TDefault = unknown> {
+  /** Gate a route. Pass Postel gate options (`dedup`, …) as the third argument. */
+  post<TData = TDefault>(
     route: string,
-    handler: FastifyHandler,
-    opts?: WebhookHandlerOptions<TData>,
-  ): FastifyInboundRoute;
+    handler: FastifyVerifiedHandler<TData>,
+    webhook?: WebhookHandlerOptions<TData>,
+  ): FastifyInboundRoute<TDefault>;
+  /**
+   * Gate a route while passing Fastify route options (`onRequest`, `preHandler`,
+   * `schema`, …). Postel gate options go under the `webhook` key. The gate is
+   * injected as the first `preHandler`.
+   */
+  post<TData = TDefault>(
+    route: string,
+    options: FastifyWebhookRouteOptions,
+    handler: FastifyVerifiedHandler<TData>,
+  ): FastifyInboundRoute<TDefault>;
 }
 
 export interface FastifyOutboundBindings {
@@ -141,7 +199,13 @@ export interface FastifyAdminBindings {
 type FastifyWebAdapter<C extends PostelConfig> = (C extends {
   readonly inbound: Record<string, InboundSource>;
 }
-  ? { readonly inbound: { readonly [K in keyof InboundSourcesOf<C>]: FastifyInboundRoute } }
+  ? {
+      readonly inbound: {
+        readonly [K in keyof InboundSourcesOf<C>]: FastifyInboundRoute<
+          EventOf<InboundSourcesOf<C>[K]>
+        >;
+      };
+    }
   : object) &
   (C extends { readonly outbound: object }
     ? { readonly outbound: FastifyOutboundBindings; readonly admin: FastifyAdminBindings }
@@ -165,12 +229,35 @@ export function FastifyWebAdapter<const C extends PostelConfig>(
     const inbound: Record<string, FastifyInboundRoute> = {};
     for (const key of Object.keys(p.inbound)) {
       const source = p.inbound[key] as GateSource;
-      const builder: FastifyInboundRoute = {
-        post(route, handler, opts) {
-          app.post(route, withWebhook(source, handler, opts));
+      const builder = {
+        post(
+          route: string,
+          optionsOrHandler: FastifyHandler | FastifyWebhookRouteOptions,
+          maybeHandler?: FastifyHandler | WebhookHandlerOptions,
+        ): FastifyInboundRoute {
+          if (typeof optionsOrHandler === "function") {
+            // post(route, handler, webhook?)
+            const webhook = maybeHandler as WebhookHandlerOptions | undefined;
+            app.post(route, { preHandler: verifyWebhook(source, webhook) }, optionsOrHandler);
+            return builder;
+          }
+          // post(route, options, handler) — inject the gate as the first preHandler,
+          // strip the Postel-only `webhook` key, forward the rest to Fastify untouched.
+          const { webhook, preHandler, ...routeOpts } = optionsOrHandler;
+          const userPreHandlers: preHandlerHookHandler[] =
+            preHandler === undefined
+              ? []
+              : Array.isArray(preHandler)
+                ? (preHandler as preHandlerHookHandler[])
+                : [preHandler as preHandlerHookHandler];
+          app.post(
+            route,
+            { ...routeOpts, preHandler: [verifyWebhook(source, webhook), ...userPreHandlers] },
+            maybeHandler as FastifyHandler,
+          );
           return builder;
         },
-      };
+      } as FastifyInboundRoute;
       inbound[key] = builder;
     }
     result.inbound = inbound;

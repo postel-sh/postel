@@ -6,7 +6,7 @@ Receiver-side verification of incoming webhook deliveries: signature verificatio
 ## Requirements
 ### Requirement: Verify returns parsed event or structured error
 
-The library SHALL expose `postel.verify(rawBody, headers, secretOrKeyset)` that, on success, returns the parsed Standard Webhooks event. On failure, it MUST throw a structured error indicating which step failed: one of `SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `UNKNOWN_KEY_ID`, `RAW_BYTES_MISMATCH_DETECTED`.
+The library SHALL expose `postel.verify(rawBody, headers, secretOrKeyset)` that, on success, returns the parsed Standard Webhooks event. On failure, it MUST throw a structured error indicating which step failed: one of `SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `UNKNOWN_KEY_ID`, `RAW_BYTES_MISMATCH_DETECTED`, `EVENT_VALIDATION`. `EVENT_VALIDATION` is thrown only AFTER the signature check passes, when the inbound source declares a `schema` and the parsed `event.data` does not satisfy it.
 
 #### Scenario: Successful verify
 
@@ -18,6 +18,12 @@ The library SHALL expose `postel.verify(rawBody, headers, secretOrKeyset)` that,
 - **WHEN** the signature header does not match the body
 - **THEN** `verify` throws an error of class `SIGNATURE_INVALID`
 - **AND** the error message names the failing step
+
+#### Scenario: Schema validation failure
+
+- **WHEN** the source declares a `schema` and the verified `event.data` does not satisfy it
+- **THEN** `verify` throws an error of code `EVENT_VALIDATION`
+- **AND** the failure occurs only after the signature check has passed
 
 ### Requirement: Framework adapters preserve raw bytes
 
@@ -144,6 +150,7 @@ A framework adapter SHALL expose a verification **gate** — a framework-agnosti
 | `MALFORMED_HEADER` | 400 |
 | `RAW_BYTES_MISMATCH_DETECTED` | 400 |
 | `UNKNOWN_KEY_ID` | 401 |
+| `EVENT_VALIDATION` | 422 |
 
 Errors that are NOT `PostelError` instances — including `NotImplementedError` — SHALL NOT be mapped to a 4xx. They SHALL propagate so the framework's error pipeline yields 5xx, per the `api-surface-typescript` implementation-state-error rule. The mapping is computed in one shared place (`@postel/http`) so every adapter resolves a given code identically.
 
@@ -169,6 +176,12 @@ Errors that are NOT `PostelError` instances — including `NotImplementedError` 
 
 - **WHEN** the request's `kid` is absent from the configured keyset on a gate-protected route
 - **THEN** the gate responds with HTTP 401
+
+#### Scenario: Schema-invalid payload maps to 422
+
+- **WHEN** a request verifies but its `event.data` fails the source's configured `schema`
+- **THEN** the gate responds with HTTP 422
+- **AND** the adopter's handler is not invoked
 
 #### Scenario: Successful verification preserves the adopter handler
 

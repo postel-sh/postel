@@ -61,6 +61,7 @@ const STATUS_BY_CODE: Record<PostelErrorCode, number> = {
   MALFORMED_HEADER: 400,
   UNKNOWN_KEY_ID: 401,
   RAW_BYTES_MISMATCH_DETECTED: 400,
+  EVENT_VALIDATION: 422,
 };
 
 let warnedNoAuthorize = false;
