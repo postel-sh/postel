@@ -1,7 +1,7 @@
 ---
 title: Fastify
 icon: fastify
-description: Verify webhooks in Fastify with FastifyWebAdapter — the fastifyPostel raw-body plugin plus gated routes that set req.postel.
+description: Verify webhooks in Fastify with FastifyWebAdapter — gated routes in a self-contained scope that captures the raw body and sets req.postel.
 ---
 
 ```ts title="lib/postel.ts"
@@ -17,18 +17,16 @@ export const postel = Postel({
 });
 ```
 
-## Plugin + routing facade
+## Routing facade
 
-Register `fastifyPostel` on the instance (or encapsulated scope) that serves webhooks — it installs a raw-Buffer body parser so signatures verify byte-for-byte. Then register gated routes with `FastifyWebAdapter(postel, app)`.
+`FastifyWebAdapter(postel, app)` registers gated routes by source key. Verification needs the exact received bytes, so the adapter registers everything it binds inside its **own encapsulated scope** with a raw-Buffer body parser — your app's JSON parsing stays intact, and there's no plugin to wire up.
 
 ```ts title="app.ts"
 import Fastify from "fastify";
-import { fastifyPostel, FastifyWebAdapter } from "@postel/fastify";
+import { FastifyWebAdapter } from "@postel/fastify";
 import { postel } from "./lib/postel";
 
 const app = Fastify();
-await app.register(fastifyPostel);
-
 const fwa = FastifyWebAdapter(postel, app);
 
 fwa.inbound.vendor.post("/webhooks/vendor", async (req) => ({
@@ -37,7 +35,7 @@ fwa.inbound.vendor.post("/webhooks/vendor", async (req) => ({
 }));
 ```
 
-`fastifyPostel` removes the built-in body parsers in its scope, so register it on an instance or encapsulated scope **dedicated to webhook routes**. Source keys are type-checked. On failure the gate replies with the mapped status; a non-`PostelError` bubbles to Fastify's error handler (5xx).
+Source keys are type-checked. On failure the gate replies with the mapped status; a non-`PostelError` bubbles to Fastify's error handler (5xx). The adapter's routes register when its scope loads (at `app.ready()` / `listen()`), so bind them before you call `listen`.
 
 ### Other methods
 
@@ -85,11 +83,13 @@ fwa.admin.bindAdminRoutes("/admin", { authorize: (req) => checkAdminToken(req) }
 
 ## Low-level primitives
 
-The facade wraps the `withWebhook` / `verifyWebhook` preHandlers and the `fetchToFastify` bridge:
+The facade wraps the `withWebhook` / `verifyWebhook` preHandlers and the `fetchToFastify` bridge. On this manual path you install the raw-body parser yourself with `fastifyPostel`, on the instance (or encapsulated scope) serving your webhook routes — the facade does this in its own scope; here you're wiring it by hand:
 
 ```ts
-import { verifyWebhook, fetchToFastify } from "@postel/fastify";
+import { fastifyPostel, verifyWebhook, fetchToFastify } from "@postel/fastify";
 import { adminRouter } from "@postel/admin";
+
+await app.register(fastifyPostel); // raw-Buffer parser for the verifyWebhook routes in this scope
 
 app.post("/webhooks/vendor", { preHandler: verifyWebhook(postel.inbound.vendor) }, async () => "ok");
 app.all("/admin/*", fetchToFastify(adminRouter(postel, { authorize: (req) => checkAdminToken(req) })));

@@ -29,7 +29,6 @@ function signed(type: string, id: string) {
 describe("Framework adapters preserve raw bytes", () => {
   it("Fastify adapter preserves bytes via inbound.<source>.post and rejects re-serialized JSON", async () => {
     const app = Fastify();
-    await app.register(fastifyPostel);
     FastifyWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", async (req) => ({
       ok: true,
       type: req.postel.event.type,
@@ -59,7 +58,6 @@ describe("Framework adapters preserve raw bytes", () => {
 
   it("inbound.<source>.on binds an explicit method (PUT) behind the gate", async () => {
     const app = Fastify();
-    await app.register(fastifyPostel);
     FastifyWebAdapter(vendor(), app).inbound.vendor.on("PUT", "/webhooks/vendor", async (req) => ({
       ok: true,
       type: req.postel.event.type,
@@ -93,7 +91,6 @@ describe("Framework adapters preserve raw bytes", () => {
       inbound: { orders: { verify: Secret(SECRET), schema, now: () => NOW } },
     });
     const app = Fastify();
-    await app.register(fastifyPostel);
     FastifyWebAdapter(postel, app).inbound.orders.post("/webhooks/orders", async (req) => {
       // Compile-time proof the handler's req carries the schema's output type.
       const data: { id: string } | undefined = req.postel.event.data;
@@ -213,7 +210,6 @@ describe("Route options and middleware composition", () => {
     const order: string[] = [];
     let postelAtPreHandler: { event: { type: string } } | undefined;
     const app = Fastify();
-    await app.register(fastifyPostel);
     FastifyWebAdapter(vendor(), app).inbound.vendor.post(
       "/webhooks/vendor",
       {
@@ -247,7 +243,6 @@ describe("Route options and middleware composition", () => {
   it("the gate still rejects a bad signature when route options are supplied", async () => {
     let userPreHandlerRan = false;
     const app = Fastify();
-    await app.register(fastifyPostel);
     FastifyWebAdapter(vendor(), app).inbound.vendor.post(
       "/webhooks/vendor",
       {

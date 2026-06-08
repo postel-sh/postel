@@ -56,16 +56,25 @@ export function getVerified<TData = unknown>(req: FastifyRequest): ComposedVerif
   return result;
 }
 
+function installRawBodyParser(fastify: FastifyInstance): void {
+  // Webhook verification needs the exact received bytes. Drop the built-in
+  // application/json parser (which would re-parse the body) and capture every
+  // content type as a raw Buffer.
+  fastify.removeAllContentTypeParsers();
+  fastify.addContentTypeParser("*", { parseAs: "buffer" }, (_req, body, done) => {
+    done(null, body);
+  });
+}
+
+/**
+ * Raw-body plugin for the **manual / primitive** path — register it on the
+ * Fastify instance (or encapsulated scope) where you wire `verifyWebhook`
+ * preHandlers by hand. `FastifyWebAdapter` installs this automatically inside
+ * its own encapsulated scope, so routes bound through the facade don't need it.
+ */
 export const fastifyPostel: FastifyPluginAsync = fp(
   async (fastify) => {
-    // Webhook verification needs the exact received bytes. Drop the built-in
-    // application/json parser (which would re-parse the body) and capture every
-    // content type as a raw Buffer. Register on a fastify instance or scope
-    // dedicated to webhook routes.
-    fastify.removeAllContentTypeParsers();
-    fastify.addContentTypeParser("*", { parseAs: "buffer" }, (_req, body, done) => {
-      done(null, body);
-    });
+    installRawBodyParser(fastify);
   },
   { name: "@postel/fastify", fastify: ">=4" },
 );
@@ -240,6 +249,18 @@ export function FastifyWebAdapter<const C extends PostelConfig>(
     admin?: FastifyAdminBindings;
   } = {};
 
+  // Everything the adapter binds lives in one encapsulated scope that captures
+  // the raw request body, so signature verification sees the exact received
+  // bytes without touching the host app's JSON parsing. Bindings are enqueued
+  // and registered when the scope loads (at app.ready()).
+  const pending: Array<(scope: FastifyInstance) => void> = [];
+  if (p.inbound || p.outbound) {
+    app.register(async (scope) => {
+      installRawBodyParser(scope);
+      for (const apply of pending) apply(scope);
+    });
+  }
+
   if (p.inbound) {
     const inbound: Record<string, FastifyInboundRoute> = {};
     for (const key of Object.keys(p.inbound)) {
@@ -253,11 +274,14 @@ export function FastifyWebAdapter<const C extends PostelConfig>(
         if (typeof optionsOrHandler === "function") {
           // (route, handler, webhook?)
           const webhook = maybeHandler as WebhookHandlerOptions | undefined;
-          app.route({
-            method,
-            url: route,
-            preHandler: verifyWebhook(source, webhook),
-            handler: optionsOrHandler,
+          const handler = optionsOrHandler;
+          pending.push((scope) => {
+            scope.route({
+              method,
+              url: route,
+              preHandler: verifyWebhook(source, webhook),
+              handler,
+            });
           });
           return;
         }
@@ -270,12 +294,15 @@ export function FastifyWebAdapter<const C extends PostelConfig>(
             : Array.isArray(preHandler)
               ? (preHandler as preHandlerHookHandler[])
               : [preHandler as preHandlerHookHandler];
-        app.route({
-          ...routeOpts,
-          method,
-          url: route,
-          preHandler: [verifyWebhook(source, webhook), ...userPreHandlers],
-          handler: maybeHandler as FastifyHandler,
+        const handler = maybeHandler as FastifyHandler;
+        pending.push((scope) => {
+          scope.route({
+            ...routeOpts,
+            method,
+            url: route,
+            preHandler: [verifyWebhook(source, webhook), ...userPreHandlers],
+            handler,
+          });
         });
       };
       const builder = {
@@ -306,12 +333,16 @@ export function FastifyWebAdapter<const C extends PostelConfig>(
     const outbound = p.outbound;
     result.outbound = {
       bindJwks(route = WELL_KNOWN_JWKS, provider = () => outbound.keys.publicJwks()) {
-        app.get(route, fetchToFastify(jwksFetchHandler(provider)));
+        pending.push((scope) => {
+          scope.get(route, fetchToFastify(jwksFetchHandler(provider)));
+        });
       },
     };
     result.admin = {
       bindAdminRoutes(prefix, opts) {
-        app.all(`${prefix}/*`, fetchToFastify(adminRouter({ outbound }, opts)));
+        pending.push((scope) => {
+          scope.all(`${prefix}/*`, fetchToFastify(adminRouter({ outbound }, opts)));
+        });
       },
     };
   }
