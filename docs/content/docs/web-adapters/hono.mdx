@@ -37,6 +37,14 @@ hwa.inbound.vendor.post("/webhooks/vendor", (c) => {
 
 The source key (`vendor`) is type-checked against the sources you configured. On failure the gate short-circuits with the mapped status and your handler never runs; a non-`PostelError` bubbles as 5xx.
 
+### Other methods
+
+Webhooks are `POST` by default, and `.post` is sugar for `.on("POST", …)`. For a provider that delivers over `PUT`/`PATCH`, bind the method explicitly — only body-bearing verbs (`POST` | `PUT` | `PATCH`) are accepted, since the gate verifies a signature over the request body:
+
+```ts
+hwa.inbound.vendor.on("PUT", "/webhooks/vendor", (c) => c.json({ ok: true }));
+```
+
 ## JWKS
 
 When you configure an `outbound` slot, `hwa.outbound.bindJwks()` publishes your current public keys at `/.well-known/webhooks-keys`, defaulting the provider to `postel.outbound.keys.publicJwks()` so rotations appear without a redeploy. Pass a route and/or provider to override.

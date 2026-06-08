@@ -39,6 +39,14 @@ fwa.inbound.vendor.post("/webhooks/vendor", async (req) => ({
 
 `fastifyPostel` removes the built-in body parsers in its scope, so register it on an instance or encapsulated scope **dedicated to webhook routes**. Source keys are type-checked. On failure the gate replies with the mapped status; a non-`PostelError` bubbles to Fastify's error handler (5xx).
 
+### Other methods
+
+`.post` is sugar for `.on("POST", …)`. Bind another body-bearing verb (`PUT`/`PATCH`) explicitly; `.on` accepts the same route-options overload (below):
+
+```ts
+fwa.inbound.vendor.on("PUT", "/webhooks/vendor", async () => ({ ok: true }));
+```
+
 ## Route options & middleware
 
 `.post` mirrors Fastify's own `fastify.post`: pass a route-options object and the gate is injected as the first `preHandler` for you. Anything Fastify routes accept works — `onRequest`, `preHandler`, `schema`, `bodyLimit`, `config`, … — so you attach whatever you'd attach to a normal route.
