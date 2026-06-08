@@ -12,5 +12,6 @@ export type {
   RawBody,
   WebhookContext,
   WebhookHandlerOptions,
+  WebhookMethod,
   WebhookOutcome,
 } from "./types.js";

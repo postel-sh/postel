@@ -11,6 +11,7 @@ import {
   type GateSource,
   type JwksProvider,
   type WebhookHandlerOptions,
+  type WebhookMethod,
   handleInbound,
   jwksFetchHandler,
 } from "@postel/http";
@@ -121,6 +122,14 @@ type InboundSourcesOf<C extends PostelConfig> = C extends {
   : never;
 
 export interface ExpressInboundRoute<TDefault = unknown> {
+  /** Gate a route on an explicit body-bearing method (`POST` | `PUT` | `PATCH`). */
+  on<TData = TDefault>(
+    method: WebhookMethod,
+    route: string,
+    handler: ExpressVerifiedHandler<TData>,
+    opts?: WebhookHandlerOptions<TData>,
+  ): ExpressInboundRoute<TDefault>;
+  /** Gate a `POST` route — sugar for `on("POST", …)`. */
   post<TData = TDefault>(
     route: string,
     handler: ExpressVerifiedHandler<TData>,
@@ -170,8 +179,9 @@ export function ExpressWebAdapter<const C extends PostelConfig>(
     for (const key of Object.keys(p.inbound)) {
       const source = p.inbound[key] as GateSource;
       const builder: ExpressInboundRoute = {
-        post(route, handler, opts) {
-          app.post(
+        on(method, route, handler, opts) {
+          const verb = method.toLowerCase() as "post" | "put" | "patch";
+          app[verb](
             route,
             ...withWebhook(
               source,
@@ -180,6 +190,9 @@ export function ExpressWebAdapter<const C extends PostelConfig>(
             ),
           );
           return builder;
+        },
+        post(route, handler, opts) {
+          return builder.on("POST", route, handler, opts);
         },
       };
       inbound[key] = builder;

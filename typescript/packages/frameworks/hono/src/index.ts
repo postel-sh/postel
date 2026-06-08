@@ -12,6 +12,7 @@ import {
   type GateSource,
   type JwksProvider,
   type WebhookHandlerOptions,
+  type WebhookMethod,
   handleInbound,
   jwksFetchHandler,
 } from "@postel/http";
@@ -112,6 +113,14 @@ type InboundSourcesOf<C extends PostelConfig> = C extends {
   : never;
 
 export interface HonoInboundRoute<TDefault = unknown> {
+  /** Gate a route on an explicit body-bearing method (`POST` | `PUT` | `PATCH`). */
+  on<TData = TDefault>(
+    method: WebhookMethod,
+    route: string,
+    handler: VerifiedHandler<TData>,
+    opts?: WebhookHandlerOptions<TData>,
+  ): HonoInboundRoute<TDefault>;
+  /** Gate a `POST` route — sugar for `on("POST", …)`. */
   post<TData = TDefault>(
     route: string,
     handler: VerifiedHandler<TData>,
@@ -161,12 +170,16 @@ export function HonoWebAdapter<const C extends PostelConfig>(
     for (const key of Object.keys(p.inbound)) {
       const source = p.inbound[key] as GateSource;
       const builder: HonoInboundRoute = {
-        post(route, handler, opts) {
-          app.post(
+        on(method, route, handler, opts) {
+          app.on(
+            method,
             route,
             withWebhook(source, handler as HonoHandler, opts as WebhookHandlerOptions | undefined),
           );
           return builder;
+        },
+        post(route, handler, opts) {
+          return builder.on("POST", route, handler, opts);
         },
       };
       inbound[key] = builder;

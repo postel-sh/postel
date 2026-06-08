@@ -47,6 +47,21 @@ describe("Framework adapters preserve raw bytes", () => {
     expect(bad.body).toMatchObject({ error: { code: "SIGNATURE_INVALID" } });
   });
 
+  it("inbound.<source>.on binds an explicit method (PUT) behind the gate", async () => {
+    const app = express();
+    ExpressWebAdapter(vendor(), app).inbound.vendor.on("PUT", "/webhooks/vendor", (req, res) => {
+      res.json({ ok: true, type: req.postel.event.type });
+    });
+    const sig = await signed("order.updated", "o_1");
+    const res = await request(app)
+      .put("/webhooks/vendor")
+      .set(sig.headers)
+      .set("content-type", "application/json")
+      .send(sig.body);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, type: "order.updated" });
+  });
+
   it("inbound.<source>.post types req.postel with the source's schema output", async () => {
     const schema: StandardSchemaV1<unknown, { id: string }> = {
       "~standard": {

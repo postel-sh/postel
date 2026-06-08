@@ -13,7 +13,7 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
 
 `XxxWebAdapter(postel, app)` binds to your app and exposes bindings grouped by intent — present only for the config slots you set:
 
-- **`hwa.inbound.<source>.post(route, handler, opts?)`** — register a gated route. Raw bytes are verified before your handler runs, with the result on the request context (`c.get("postel")` / `req.postel`). The source key is type-checked against your config.
+- **`hwa.inbound.<source>.post(route, handler, opts?)`** — register a gated route. Raw bytes are verified before your handler runs, with the typed result on the request context (`c.var.postel` / `req.postel`). The source key is type-checked against your config. For a non-`POST` delivery (some providers use `PUT`/`PATCH`), use **`.on(method, route, handler, opts?)`** — `.post` is sugar for `.on("POST", …)`. Bodyless verbs (`GET`/`HEAD`) aren't offered: the gate verifies a signature over the body.
 - **`hwa.outbound.bindJwks(route?, provider?)`** — publish your public keys (defaults to `/.well-known/webhooks-keys` + `postel.outbound.keys.publicJwks()`).
 - **`hwa.admin.bindAdminRoutes(prefix, opts)`** — mount the [`@postel/admin`](/docs/outbound/admin) control plane.
 
@@ -27,6 +27,17 @@ The facade owns the route, but you keep your framework's native middleware story
 - **Fastify** — pass route options to `.post`: `onRequest` runs before the gate, `preHandler` after it (with the result on `req.postel`). See [Fastify](/docs/web-adapters/fastify).
 
 Want the gate as a standalone middleware to wire entirely by hand? `verifyWebhook(source)` / `withWebhook(source, handler)` are exported from every package — read the verified result on that primitive path with `getVerified(reqOrCtx)` (it throws if the gate didn't run). Facade routes are already typed (`c.var.postel` / `req.postel`, narrowed to the source's [schema](/docs/inbound/verify#validating-the-payload) output), so they don't need it.
+
+## OpenAPI / route docs
+
+The facade binds **verification**, not documentation — its routes don't auto-populate an OpenAPI/Swagger spec, and the source `schema` (a [Standard Schema](/docs/inbound/verify#validating-the-payload) for verify + types) is a **different slot** from your framework's route schema. How it interacts:
+
+- **Fastify** — `@fastify/swagger` discovers the route (it's in the route table) but reads Fastify's route `schema`, not Postel's. Pass `schema` through the `.post` / `.on` route options and it flows to the spec (reuse the same zod object with `fastify-type-provider-zod`).
+- **NestJS** — unaffected: `@nestjs/swagger` reads your controllers + DTOs; the `WebhookGuard` doesn't touch it.
+- **Hono** — `@hono/zod-openapi` only documents routes declared through its own `createRoute(...)` API, so facade-bound routes are invisible to it. To put a webhook route in the spec, define it with `@hono/zod-openapi` and apply the gate as middleware (`verifyWebhook(postel.inbound.<source>)`).
+- **Express** — OpenAPI is manual (`swagger-jsdoc` / `tsoa`) regardless of the facade.
+
+We deliberately don't bridge the two slots: auto-converting Standard Schema → JSON Schema would couple `@postel/core` to a specific library and break its zero-dependency guarantee.
 
 ## Pick your target
 
