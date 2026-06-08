@@ -1,7 +1,7 @@
 ---
 title: Hono
 icon: hono
-description: Verify webhooks in Hono — a middleware gate bound to your configured source, with the verified event on c.get("postel").
+description: Verify webhooks in Hono with HonoWebAdapter — a routing facade that gates each source, publishes JWKS, and mounts admin.
 ---
 
 ```ts title="lib/postel.ts"
@@ -17,47 +17,50 @@ export const postel = Postel({
 });
 ```
 
-## Middleware gate
+## Routing facade
+
+`HonoWebAdapter(postel, app)` binds to your app and registers gated routes by source key. Raw bytes are verified before your handler runs; the verified result is on `c.get("postel")`.
 
 ```ts title="app.ts"
 import { Hono } from "hono";
-import { verifyWebhook, honoAdapter, POSTEL_CONTEXT_KEY } from "@postel/hono";
+import { HonoWebAdapter, POSTEL_CONTEXT_KEY } from "@postel/hono";
 import { postel } from "./lib/postel";
 
 const app = new Hono();
+const hwa = HonoWebAdapter(postel, app);
 
-app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => {
+hwa.inbound.vendor.post("/webhooks/vendor", (c) => {
   const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · typed · raw bytes intact
   return c.json({ ok: true, type: event.type });
 });
 ```
 
-On failure the gate short-circuits with the mapped status and your handler never runs; a non-`PostelError` bubbles as 5xx.
-
-## Adapter object
-
-Bind by source key — the key is type-checked against the sources you configured:
-
-```ts
-const wh = honoAdapter(postel);
-app.post("/webhooks/github", wh.verify("github"), (c) => c.text("ok"));
-```
-
-`wh.guard(key, handler)` (= `withWebhook`) folds the gate and a single handler into one.
+The source key (`vendor`) is type-checked against the sources you configured. On failure the gate short-circuits with the mapped status and your handler never runs; a non-`PostelError` bubbles as 5xx.
 
 ## JWKS
 
+When you configure an `outbound` slot, `hwa.outbound.bindJwks()` publishes your current public keys at `/.well-known/webhooks-keys`, defaulting the provider to `postel.outbound.keys.publicJwks()` so rotations appear without a redeploy. Pass a route and/or provider to override.
+
 ```ts
-app.get("/.well-known/webhooks-keys", wh.jwks(() => postel.outbound.keys.publicJwks()));
+hwa.outbound.bindJwks();                         // GET /.well-known/webhooks-keys
+hwa.outbound.bindJwks("/keys", customProvider);  // custom route + provider
 ```
 
 ## Admin
 
-Hono mounts the [`@postel/admin`](/docs/outbound/admin) router natively (it speaks Fetch):
+`hwa.admin.bindAdminRoutes(prefix, opts)` mounts the [`@postel/admin`](/docs/outbound/admin) control plane (Hono speaks Fetch natively). `authorize` is required.
 
 ```ts
-import { adminRouter } from "@postel/admin";
+hwa.admin.bindAdminRoutes("/admin", { authorize: (req) => checkAdminToken(req) });
+```
 
-const admin = adminRouter(postel, { authorize: (req) => checkAdminToken(req) });
-app.all("/admin/*", (c) => admin(c.req.raw));
+## Low-level primitives
+
+The facade is sugar over `withWebhook` / `verifyWebhook`. Reach for them to attach the gate to your own routing (extra middleware, custom paths):
+
+```ts
+import { verifyWebhook, withWebhook } from "@postel/hono";
+
+app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => c.json({ ok: true }));
+app.post("/webhooks/github", withWebhook(postel.inbound.github, (c) => c.text("ok")));
 ```

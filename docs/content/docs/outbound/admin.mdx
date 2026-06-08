@@ -17,17 +17,25 @@ export const admin = adminRouter(postel, {
 
 ## Mounting
 
+The web adapters mount the router for you with `hwa.admin.bindAdminRoutes(prefix, opts)` — `authorize` flows straight through:
+
 ```ts
-// Hono — Fetch-native, mount directly
-app.all("/admin/*", (c) => admin(c.req.raw));
+// Hono / Express / Fastify — same shape
+HonoWebAdapter(postel, app).admin.bindAdminRoutes("/admin", {
+  authorize: (req) => checkAdminToken(req.headers.get("authorization")),
+});
+```
 
-// Express
+Or mount the `adminRouter` Fetch handler yourself:
+
+```ts
+app.all("/admin/*", (c) => admin(c.req.raw));   // Hono — Fetch-native
+
 import { fetchToExpress } from "@postel/express";
-app.use("/admin", fetchToExpress(admin));
+app.use("/admin", fetchToExpress(admin));        // Express
 
-// Fastify
 import { fetchToFastify } from "@postel/fastify";
-app.all("/admin/*", fetchToFastify(admin));
+app.all("/admin/*", fetchToFastify(admin));       // Fastify
 ```
 
 ## Authorization — default-deny

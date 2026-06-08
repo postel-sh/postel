@@ -1,7 +1,7 @@
 ---
 title: Express
 icon: express
-description: Verify webhooks in Express — verifyWebhook mounts express.raw() + the gate and sets req.postel.
+description: Verify webhooks in Express with ExpressWebAdapter — gated routes that capture raw bytes and set req.postel.
 ---
 
 ```ts title="lib/postel.ts"
@@ -17,49 +17,48 @@ export const postel = Postel({
 });
 ```
 
-## Middleware gate
+## Routing facade
 
-`verifyWebhook` returns `[express.raw({ type: () => true }), gate]` — mount it and your handler stays normal. Don't put `express.json()` ahead of it; the gate needs the exact received bytes.
+`ExpressWebAdapter(postel, app)` registers gated routes by source key. Each route mounts `express.raw({ type: () => true })` ahead of the gate for you, so the verifier sees the exact received bytes — don't put `express.json()` in front. The verified result is on `req.postel`.
 
 ```ts title="app.ts"
 import express from "express";
-import { verifyWebhook, expressAdapter } from "@postel/express";
+import { ExpressWebAdapter } from "@postel/express";
 import { postel } from "./lib/postel";
 
 const app = express();
+const ewa = ExpressWebAdapter(postel, app);
 
-app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (req, res) => {
+ewa.inbound.vendor.post("/webhooks/vendor", (req, res) => {
   res.json({ ok: true, type: req.postel?.event.type });
 });
 ```
 
-On failure the gate writes the mapped 4xx and your handler never runs; a non-`PostelError` is forwarded to `next(err)` (your error middleware / 500).
-
-## Adapter object
-
-```ts
-app.post("/webhooks/github", expressAdapter(postel).verify("github"), (_req, res) => res.send("ok"));
-```
-
-Source keys are type-checked. `.guard(key, handler)` (= `withWebhook`) folds the gate and handler into one.
+Source keys are type-checked. On failure the gate writes the mapped 4xx and your handler never runs; a non-`PostelError` is forwarded to `next(err)` (your error middleware / 500).
 
 ## JWKS
 
 ```ts
-app.get(
-  "/.well-known/webhooks-keys",
-  expressAdapter(postel).jwks(() => postel.outbound.keys.publicJwks()),
-);
+ewa.outbound.bindJwks();                         // GET /.well-known/webhooks-keys
+ewa.outbound.bindJwks("/keys", customProvider);  // custom route + provider
 ```
+
+`bindJwks()` defaults the provider to `postel.outbound.keys.publicJwks()`; available when an `outbound` slot is configured.
 
 ## Admin
 
-Mount the [`@postel/admin`](/docs/outbound/admin) router with the generic Fetch→Express bridge:
+```ts
+ewa.admin.bindAdminRoutes("/admin", { authorize: (req) => checkAdminToken(req) });
+```
+
+## Low-level primitives
+
+The facade wraps `withWebhook` / `verifyWebhook` (each returns `[express.raw(...), gate]`) and the `fetchToExpress` bridge:
 
 ```ts
+import { verifyWebhook, fetchToExpress } from "@postel/express";
 import { adminRouter } from "@postel/admin";
-import { fetchToExpress } from "@postel/express";
 
-const admin = adminRouter(postel, { authorize: (req) => checkAdminToken(req) });
-app.use("/admin", fetchToExpress(admin));
+app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (req, res) => res.send("ok"));
+app.use("/admin", fetchToExpress(adminRouter(postel, { authorize: (req) => checkAdminToken(req) })));
 ```

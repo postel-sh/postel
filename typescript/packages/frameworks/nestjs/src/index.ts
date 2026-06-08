@@ -100,7 +100,7 @@ type InboundSourcesOf<C extends PostelConfig> = C extends {
   ? I
   : never;
 
-export function createPostelDecorators<const C extends PostelConfig>(
+export function NestjsWebAdapter<const C extends PostelConfig>(
   _postel: PostelInstance<C> & { readonly inbound: InboundApi<InboundSourcesOf<C>> },
 ): {
   WebhookGuard<K extends keyof InboundSourcesOf<C>>(

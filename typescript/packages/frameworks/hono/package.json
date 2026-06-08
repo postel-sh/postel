@@ -36,6 +36,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@postel/admin": "workspace:*",
     "@postel/core": "workspace:*",
     "@postel/http": "workspace:*"
   },

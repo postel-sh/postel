@@ -41,10 +41,10 @@ export class WebhooksController {
 
 ## Type-checked source keys
 
-`createPostelDecorators(postel)` returns a `WebhookGuard` whose `key` argument is narrowed to your configured source names:
+`NestjsWebAdapter(postel)` returns a `WebhookGuard` whose `key` argument is narrowed to your configured source names:
 
 ```ts
-const { WebhookGuard } = createPostelDecorators(postel);
+const { WebhookGuard } = NestjsWebAdapter(postel);
 // @UseGuards(WebhookGuard("vendor"))  ← "vendor" is checked against your config
 ```
 

@@ -1,7 +1,8 @@
+import { type AdminRouterOptions, adminRouter } from "@postel/admin";
 import type {
   ComposedVerifyResult,
-  InboundApi,
   InboundSource,
+  OutboundApi,
   PostelConfig,
   PostelInstance,
 } from "@postel/core";
@@ -22,6 +23,8 @@ declare global {
     }
   }
 }
+
+const WELL_KNOWN_JWKS = "/.well-known/webhooks-keys";
 
 function rawBuffer(body: unknown): Uint8Array {
   return body instanceof Uint8Array ? body : new Uint8Array(0);
@@ -67,44 +70,6 @@ export function withWebhook<TData = unknown>(
   return [RAW, gate(source, opts, handler)];
 }
 
-type InboundSourcesOf<C extends PostelConfig> = C extends {
-  readonly inbound: infer I extends Record<string, InboundSource>;
-}
-  ? I
-  : never;
-
-export function expressAdapter<const C extends PostelConfig>(
-  postel: PostelInstance<C> & { readonly inbound: InboundApi<InboundSourcesOf<C>> },
-): {
-  verify<K extends keyof InboundSourcesOf<C>, TData = unknown>(
-    key: K,
-    opts?: WebhookHandlerOptions<TData>,
-  ): RequestHandler[];
-  guard<K extends keyof InboundSourcesOf<C>, TData = unknown>(
-    key: K,
-    handler: RequestHandler,
-    opts?: WebhookHandlerOptions<TData>,
-  ): RequestHandler[];
-  jwks(provider: JwksProvider): RequestHandler;
-} {
-  return {
-    verify(key, opts) {
-      return verifyWebhook(postel.inbound[key], opts);
-    },
-    guard(key, handler, opts) {
-      return withWebhook(postel.inbound[key], handler, opts);
-    },
-    jwks(provider) {
-      return (req, res, next) => {
-        const request = new Request(`http://local${req.url ?? "/"}`, { method: req.method });
-        jwksFetchHandler(provider)(request)
-          .then((response) => writeResponseToNodeRes(res, response))
-          .catch(next);
-      };
-    },
-  };
-}
-
 export function fetchToExpress(handler: (req: Request) => Promise<Response>): RequestHandler {
   return (req, res, next) => {
     const chunks: Buffer[] = [];
@@ -120,4 +85,86 @@ export function fetchToExpress(handler: (req: Request) => Promise<Response>): Re
     });
     req.on("error", next);
   };
+}
+
+type InboundSourcesOf<C extends PostelConfig> = C extends {
+  readonly inbound: infer I extends Record<string, InboundSource>;
+}
+  ? I
+  : never;
+
+export interface ExpressInboundRoute {
+  post<TData = unknown>(
+    route: string,
+    handler: RequestHandler,
+    opts?: WebhookHandlerOptions<TData>,
+  ): ExpressInboundRoute;
+}
+
+export interface ExpressOutboundBindings {
+  bindJwks(route?: string, provider?: JwksProvider): void;
+}
+
+export interface ExpressAdminBindings {
+  bindAdminRoutes(prefix: string, opts: AdminRouterOptions): void;
+}
+
+type ExpressWebAdapter<C extends PostelConfig> = (C extends {
+  readonly inbound: Record<string, InboundSource>;
+}
+  ? { readonly inbound: { readonly [K in keyof InboundSourcesOf<C>]: ExpressInboundRoute } }
+  : object) &
+  (C extends { readonly outbound: object }
+    ? { readonly outbound: ExpressOutboundBindings; readonly admin: ExpressAdminBindings }
+    : object);
+
+export function ExpressWebAdapter<const C extends PostelConfig>(
+  postel: PostelInstance<C>,
+  app: ReturnType<typeof express>,
+): ExpressWebAdapter<C> {
+  const p = postel as unknown as {
+    readonly inbound?: Record<string, GateSource>;
+    readonly outbound?: OutboundApi;
+  };
+  const result: {
+    inbound?: Record<string, ExpressInboundRoute>;
+    outbound?: ExpressOutboundBindings;
+    admin?: ExpressAdminBindings;
+  } = {};
+
+  if (p.inbound) {
+    const inbound: Record<string, ExpressInboundRoute> = {};
+    for (const key of Object.keys(p.inbound)) {
+      const source = p.inbound[key] as GateSource;
+      const builder: ExpressInboundRoute = {
+        post(route, handler, opts) {
+          app.post(route, ...withWebhook(source, handler, opts));
+          return builder;
+        },
+      };
+      inbound[key] = builder;
+    }
+    result.inbound = inbound;
+  }
+
+  if (p.outbound) {
+    const outbound = p.outbound;
+    result.outbound = {
+      bindJwks(route = WELL_KNOWN_JWKS, provider = () => outbound.keys.publicJwks()) {
+        app.get(route, (req, res, next) => {
+          const request = new Request(`http://local${req.url ?? "/"}`, { method: req.method });
+          jwksFetchHandler(provider)(request)
+            .then((response) => writeResponseToNodeRes(res, response))
+            .catch(next);
+        });
+      },
+    };
+    result.admin = {
+      bindAdminRoutes(prefix, opts) {
+        app.use(prefix, fetchToExpress(adminRouter({ outbound }, opts)));
+      },
+    };
+  }
+
+  return result as ExpressWebAdapter<C>;
 }

@@ -1,26 +1,30 @@
 # @postel/express
 
-> Express middleware that gates a route with a configured Postel inbound source.
+> Express routing facade + middleware gate for verifying inbound webhooks against a configured Postel source.
 
 ```ts
 import express from "express";
-import { verifyWebhook, expressAdapter } from "@postel/express";
+import { ExpressWebAdapter } from "@postel/express";
 import { postel } from "./lib/postel"; // Postel({ inbound: { vendor: { verify: Secret(...) } } })
 
 const app = express();
+const ewa = ExpressWebAdapter(postel, app);
 
-// verifyWebhook mounts express.raw() + the gate; your handler stays normal:
-app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (req, res) => {
+// each route mounts express.raw() + the gate; your handler stays normal:
+ewa.inbound.vendor.post("/webhooks/vendor", (req, res) => {
   res.json({ ok: true, type: req.postel?.event.type });
 });
 
-// or bind by source key (type-checked against the sources you configured):
-app.post("/webhooks/github", expressAdapter(postel).verify("github"), (_req, res) => res.send("ok"));
+// when an outbound slot is configured:
+ewa.outbound.bindJwks();                                                // GET /.well-known/webhooks-keys
+ewa.admin.bindAdminRoutes("/admin", { authorize: (req) => check(req) });
 ```
 
-The gate mounts `express.raw({ type: () => true })` for you (don't put `express.json()` ahead of it), reads the exact received bytes, runs the verifier(s) you configured, maps `PostelError` to the right HTTP status, and sets the verified result on `req.postel`. On failure the handler never runs; a non-`PostelError` is forwarded to `next(err)` (your error middleware / 500). The error→status policy and byte handling live in [`@postel/http`](../../http).
+Each gated route mounts `express.raw({ type: () => true })` for you (don't put `express.json()` ahead of it), reads the exact received bytes, runs the verifier(s) you configured, maps `PostelError` to the right HTTP status, and sets the verified result on `req.postel`. On failure the handler never runs; a non-`PostelError` is forwarded to `next(err)`. The error→status policy and byte handling live in [`@postel/http`](../../http).
 
-`withWebhook(source, handler)` folds the gate and a single handler into one; `expressAdapter(postel).guard(key, handler)` is the keyed form.
+## Low-level primitives
+
+`verifyWebhook(source, opts?)` (returns `[express.raw(...), gate]`), `withWebhook(source, handler, opts?)`, and the `fetchToExpress` Fetch→Express bridge remain exported for custom routing.
 
 ## License
 

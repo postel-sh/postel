@@ -1,37 +1,44 @@
 # @postel/hono
 
-> Hono middleware and ad-hoc helper for verifying inbound webhooks against [`@postel/core`](../../core).
-
-Hono is the smallest of the framework adapters and the first one Postel ships at v0.1.0 — Express, Fastify, Bun, Deno, Next.js, SvelteKit, Astro, and Nitro adapters are deferred to later releases.
+> Hono routing facade + low-level gate for verifying inbound webhooks against [`@postel/core`](../../core).
 
 ## Why an adapter at all
 
 Per the receiver capability spec ([Framework adapters preserve raw bytes](../../../../openspec/specs/receiver/spec.md)), framework integrations exist to guarantee that the bytes `verify()` sees are byte-identical to the bytes the receiver received. A bare `app.post(…, c => c.req.json())` route would re-serialize the body and break the signature; the adapter reads the request via `c.req.arrayBuffer()` so the raw bytes stay intact across the boundary.
 
-## API
+## Routing facade
+
+`HonoWebAdapter(postel, app)` binds to your app and registers gated routes by source key. The verified result is on `c.get("postel")`.
 
 ```ts
 import { Hono } from "hono";
-import { honoVerify, postelHono, POSTEL_CONTEXT_KEY } from "@postel/hono";
+import { HonoWebAdapter, POSTEL_CONTEXT_KEY } from "@postel/hono";
+import { postel } from "./lib/postel"; // Postel({ inbound: { vendor: { verify: Secret(...) } } })
 
 const app = new Hono();
+const hwa = HonoWebAdapter(postel, app);
 
-// Style 1 — explicit helper, full control over error mapping
-app.post("/webhooks", async (c) => {
-  const result = await honoVerify(c, "whsec_...");
-  return c.json({ ok: true, type: result.event.type });
+hwa.inbound.vendor.post("/webhooks/vendor", (c) => {
+  const { event } = c.get(POSTEL_CONTEXT_KEY);
+  return c.json({ ok: true, type: event.type });
 });
 
-// Style 2 — middleware; verified payload stashed on context
-app.post("/webhooks", postelHono("whsec_..."), (c) => {
-  const result = c.get(POSTEL_CONTEXT_KEY);
-  return c.json({ ok: true, type: result.event.type });
-});
+// when an outbound slot is configured:
+hwa.outbound.bindJwks();                                                // GET /.well-known/webhooks-keys
+hwa.admin.bindAdminRoutes("/admin", { authorize: (req) => check(req) });
 ```
 
-The second argument is anything `verify()` accepts: a single `whsec_`-prefixed secret, a priority-ordered `string[]` (multi-secret rotation window), or a `Keyset` returned from `createKeyset` (JWKS-backed; lands in PR 4).
+The source key is type-checked against the sources you configured. On failure the gate short-circuits with the mapped HTTP status and your handler never runs; a non-`PostelError` bubbles as 5xx. The error→status policy and byte handling live in [`@postel/http`](../../http).
 
-The third argument is the same `VerifyOptions` shape as `@postel/core` — `toleranceSeconds`, `now`.
+## Low-level primitives
+
+The facade is sugar over `verifyWebhook(source, opts?)` (middleware gate) and `withWebhook(source, handler, opts?)` (gate + handler folded into one) — use them to attach the gate to your own routing.
+
+```ts
+import { verifyWebhook, withWebhook } from "@postel/hono";
+
+app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => c.json({ ok: true }));
+```
 
 ## License
 

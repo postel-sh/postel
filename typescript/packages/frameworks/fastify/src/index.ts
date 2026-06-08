@@ -1,7 +1,8 @@
+import { type AdminRouterOptions, adminRouter } from "@postel/admin";
 import type {
   ComposedVerifyResult,
-  InboundApi,
   InboundSource,
+  OutboundApi,
   PostelConfig,
   PostelInstance,
 } from "@postel/core";
@@ -14,6 +15,7 @@ import {
 } from "@postel/http";
 import { headersFromNode } from "@postel/http/node";
 import type {
+  FastifyInstance,
   FastifyPluginAsync,
   FastifyReply,
   FastifyRequest,
@@ -26,6 +28,8 @@ declare module "fastify" {
     postel?: ComposedVerifyResult<unknown>;
   }
 }
+
+const WELL_KNOWN_JWKS = "/.well-known/webhooks-keys";
 
 export const fastifyPostel: FastifyPluginAsync = fp(
   async (fastify) => {
@@ -93,45 +97,6 @@ export function withWebhook<TData = unknown>(
   };
 }
 
-type InboundSourcesOf<C extends PostelConfig> = C extends {
-  readonly inbound: infer I extends Record<string, InboundSource>;
-}
-  ? I
-  : never;
-
-export function fastifyAdapter<const C extends PostelConfig>(
-  postel: PostelInstance<C> & { readonly inbound: InboundApi<InboundSourcesOf<C>> },
-): {
-  verify<K extends keyof InboundSourcesOf<C>, TData = unknown>(
-    key: K,
-    opts?: WebhookHandlerOptions<TData>,
-  ): preHandlerHookHandler;
-  guard<K extends keyof InboundSourcesOf<C>, TData = unknown>(
-    key: K,
-    handler: (req: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>,
-    opts?: WebhookHandlerOptions<TData>,
-  ): (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
-  jwks(provider: JwksProvider): (req: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
-} {
-  return {
-    verify(key, opts) {
-      return verifyWebhook(postel.inbound[key], opts);
-    },
-    guard(key, handler, opts) {
-      return withWebhook(postel.inbound[key], handler, opts);
-    },
-    jwks(provider) {
-      return async (req, reply) => {
-        const request = new Request(`http://local${req.url}`, { method: req.method });
-        const response = await jwksFetchHandler(provider)(request);
-        reply.code(response.status);
-        response.headers.forEach((value, name) => reply.header(name, value));
-        return reply.send(await response.text());
-      };
-    },
-  };
-}
-
 export function fetchToFastify(handler: (req: Request) => Promise<Response>) {
   return async (req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const init: RequestInit = { method: req.method, headers: headersFromNode(req.headers) };
@@ -147,4 +112,83 @@ export function fetchToFastify(handler: (req: Request) => Promise<Response>) {
     response.headers.forEach((value, name) => reply.header(name, value));
     return reply.send(await response.text());
   };
+}
+
+type InboundSourcesOf<C extends PostelConfig> = C extends {
+  readonly inbound: infer I extends Record<string, InboundSource>;
+}
+  ? I
+  : never;
+
+type FastifyHandler = (req: FastifyRequest, reply: FastifyReply) => unknown | Promise<unknown>;
+
+export interface FastifyInboundRoute {
+  post<TData = unknown>(
+    route: string,
+    handler: FastifyHandler,
+    opts?: WebhookHandlerOptions<TData>,
+  ): FastifyInboundRoute;
+}
+
+export interface FastifyOutboundBindings {
+  bindJwks(route?: string, provider?: JwksProvider): void;
+}
+
+export interface FastifyAdminBindings {
+  bindAdminRoutes(prefix: string, opts: AdminRouterOptions): void;
+}
+
+type FastifyWebAdapter<C extends PostelConfig> = (C extends {
+  readonly inbound: Record<string, InboundSource>;
+}
+  ? { readonly inbound: { readonly [K in keyof InboundSourcesOf<C>]: FastifyInboundRoute } }
+  : object) &
+  (C extends { readonly outbound: object }
+    ? { readonly outbound: FastifyOutboundBindings; readonly admin: FastifyAdminBindings }
+    : object);
+
+export function FastifyWebAdapter<const C extends PostelConfig>(
+  postel: PostelInstance<C>,
+  app: FastifyInstance,
+): FastifyWebAdapter<C> {
+  const p = postel as unknown as {
+    readonly inbound?: Record<string, GateSource>;
+    readonly outbound?: OutboundApi;
+  };
+  const result: {
+    inbound?: Record<string, FastifyInboundRoute>;
+    outbound?: FastifyOutboundBindings;
+    admin?: FastifyAdminBindings;
+  } = {};
+
+  if (p.inbound) {
+    const inbound: Record<string, FastifyInboundRoute> = {};
+    for (const key of Object.keys(p.inbound)) {
+      const source = p.inbound[key] as GateSource;
+      const builder: FastifyInboundRoute = {
+        post(route, handler, opts) {
+          app.post(route, withWebhook(source, handler, opts));
+          return builder;
+        },
+      };
+      inbound[key] = builder;
+    }
+    result.inbound = inbound;
+  }
+
+  if (p.outbound) {
+    const outbound = p.outbound;
+    result.outbound = {
+      bindJwks(route = WELL_KNOWN_JWKS, provider = () => outbound.keys.publicJwks()) {
+        app.get(route, fetchToFastify(jwksFetchHandler(provider)));
+      },
+    };
+    result.admin = {
+      bindAdminRoutes(prefix, opts) {
+        app.all(`${prefix}/*`, fetchToFastify(adminRouter({ outbound }, opts)));
+      },
+    };
+  }
+
+  return result as FastifyWebAdapter<C>;
 }

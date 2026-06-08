@@ -1,14 +1,11 @@
-import {
-  type ComposedVerifyResult,
-  type InboundApi,
-  type InboundSource,
-  type PostelConfig,
-  type PostelInstance,
-  type SecretOrKeyset,
-  type VerifyOptions,
-  type VerifyResult,
-  type WebhookHeaders,
-  verify,
+import { type AdminRouterOptions, adminRouter } from "@postel/admin";
+import type {
+  ComposedVerifyResult,
+  InboundSource,
+  OutboundApi,
+  PostelConfig,
+  PostelInstance,
+  WebhookHeaders,
 } from "@postel/core";
 import {
   type GateSource,
@@ -17,11 +14,11 @@ import {
   handleInbound,
   jwksFetchHandler,
 } from "@postel/http";
-import type { Context, MiddlewareHandler } from "hono";
-
-export type HonoVerifyOptions = VerifyOptions;
+import type { Context, Hono, MiddlewareHandler } from "hono";
 
 export const POSTEL_CONTEXT_KEY = "postel" as const;
+
+const WELL_KNOWN_JWKS = "/.well-known/webhooks-keys";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -88,61 +85,76 @@ type InboundSourcesOf<C extends PostelConfig> = C extends {
   ? I
   : never;
 
-export function honoAdapter<const C extends PostelConfig>(
-  postel: PostelInstance<C> & { readonly inbound: InboundApi<InboundSourcesOf<C>> },
-): {
-  verify<K extends keyof InboundSourcesOf<C>, TData = unknown>(
-    key: K,
+type HonoHandler = (c: Context) => Response | Promise<Response>;
+
+export interface HonoInboundRoute {
+  post<TData = unknown>(
+    route: string,
+    handler: HonoHandler,
     opts?: WebhookHandlerOptions<TData>,
-  ): MiddlewareHandler;
-  guard<K extends keyof InboundSourcesOf<C>, TData = unknown>(
-    key: K,
-    handler: (c: Context) => Response | Promise<Response>,
-    opts?: WebhookHandlerOptions<TData>,
-  ): (c: Context) => Promise<Response>;
-  jwks(provider: JwksProvider): (c: Context) => Promise<Response>;
-} {
-  return {
-    verify(key, opts) {
-      return verifyWebhook(postel.inbound[key], opts);
-    },
-    guard(key, handler, opts) {
-      return withWebhook(postel.inbound[key], handler, opts);
-    },
-    jwks(provider) {
-      return (c) => jwksFetchHandler(provider)(c.req.raw);
-    },
-  };
+  ): HonoInboundRoute;
 }
 
-/**
- * @deprecated Use `verifyWebhook(postel.inbound.<source>)` or `honoAdapter(postel).verify(...)`.
- * Threads a raw secret instead of the configured inbound source.
- */
-export async function honoVerify<TData = unknown>(
-  c: Context,
-  secretOrKeyset: SecretOrKeyset,
-  options?: HonoVerifyOptions,
-): Promise<VerifyResult<TData>> {
-  const bytes = new Uint8Array(await c.req.arrayBuffer());
-  const headers = headersFromHono(c);
-  return verify<TData>(bytes, headers, secretOrKeyset, options);
+export interface HonoOutboundBindings {
+  bindJwks(route?: string, provider?: JwksProvider): void;
 }
 
-/**
- * @deprecated Use `verifyWebhook(postel.inbound.<source>)` or `honoAdapter(postel).verify(...)`,
- * which bind the configured source and map protocol errors to HTTP status automatically.
- */
-export function postelHono<TData = unknown>(
-  secretOrKeyset: SecretOrKeyset,
-  options?: HonoVerifyOptions,
-): MiddlewareHandler {
-  return async (c, next) => {
-    const result = await honoVerify<TData>(c, secretOrKeyset, options);
-    c.set(POSTEL_CONTEXT_KEY, {
-      ...result,
-      matchedVerifierIndex: result.matchedSecretIndex,
-    } as ComposedVerifyResult<unknown>);
-    await next();
+export interface HonoAdminBindings {
+  bindAdminRoutes(prefix: string, opts: AdminRouterOptions): void;
+}
+
+type HonoWebAdapter<C extends PostelConfig> = (C extends {
+  readonly inbound: Record<string, InboundSource>;
+}
+  ? { readonly inbound: { readonly [K in keyof InboundSourcesOf<C>]: HonoInboundRoute } }
+  : object) &
+  (C extends { readonly outbound: object }
+    ? { readonly outbound: HonoOutboundBindings; readonly admin: HonoAdminBindings }
+    : object);
+
+export function HonoWebAdapter<const C extends PostelConfig>(
+  postel: PostelInstance<C>,
+  app: Hono,
+): HonoWebAdapter<C> {
+  const p = postel as unknown as {
+    readonly inbound?: Record<string, GateSource>;
+    readonly outbound?: OutboundApi;
   };
+  const result: {
+    inbound?: Record<string, HonoInboundRoute>;
+    outbound?: HonoOutboundBindings;
+    admin?: HonoAdminBindings;
+  } = {};
+
+  if (p.inbound) {
+    const inbound: Record<string, HonoInboundRoute> = {};
+    for (const key of Object.keys(p.inbound)) {
+      const source = p.inbound[key] as GateSource;
+      const builder: HonoInboundRoute = {
+        post(route, handler, opts) {
+          app.post(route, withWebhook(source, handler, opts));
+          return builder;
+        },
+      };
+      inbound[key] = builder;
+    }
+    result.inbound = inbound;
+  }
+
+  if (p.outbound) {
+    const outbound = p.outbound;
+    result.outbound = {
+      bindJwks(route = WELL_KNOWN_JWKS, provider = () => outbound.keys.publicJwks()) {
+        app.get(route, (c) => jwksFetchHandler(provider)(c.req.raw));
+      },
+    };
+    result.admin = {
+      bindAdminRoutes(prefix, opts) {
+        const router = adminRouter({ outbound }, opts);
+        app.all(`${prefix}/*`, (c) => router(c.req.raw));
+      },
+    };
+  }
+
+  return result as HonoWebAdapter<C>;
 }
