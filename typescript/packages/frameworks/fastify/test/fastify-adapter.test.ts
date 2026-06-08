@@ -57,6 +57,25 @@ describe("Framework adapters preserve raw bytes", () => {
     await app.close();
   });
 
+  it("inbound.<source>.on binds an explicit method (PUT) behind the gate", async () => {
+    const app = Fastify();
+    await app.register(fastifyPostel);
+    FastifyWebAdapter(vendor(), app).inbound.vendor.on("PUT", "/webhooks/vendor", async (req) => ({
+      ok: true,
+      type: req.postel.event.type,
+    }));
+    const sig = await signed("order.updated", "o_1");
+    const res = await app.inject({
+      method: "PUT",
+      url: "/webhooks/vendor",
+      headers: { ...sig.headers, "content-type": "application/json" },
+      payload: sig.body,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, type: "order.updated" });
+    await app.close();
+  });
+
   it("inbound.<source>.post types req.postel with the source's schema output", async () => {
     const schema: StandardSchemaV1<unknown, { id: string }> = {
       "~standard": {

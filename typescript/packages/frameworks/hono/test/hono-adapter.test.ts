@@ -85,6 +85,21 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
     });
   });
 
+  it("inbound.<source>.on binds an explicit method (PUT) behind the gate", async () => {
+    const app = new Hono();
+    HonoWebAdapter(vendor(), app).inbound.vendor.on("PUT", "/webhooks/vendor", (c) =>
+      c.json({ ok: true, type: c.var.postel.event.type }),
+    );
+    const sig = await signed("order.updated", "o_1");
+    const res = await app.request("/webhooks/vendor", {
+      method: "PUT",
+      headers: { ...sig.headers, "content-type": "application/json" },
+      body: sig.body,
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, type: "order.updated" });
+  });
+
   it("inbound.<source>.post types c.var.postel with the source's schema output", async () => {
     const schema: StandardSchemaV1<unknown, { id: string }> = {
       "~standard": {

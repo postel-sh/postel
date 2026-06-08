@@ -8,6 +8,11 @@ import type {
 
 export type RawBody = ArrayBuffer | Uint8Array | string;
 
+// HTTP methods a webhook gate can bind. Restricted to body-bearing verbs: the
+// gate verifies a signature over the request body, so bodyless methods (GET,
+// HEAD) have nothing to verify. POST is the Standard Webhooks default.
+export type WebhookMethod = "POST" | "PUT" | "PATCH";
+
 export interface NormalizedRequest {
   readonly rawBody: RawBody;
   readonly headers: WebhookHeaders;
