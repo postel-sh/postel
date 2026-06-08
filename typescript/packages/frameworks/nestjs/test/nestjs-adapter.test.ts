@@ -3,7 +3,7 @@ import { type ExecutionContext, HttpException } from "@nestjs/common";
 import { NotImplementedError, Postel, Secret, signFixture } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
-import { WebhookGuard } from "../src/index.js";
+import { NestjsWebAdapter, WebhookGuard } from "../src/index.js";
 
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
@@ -74,5 +74,23 @@ describe("Framework adapters preserve raw bytes", () => {
     const guard = new Guard(fakePostel as never);
     const req = { rawBody: "{}", headers: {}, method: "POST" };
     await expect(guard.canActivate(ctx(req))).rejects.toBeInstanceOf(NotImplementedError);
+  });
+});
+
+describe("NestjsWebAdapter", () => {
+  it("NestjsWebAdapter(postel).WebhookGuard(key) builds a typed guard for the configured source", async () => {
+    const { WebhookGuard: TypedGuard } = NestjsWebAdapter(vendor());
+    const Guard = TypedGuard("vendor");
+    const guard = new Guard(vendor());
+    const sig = await signed("order.created", "o_1");
+    const req: {
+      rawBody: string;
+      headers: Record<string, string>;
+      method: string;
+      postel?: unknown;
+    } = { rawBody: sig.body, headers: { ...sig.headers }, method: "POST" };
+    const allowed = await guard.canActivate(ctx(req));
+    expect(allowed).toBe(true);
+    expect((req.postel as { event: { type: string } }).event.type).toBe("order.created");
   });
 });

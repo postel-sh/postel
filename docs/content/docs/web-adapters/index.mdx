@@ -11,16 +11,20 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
 
 ## The shape every adapter shares
 
-- **`verifyWebhook(source, opts?)`** — the framework-native gate (Hono/Express middleware, Fastify preHandler, NestJS guard). Your handler runs after it, with the verified result on the request context.
-- **`withWebhook(source, handler, opts?)`** — folds the gate and a single handler into one.
-- **`xAdapter(postel)`** — `.verify(key)` / `.guard(key, handler)` bound by *source key* (type-checked against your config), plus `.jwks(provider)` to publish keys.
+`XxxWebAdapter(postel, app)` binds to your app and exposes bindings grouped by intent — present only for the config slots you set:
+
+- **`hwa.inbound.<source>.post(route, handler, opts?)`** — register a gated route. Raw bytes are verified before your handler runs, with the result on the request context (`c.get("postel")` / `req.postel`). The source key is type-checked against your config.
+- **`hwa.outbound.bindJwks(route?, provider?)`** — publish your public keys (defaults to `/.well-known/webhooks-keys` + `postel.outbound.keys.publicJwks()`).
+- **`hwa.admin.bindAdminRoutes(prefix, opts)`** — mount the [`@postel/admin`](/docs/outbound/admin) control plane.
+
+Prefer to own the routing yourself? The facade is sugar over the **low-level primitives** every package still exports: `verifyWebhook(source, opts?)` (the framework-native gate) and `withWebhook(source, handler, opts?)` (gate + handler folded into one). NestJS is the exception — it stays DI-idiomatic with a `WebhookGuard` rather than a routing facade.
 
 ## Pick your target
 
 <Cards>
-  <Card icon={<PlugIcon />} title="Hono" href="/docs/web-adapters/hono" description="Middleware gate; honoAdapter(postel).verify(key)." />
-  <Card icon={<PlugIcon />} title="Express" href="/docs/web-adapters/express" description="express.raw() + the gate; sets req.postel." />
-  <Card icon={<PlugIcon />} title="Fastify" href="/docs/web-adapters/fastify" description="Raw-body plugin + a preHandler gate." />
+  <Card icon={<PlugIcon />} title="Hono" href="/docs/web-adapters/hono" description="HonoWebAdapter(postel, app).inbound.<source>.post(...)." />
+  <Card icon={<PlugIcon />} title="Express" href="/docs/web-adapters/express" description="ExpressWebAdapter — express.raw() + gate; sets req.postel." />
+  <Card icon={<PlugIcon />} title="Fastify" href="/docs/web-adapters/fastify" description="fastifyPostel raw-body plugin + FastifyWebAdapter." />
   <Card icon={<PlugIcon />} title="NestJS" href="/docs/web-adapters/nestjs" description="PostelModule + WebhookGuard + @Event()." />
   <Card icon={<CodeIcon />} title="Next.js" href="/docs/web-adapters/nextjs" description="Route Handlers are Fetch-native — use fetchWebhook directly." />
   <Card icon={<CodeIcon />} title="Bun" href="/docs/web-adapters/bun" description="Bun.serve is Fetch-native — use fetchWebhook directly." />
@@ -30,9 +34,9 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
 
 | Framework / runtime | Package | Ships? | Form |
 |---|---|---|---|
-| Hono | `@postel/hono` | ✅ | Middleware gate + adapter object |
-| Express | `@postel/express` | ✅ | `express.raw()` + middleware gate |
-| Fastify | `@postel/fastify` | ✅ | Plugin + preHandler gate |
+| Hono | `@postel/hono` | ✅ | `HonoWebAdapter` routing facade + primitives |
+| Express | `@postel/express` | ✅ | `ExpressWebAdapter` facade + `express.raw()` gate |
+| Fastify | `@postel/fastify` | ✅ | `FastifyWebAdapter` facade + raw-body plugin |
 | NestJS | `@postel/nestjs` | ✅ | Module + `WebhookGuard` + decorators |
 | Any Fetch runtime (Deno, custom, …) | [`@postel/http`](/docs/reference/http) | ✅ | `fetchWebhook(source)` |
 | Next.js Route Handlers | `@postel/nextjs` | ⏳ stub | Use `@postel/http` meanwhile |
@@ -40,4 +44,4 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
 
 ## Both directions
 
-Adapters also mount the **outbound** HTTP surface: `.jwks(() => postel.outbound.keys.publicJwks())` publishes your current public keys (see [key rotation](/docs/inbound/key-rotation)), and the [`@postel/admin`](/docs/outbound/admin) control plane mounts through each adapter (natively on Hono; via `fetchToExpress` / `fetchToFastify` on Node).
+Adapters also mount the **outbound** HTTP surface: `hwa.outbound.bindJwks()` publishes your current public keys (see [key rotation](/docs/inbound/key-rotation)), and `hwa.admin.bindAdminRoutes()` mounts the [`@postel/admin`](/docs/outbound/admin) control plane (natively on Hono; via `fetchToExpress` / `fetchToFastify` on Node).

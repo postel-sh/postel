@@ -34,37 +34,40 @@ function GithubIcon({ className }: { className?: string }) {
 }
 
 const heroHono = `import { Hono } from "hono";
-import { verifyWebhook, POSTEL_CONTEXT_KEY } from "@postel/hono";
+import { HonoWebAdapter, POSTEL_CONTEXT_KEY } from "@postel/hono";
 import { postel } from "@/lib/postel";
 
 const app = new Hono();
+const hwa = HonoWebAdapter(postel, app);
 
-app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => {
+hwa.inbound.vendor.post("/webhooks/vendor", (c) => {
   const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · raw bytes intact
   return c.json({ ok: true, type: event.type });
 });`;
 
 const heroExpress = `import express from "express";
-import { verifyWebhook } from "@postel/express";
+import { ExpressWebAdapter } from "@postel/express";
 import { postel } from "@/lib/postel";
 
 const app = express();
+const ewa = ExpressWebAdapter(postel, app);
 
-// mounts express.raw() + the gate — your handler stays normal
-app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (req, res) => {
+// each route mounts express.raw() + the gate — your handler stays normal
+ewa.inbound.vendor.post("/webhooks/vendor", (req, res) => {
   res.json({ ok: true, type: req.postel?.event.type });
 });`;
 
 const heroFastify = `import Fastify from "fastify";
-import { fastifyPostel, verifyWebhook } from "@postel/fastify";
+import { fastifyPostel, FastifyWebAdapter } from "@postel/fastify";
 import { postel } from "@/lib/postel";
 
 const app = Fastify();
 await app.register(fastifyPostel); // raw-body parser
 
-app.post(
+const fwa = FastifyWebAdapter(postel, app);
+
+fwa.inbound.vendor.post(
   "/webhooks/vendor",
-  { preHandler: verifyWebhook(postel.inbound.vendor) },
   async (req) => ({ ok: true, type: req.postel?.event.type }),
 );`;
 

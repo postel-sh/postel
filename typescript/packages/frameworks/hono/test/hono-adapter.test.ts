@@ -1,154 +1,80 @@
-import {
-  Postel,
-  RawBytesMismatchDetected,
-  Secret,
-  SignatureInvalid,
-  signFixture,
-} from "@postel/core";
+import { InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
-import {
-  POSTEL_CONTEXT_KEY,
-  honoAdapter,
-  honoVerify,
-  postelHono,
-  verifyWebhook,
-  withWebhook,
-} from "../src/index.js";
+import { HonoWebAdapter, POSTEL_CONTEXT_KEY, verifyWebhook, withWebhook } from "../src/index.js";
 
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
 
+function vendor() {
+  return Postel({ inbound: { vendor: { verify: Secret(SECRET), now: () => NOW } } });
+}
+
+function signed(type: string, id: string) {
+  return signFixture({
+    secret: SECRET,
+    payload: { type, timestamp: "2026-05-14T12:59:55Z", data: { id } },
+    timestamp: NOW,
+  });
+}
+
 describe("Framework adapters preserve raw bytes", () => {
-  it("honoVerify receives byte-identical bytes sent to the receiver (Hono adapter)", async () => {
-    const signed = await signFixture({
-      secret: SECRET,
-      payload: {
-        type: "order.created",
-        timestamp: "2026-05-14T12:59:55Z",
-        data: { id: "order_1" },
-      },
-      timestamp: NOW,
-    });
-
+  it("HonoWebAdapter inbound routes receive byte-identical input; re-serialized JSON is rejected", async () => {
     const app = new Hono();
-    app.post("/webhooks", async (c) => {
-      const result = await honoVerify(c, SECRET, { now: () => NOW });
-      return c.json({ ok: true, matched: result.matchedSecretIndex, type: result.event.type });
-    });
+    HonoWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", (c) =>
+      c.json({ ok: true, type: c.get(POSTEL_CONTEXT_KEY).event.type }),
+    );
 
-    const res = await app.request("/webhooks", {
+    const sig = await signed("order.created", "o_1");
+    const ok = await app.request("/webhooks/vendor", {
       method: "POST",
-      headers: { ...signed.headers, "content-type": "application/json" },
-      body: signed.body,
+      headers: { ...sig.headers, "content-type": "application/json" },
+      body: sig.body,
     });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, matched: 0, type: "order.created" });
-  });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, type: "order.created" });
 
-  it("postelHono middleware stashes the VerifyResult on the context", async () => {
-    const signed = await signFixture({
-      secret: SECRET,
-      payload: { type: "user.created", timestamp: "2026-05-14T12:59:55Z", data: { id: "u_2" } },
-      timestamp: NOW,
-    });
-
-    const app = new Hono();
-    app.post("/webhooks", postelHono(SECRET, { now: () => NOW }), (c) => {
-      const result = c.get(POSTEL_CONTEXT_KEY);
-      return c.json({ ok: true, type: result.event.type });
-    });
-
-    const res = await app.request("/webhooks", {
+    const reSerialized = JSON.stringify(JSON.parse(sig.body), null, 2);
+    expect(reSerialized).not.toBe(sig.body);
+    const bad = await app.request("/webhooks/vendor", {
       method: "POST",
-      headers: { ...signed.headers, "content-type": "application/json" },
-      body: signed.body,
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, type: "user.created" });
-  });
-
-  it("JSON re-serialization breaks the signature (raw-bytes mismatch surfaces as SIGNATURE_INVALID)", async () => {
-    const signed = await signFixture({
-      secret: SECRET,
-      payload: {
-        type: "payment.captured",
-        timestamp: "2026-05-14T12:59:55Z",
-        data: { id: "pay_3" },
-      },
-      timestamp: NOW,
-    });
-
-    const reSerialized = JSON.stringify(JSON.parse(signed.body), null, 2);
-    expect(reSerialized).not.toBe(signed.body);
-
-    const app = new Hono();
-    app.post("/webhooks", async (c) => {
-      try {
-        await honoVerify(c, SECRET, { now: () => NOW });
-        return c.json({ ok: true });
-      } catch (err) {
-        if (err instanceof SignatureInvalid || err instanceof RawBytesMismatchDetected) {
-          return c.json({ ok: false, code: (err as { code: string }).code }, 400);
-        }
-        throw err;
-      }
-    });
-
-    const res = await app.request("/webhooks", {
-      method: "POST",
-      headers: { ...signed.headers, "content-type": "application/json" },
+      headers: { ...sig.headers, "content-type": "application/json" },
       body: reSerialized,
     });
-    expect(res.status).toBe(400);
-    expect((await res.json()) as { code: string }).toMatchObject({ code: "SIGNATURE_INVALID" });
+    expect(bad.status).toBe(400);
   });
 });
 
 describe("Framework adapters gate verification and map protocol errors to HTTP status", () => {
-  function vendor() {
-    return Postel({ inbound: { vendor: { verify: Secret(SECRET), now: () => NOW } } });
-  }
-
-  it("verifyWebhook middleware verifies, stashes the result, and runs the downstream handler", async () => {
-    const signed = await signFixture({
-      secret: SECRET,
-      payload: { type: "order.created", timestamp: "2026-05-14T12:59:55Z", data: { id: "o_1" } },
-      timestamp: NOW,
-    });
-    const postel = vendor();
+  it("inbound.<source>.post gates the route, stashes the verified result, runs the handler", async () => {
     const app = new Hono();
-    app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => {
+    HonoWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", (c) => {
       const result = c.get(POSTEL_CONTEXT_KEY);
       return c.json({ ok: true, type: result.event.type, matched: result.matchedVerifierIndex });
     });
+    const sig = await signed("order.created", "o_1");
     const res = await app.request("/webhooks/vendor", {
       method: "POST",
-      headers: { ...signed.headers, "content-type": "application/json" },
-      body: signed.body,
+      headers: { ...sig.headers, "content-type": "application/json" },
+      body: sig.body,
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, type: "order.created", matched: 0 });
   });
 
-  it("verifyWebhook rejects a bad signature with 400 and never runs the handler", async () => {
-    const signed = await signFixture({
-      secret: SECRET,
-      payload: { type: "order.created", timestamp: "2026-05-14T12:59:55Z", data: { id: "o_2" } },
-      timestamp: NOW,
-    });
-    const reSerialized = JSON.stringify(JSON.parse(signed.body), null, 2);
-    const postel = vendor();
+  it("a bad signature is rejected with 400 and the handler never runs", async () => {
     let ran = false;
     const app = new Hono();
-    app.post("/webhooks/vendor", verifyWebhook(postel.inbound.vendor), (c) => {
+    HonoWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", (c) => {
       ran = true;
       return c.json({ ok: true });
     });
+    const sig = await signed("order.created", "o_2");
+    const reSerialized = JSON.stringify(JSON.parse(sig.body), null, 2);
     const res = await app.request("/webhooks/vendor", {
       method: "POST",
-      headers: { ...signed.headers, "content-type": "application/json" },
+      headers: { ...sig.headers, "content-type": "application/json" },
       body: reSerialized,
     });
     expect(res.status).toBe(400);
@@ -158,62 +84,71 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
     });
   });
 
-  it("honoAdapter(postel).verify(key) binds the configured source by key", async () => {
-    const signed = await signFixture({
-      secret: SECRET,
-      payload: { type: "user.created", timestamp: "2026-05-14T12:59:55Z", data: { id: "u_1" } },
-      timestamp: NOW,
-    });
-    const wh = honoAdapter(vendor());
+  it("verifyWebhook / withWebhook remain as low-level primitives", async () => {
+    const postel = vendor();
     const app = new Hono();
-    app.post("/webhooks/vendor", wh.verify("vendor"), (c) =>
+    app.post("/mw/vendor", verifyWebhook(postel.inbound.vendor), (c) =>
       c.json({ ok: true, type: c.get(POSTEL_CONTEXT_KEY).event.type }),
     );
-    const res = await app.request("/webhooks/vendor", {
-      method: "POST",
-      headers: { ...signed.headers, "content-type": "application/json" },
-      body: signed.body,
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, type: "user.created" });
-  });
-
-  it("withWebhook wraps a single handler behind the gate", async () => {
-    const signed = await signFixture({
-      secret: SECRET,
-      payload: { type: "payment.captured", timestamp: "2026-05-14T12:59:55Z", data: { id: "p_1" } },
-      timestamp: NOW,
-    });
-    const app = new Hono();
     app.post(
-      "/webhooks/vendor",
-      withWebhook(vendor().inbound.vendor, (c) =>
+      "/wrap/vendor",
+      withWebhook(postel.inbound.vendor, (c) =>
         c.json({ ok: true, type: c.get(POSTEL_CONTEXT_KEY).event.type }),
       ),
     );
-    const res = await app.request("/webhooks/vendor", {
-      method: "POST",
-      headers: { ...signed.headers, "content-type": "application/json" },
-      body: signed.body,
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, type: "payment.captured" });
+    for (const path of ["/mw/vendor", "/wrap/vendor"]) {
+      const sig = await signed("user.created", "u_1");
+      const res = await app.request(path, {
+        method: "POST",
+        headers: { ...sig.headers, "content-type": "application/json" },
+        body: sig.body,
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, type: "user.created" });
+    }
   });
 });
 
 describe("JWKS endpoint mounter", () => {
-  it("honoAdapter(postel).jwks(provider) serves the JWKS document on GET", async () => {
-    const postel = Postel({ inbound: { vendor: { verify: Secret(SECRET) } } });
-    const wh = honoAdapter(postel);
+  it("outbound.bindJwks() serves the JWKS document at the well-known path (default provider)", async () => {
     const app = new Hono();
-    app.get(
-      "/.well-known/webhooks-keys",
-      wh.jwks(() => ({
-        keys: [{ kty: "OKP", crv: "Ed25519", x: "Zm9vYmFy", kid: "k1", alg: "EdDSA" }],
-      })),
-    );
+    HonoWebAdapter(Postel({ outbound: { storage: InMemoryStorage() } }), app).outbound.bindJwks();
     const res = await app.request("/.well-known/webhooks-keys");
     expect(res.status).toBe(200);
+    expect(Array.isArray(((await res.json()) as { keys: unknown[] }).keys)).toBe(true);
+  });
+
+  it("outbound.bindJwks(route, provider) honors a custom route and provider", async () => {
+    const app = new Hono();
+    HonoWebAdapter(Postel({ outbound: { storage: InMemoryStorage() } }), app).outbound.bindJwks(
+      "/keys",
+      () => ({ keys: [{ kty: "OKP", crv: "Ed25519", x: "Zm9vYmFy", kid: "k1", alg: "EdDSA" }] }),
+    );
+    const res = await app.request("/keys");
+    expect(res.status).toBe(200);
     expect(((await res.json()) as { keys: { kid: string }[] }).keys[0]?.kid).toBe("k1");
+  });
+});
+
+describe("Admin router binding", () => {
+  it("admin.bindAdminRoutes mounts the admin router under a prefix", async () => {
+    const app = new Hono();
+    HonoWebAdapter(Postel({ outbound: { storage: InMemoryStorage() } }), app).admin.bindAdminRoutes(
+      "/admin",
+      { authorize: () => true },
+    );
+    const res = await app.request("/admin/endpoints");
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { endpoints: unknown[] }).toEqual({ endpoints: [] });
+  });
+
+  it("admin.bindAdminRoutes denies when authorize returns false", async () => {
+    const app = new Hono();
+    HonoWebAdapter(Postel({ outbound: { storage: InMemoryStorage() } }), app).admin.bindAdminRoutes(
+      "/admin",
+      { authorize: () => false },
+    );
+    const res = await app.request("/admin/endpoints");
+    expect(res.status).toBe(403);
   });
 });

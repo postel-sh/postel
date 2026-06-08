@@ -37,7 +37,7 @@ export class WebhooksController {
 
 `WebhookGuard(key)` reads the raw request body (`req.rawBody`, falling back to `req.body`), runs the verifier(s) you configured on that source, and on success sets the verified result on the request — `@Event()` and `@WebhookResult()` read it. On failure it throws an `HttpException` with the mapped status; a non-`PostelError` (e.g. a programming bug) propagates so Nest yields a 5xx. The error→status policy and byte handling live in [`@postel/http`](../../http).
 
-For compile-time-checked source keys, call `createPostelDecorators(postel)` once and use its `WebhookGuard` (its `key` argument is narrowed to your configured source names).
+For compile-time-checked source keys, call `NestjsWebAdapter(postel)` once and use its `WebhookGuard` (its `key` argument is narrowed to your configured source names).
 
 ## License
 
