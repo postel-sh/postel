@@ -1,9 +1,10 @@
+import type { StandardSchemaV1 } from "@postel/core";
 import { InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
 import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 
-import { ExpressWebAdapter, fetchToExpress, verifyWebhook } from "../src/index.js";
+import { ExpressWebAdapter, fetchToExpress, getVerified, verifyWebhook } from "../src/index.js";
 
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
@@ -24,7 +25,7 @@ describe("Framework adapters preserve raw bytes", () => {
   it("Express adapter preserves bytes via inbound.<source>.post and rejects re-serialized JSON", async () => {
     const app = express();
     ExpressWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", (req, res) => {
-      res.json({ ok: true, type: req.postel?.event.type });
+      res.json({ ok: true, type: req.postel.event.type });
     });
 
     const sig = await signed("order.created", "o_1");
@@ -46,11 +47,43 @@ describe("Framework adapters preserve raw bytes", () => {
     expect(bad.body).toMatchObject({ error: { code: "SIGNATURE_INVALID" } });
   });
 
+  it("inbound.<source>.post types req.postel with the source's schema output", async () => {
+    const schema: StandardSchemaV1<unknown, { id: string }> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: (value) =>
+          typeof value === "object" &&
+          value !== null &&
+          typeof (value as { id?: unknown }).id === "string"
+            ? { value: value as { id: string } }
+            : { issues: [{ message: "id must be a string" }] },
+      },
+    };
+    const postel = Postel({
+      inbound: { orders: { verify: Secret(SECRET), schema, now: () => NOW } },
+    });
+    const app = express();
+    ExpressWebAdapter(postel, app).inbound.orders.post("/webhooks/orders", (req, res) => {
+      // Compile-time proof the handler's req carries the schema's output type.
+      const data: { id: string } | undefined = req.postel.event.data;
+      res.json({ ok: true, id: data?.id });
+    });
+    const sig = await signed("order.created", "o_77");
+    const res = await request(app)
+      .post("/webhooks/orders")
+      .set(sig.headers)
+      .set("content-type", "application/json")
+      .send(sig.body);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, id: "o_77" });
+  });
+
   it("verifyWebhook remains as a low-level middleware primitive", async () => {
     const postel = vendor();
     const app = express();
     app.post("/mw/vendor", verifyWebhook(postel.inbound.vendor), (req, res) => {
-      res.json({ ok: true, type: req.postel?.event.type });
+      res.json({ ok: true, type: getVerified(req).event.type });
     });
     const sig = await signed("user.created", "u_1");
     const res = await request(app)

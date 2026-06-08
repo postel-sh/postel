@@ -19,6 +19,15 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
 
 Prefer to own the routing yourself? The facade is sugar over the **low-level primitives** every package still exports: `verifyWebhook(source, opts?)` (the framework-native gate) and `withWebhook(source, handler, opts?)` (gate + handler folded into one). NestJS is the exception — it stays DI-idiomatic with a `WebhookGuard` rather than a routing facade.
 
+## Adding your own middleware
+
+The facade owns the route, but you keep your framework's native middleware story — no special API needed:
+
+- **Express / Hono** — layer middleware on the path with `app.use("/webhooks/vendor", …)`, registered **before** the facade `.post` (middleware runs in registration order). The gate parses the body, so path middleware sees the request pre-verification — ideal for auth, rate-limit, or logging.
+- **Fastify** — pass route options to `.post`: `onRequest` runs before the gate, `preHandler` after it (with the result on `req.postel`). See [Fastify](/docs/web-adapters/fastify).
+
+Want the gate as a standalone middleware to wire entirely by hand? `verifyWebhook(source)` / `withWebhook(source, handler)` are exported from every package — read the verified result on that primitive path with `getVerified(reqOrCtx)` (it throws if the gate didn't run). Facade routes are already typed (`c.var.postel` / `req.postel`, narrowed to the source's [schema](/docs/inbound/verify#validating-the-payload) output), so they don't need it.
+
 ## Pick your target
 
 <Cards>

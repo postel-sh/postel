@@ -17,6 +17,7 @@ Error
     ├── SignatureInvalid             code: "SIGNATURE_INVALID"           (inbound)
     ├── UnknownKeyId                 code: "UNKNOWN_KEY_ID"              (inbound)
     ├── RawBytesMismatchDetected     code: "RAW_BYTES_MISMATCH_DETECTED" (inbound)
+    ├── EventValidation              code: "EVENT_VALIDATION"            (inbound)
     ├── EndpointValidation           code: "ENDPOINT_VALIDATION"         (outbound)
     ├── SsrfBlocked                  code: "SSRF_BLOCKED"                (outbound)
     ├── IdempotencyKeyConflict       code: "IDEMPOTENCY_KEY_CONFLICT"    (reserved)
@@ -88,6 +89,20 @@ if (err instanceof SignatureInvalid) {
 **When:** The body bytes look like they were JSON-re-encoded between receipt and verify — whitespace patterns, key ordering, number formatting all suggest mutation.
 
 **Recovery:** Best-effort safety net. Fix the underlying re-serialization (don't catch and ignore). See [Raw bytes](/docs/inbound/raw-bytes).
+
+### `EventValidation`
+
+**Code:** `EVENT_VALIDATION`
+**Thrown by:** `postel.inbound.<source>.verify` — after the signature check, when the source declares a `schema`.
+**When:** The verified `event.data` fails the source's [Standard Schema](https://github.com/standard-schema/standard-schema) (zod / valibot / arktype). Carries the schema's `issues` (`err.issues`).
+
+**Recovery:** `422 Unprocessable Entity` — the framework gate maps `EVENT_VALIDATION` there automatically. The signature was valid but the payload shape was not, so retrying the same body won't help.
+
+```ts
+if (err instanceof EventValidation) {
+  return new Response(JSON.stringify({ issues: err.issues }), { status: 422 });
+}
+```
 
 ### `EndpointValidation`
 

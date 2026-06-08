@@ -100,14 +100,35 @@ export async function GET(req: Request) {
 
 `outbound.keys.publicJwks()` returns the active Ed25519 public keys in the standard JWKS shape — only public key material, never private. The handler also refuses to serve a key that includes `d` (the Ed25519 private scalar). Wire it into whichever HTTP layer you use; the handler returns a `Response`.
 
-The kid is the RFC 7638 JWK thumbprint of the public key, and the sender stamps the matching `webhook-key-id` on every Ed25519 request — so receivers resolve the right key by kid. Framework adapters wrap this as a one-line `outbound.bindJwks()` mount:
+The kid is the RFC 7638 JWK thumbprint of the public key, and the sender stamps the matching `webhook-key-id` on every Ed25519 request — so receivers resolve the right key by kid. Framework adapters wrap this as a one-line `outbound.bindJwks()` mount — defaulting to `GET /.well-known/webhooks-keys` with the `() => outbound.keys.publicJwks()` provider, refetched per request:
+
+<Tabs items={["Hono", "Express", "Fastify"]}>
+
+<Tab value="Hono">
 
 ```ts
-// Hono — binds GET /.well-known/webhooks-keys, fetching the current keys per request
 HonoWebAdapter(postel, app).outbound.bindJwks();
-
-// Express / Fastify expose the same: ExpressWebAdapter(postel, app).outbound.bindJwks() · FastifyWebAdapter(postel, app).outbound.bindJwks()
 ```
+
+</Tab>
+
+<Tab value="Express">
+
+```ts
+ExpressWebAdapter(postel, app).outbound.bindJwks();
+```
+
+</Tab>
+
+<Tab value="Fastify">
+
+```ts
+FastifyWebAdapter(postel, app).outbound.bindJwks();
+```
+
+</Tab>
+
+</Tabs>
 
 ### When to choose JWKS over multi-secret
 

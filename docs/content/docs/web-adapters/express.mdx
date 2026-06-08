@@ -30,7 +30,7 @@ const app = express();
 const ewa = ExpressWebAdapter(postel, app);
 
 ewa.inbound.vendor.post("/webhooks/vendor", (req, res) => {
-  res.json({ ok: true, type: req.postel?.event.type });
+  res.json({ ok: true, type: req.postel.event.type });
 });
 ```
 

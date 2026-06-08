@@ -57,12 +57,15 @@ The canonical class ↔ code mapping is:
 | `MalformedHeader` | `MALFORMED_HEADER` |
 | `UnknownKeyId` | `UNKNOWN_KEY_ID` |
 | `RawBytesMismatchDetected` | `RAW_BYTES_MISMATCH_DETECTED` |
+| `EventValidation` | `EVENT_VALIDATION` |
 | `EndpointDisabled` | `ENDPOINT_DISABLED` |
 | `EndpointNotFound` | `ENDPOINT_NOT_FOUND` |
 | `IdempotencyKeyConflict` | `IDEMPOTENCY_KEY_CONFLICT` |
 | `MigrationRequired` | `MIGRATION_REQUIRED` |
 | `EndpointValidation` | `ENDPOINT_VALIDATION` |
 | `SsrfBlocked` | `SSRF_BLOCKED` |
+
+`EventValidation` additionally carries the failing schema's `issues` (a `ReadonlyArray<StandardSchemaV1.Issue>`).
 
 Adding a new error class MUST add both names atomically. The `receiver` capability's error-code list and this table are synchronized — drift between the two is treated as a bug.
 
@@ -77,6 +80,12 @@ Adding a new error class MUST add both names atomically. The `receiver` capabili
 
 - **WHEN** a consumer reads `err.code` on a thrown error of class `SignatureInvalid`
 - **THEN** the value is the stable string `'SIGNATURE_INVALID'`
+
+#### Scenario: EventValidation discrimination
+
+- **WHEN** a verified payload fails its source's `schema`
+- **THEN** the thrown error satisfies `err instanceof EventValidation` AND `err.code === 'EVENT_VALIDATION'`
+- **AND** `err.issues` lists the schema validation issues
 
 #### Scenario: Cross-port code parity
 
@@ -196,4 +205,32 @@ The `outbound` config slot SHALL accept org-wide defaults for `signing`, `retryP
 - **WHEN** an org configures `outbound: { http: { tls: { verify: true } } }` and a caller invokes `outbound.endpoints.create({ url, http: { tls: { verify: false } } })`
 - **THEN** dispatch attempts to that endpoint skip TLS verification
 - **AND** the library emits a warning at creation time per the sender capability's `TLS verification by default` requirement
+
+### Requirement: Per-source event schema validation
+
+An inbound source MAY declare a `schema` implementing the [Standard Schema](https://github.com/standard-schema/standard-schema) v1 interface (e.g. a zod ≥3.24 schema, valibot, or arktype) that describes the event `data` payload. `@postel/core` SHALL inline the Standard Schema v1 interface and SHALL NOT take a runtime dependency on any schema library, preserving its zero-runtime-dependency guarantee per `distribution-packaging-typescript`.
+
+When a source declares a `schema`:
+
+- `verify()` SHALL validate the parsed `event.data` against it AFTER the signature check, and SHALL throw `EventValidation` (code `EVENT_VALIDATION`) on mismatch — see `receiver`.
+- The verified result's `TData` SHALL be inferred from the schema's output type through `const` config inference, so `postel.inbound.<source>.verify(...)` and the framework adapters' typed handlers carry the payload type without a wrapper.
+
+When a source declares no `schema`, `verify()` behaves unchanged and the result's `TData` is `unknown`.
+
+**Conformance**: the validation OUTCOME (throw `EVENT_VALIDATION` on mismatch, pass through otherwise) is CONTRACT and shared with `receiver`. The Standard Schema interface and the schema-output type inference are TypeScript-port mechanisms; other ports MAY surface per-source payload validation through their own idioms.
+
+#### Scenario: Schema output flows to the verified result type
+
+- **WHEN** a source configures `schema: z.object({ id: z.string() })` and a caller awaits `postel.inbound.<source>.verify(body, headers)`
+- **THEN** the result's `event.data` is typed as `{ id: string }`, not `unknown`
+
+#### Scenario: Invalid payload throws EventValidation
+
+- **WHEN** a verified request's `event.data` does not satisfy the source's `schema`
+- **THEN** `verify()` throws `EventValidation` (code `EVENT_VALIDATION`) carrying the schema issues
+
+#### Scenario: No schema leaves behavior unchanged
+
+- **WHEN** a source declares no `schema`
+- **THEN** `verify()` returns the parsed event unchanged and the result's `event.data` is typed `unknown`
 

@@ -4,7 +4,7 @@ import { outcomeToResponse } from "./internal/response.js";
 import type { GateSource, WebhookHandlerOptions } from "./types.js";
 
 export function fetchWebhook<TData = unknown>(
-  source: GateSource,
+  source: GateSource<TData>,
   opts?: WebhookHandlerOptions<TData>,
 ): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {

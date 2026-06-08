@@ -15,13 +15,13 @@ import type {
 const JSON_CONTENT_TYPE = "application/json";
 
 export async function handleInbound<TData = unknown>(
-  source: GateSource,
+  source: GateSource<TData>,
   req: NormalizedRequest,
   opts?: WebhookHandlerOptions<TData>,
 ): Promise<WebhookOutcome<TData>> {
   let result: ComposedVerifyResult<TData>;
   try {
-    result = await source.verify<TData>(req.rawBody, req.headers);
+    result = await source.verify(req.rawBody, req.headers);
   } catch (err) {
     if (err instanceof PostelError) {
       return {

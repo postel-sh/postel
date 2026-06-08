@@ -60,6 +60,29 @@ On success:
 
 You generally only inspect `matchedVerifierIndex` during [key rotation](/docs/inbound/key-rotation) to detect when a producer is still signing with a deprecated key.
 
+## Validating the payload
+
+Attach a [Standard Schema](https://github.com/standard-schema/standard-schema) — a zod (≥3.24), valibot, or arktype schema — as a source's `schema` to validate `event.data` and type it end to end. `@postel/core` takes **no dependency** on the schema library; it speaks the Standard Schema interface, so you bring your own.
+
+```ts title="lib/postel.ts"
+import { Postel, Secret } from "@postel/core";
+import { z } from "zod";
+
+export const postel = Postel({
+  inbound: {
+    orders: {
+      verify: Secret(config.webhookSecret),
+      schema: z.object({ id: z.string(), total: z.number() }),
+    },
+  },
+});
+
+const { event } = await postel.inbound.orders.verify(body, headers);
+event.data; // typed { id: string; total: number } — inferred from the schema
+```
+
+Validation runs **after** the signature check. If the payload doesn't match, `verify` throws `EventValidation` (code `EVENT_VALIDATION`), which the framework gate maps to **HTTP 422** — distinct from the `400`/`401` signature failures. The inferred type flows through the framework adapters too, so a gated handler's `c.var.postel` / `req.postel` carries it. Sources without a `schema` are unchanged; `event.data` stays `unknown`.
+
 ## What `verify` throws
 
 Every failure is a typed subclass of `PostelError`:
@@ -71,6 +94,7 @@ Every failure is a typed subclass of `PostelError`:
 | `SignatureInvalid` | `SIGNATURE_INVALID` | No configured verifier matched the signature. Most common cause: re-serialized bytes ([Raw bytes](/docs/inbound/raw-bytes)) or a wrong secret. |
 | `UnknownKeyId` | `UNKNOWN_KEY_ID` | JWKS mode only: the `kid` in the request is not in the cached keyset. |
 | `RawBytesMismatchDetected` | `RAW_BYTES_MISMATCH_DETECTED` | Framework adapter detected the body was mutated before `verify` was called. |
+| `EventValidation` | `EVENT_VALIDATION` | The source declares a `schema` and the verified `event.data` failed it. Thrown after the signature check; the gate maps it to `422`. |
 
 Each carries a stable `code` string for log filters and cross-port discrimination. Error messages are safe to log — they never contain the secret or the signature bytes.
 
@@ -81,6 +105,7 @@ Postel({
   inbound: {
     <source-name>: {
       verify: Verifier | ReadonlyArray<Verifier>,  // required
+      schema?: StandardSchemaV1,                     // zod / valibot / … — validates & types event.data
       dedup?: DedupAdapter,                          // see /docs/inbound/deduplication
       dedupTtl?: number | string,                    // "24h", "1d", or seconds
       tolerance?: number,                            // seconds; default 300

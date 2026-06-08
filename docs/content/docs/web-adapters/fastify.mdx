@@ -33,11 +33,32 @@ const fwa = FastifyWebAdapter(postel, app);
 
 fwa.inbound.vendor.post("/webhooks/vendor", async (req) => ({
   ok: true,
-  type: req.postel?.event.type,
+  type: req.postel.event.type,
 }));
 ```
 
 `fastifyPostel` removes the built-in body parsers in its scope, so register it on an instance or encapsulated scope **dedicated to webhook routes**. Source keys are type-checked. On failure the gate replies with the mapped status; a non-`PostelError` bubbles to Fastify's error handler (5xx).
+
+## Route options & middleware
+
+`.post` mirrors Fastify's own `fastify.post`: pass a route-options object and the gate is injected as the first `preHandler` for you. Anything Fastify routes accept works — `onRequest`, `preHandler`, `schema`, `bodyLimit`, `config`, … — so you attach whatever you'd attach to a normal route.
+
+```ts
+fwa.inbound.vendor.post(
+  "/webhooks/vendor",
+  {
+    onRequest: rateLimit,              // runs before the gate — pre-verify (body not parsed yet)
+    preHandler: attachTenant,          // runs after the gate — req.postel is set
+    bodyLimit: 1_048_576,              // any route option is forwarded to Fastify untouched
+    webhook: { dedup: { ttl: "1h" } }, // Postel gate options (see note)
+  },
+  async (req) => ({ ok: true, type: req.postel.event.type }),
+);
+```
+
+Because the gate runs at `preHandler`, Fastify's lifecycle gives you the split for free: **`onRequest` = before verification**, **`preHandler` = after verification** (the verified result is already on `req.postel`).
+
+> **Why gate options live under `webhook`.** Postel's gate options (`dedup`, `successStatus`) ride under a single `webhook` key *inside* the route-options object rather than as a separate argument — so what you pass stays a plain Fastify `RouteShorthandOptions` that reads like any other `fastify.post(...)` call. The adapter reads `webhook`, strips it, and forwards everything else to Fastify untouched. Not passing route options? Give them as the third argument instead: `fwa.inbound.vendor.post(route, handler, { dedup })`.
 
 ## JWKS
 

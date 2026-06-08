@@ -1,9 +1,12 @@
+import type { StandardSchemaV1 } from "./standard-schema.js";
+
 export type PostelErrorCode =
   | "SIGNATURE_INVALID"
   | "TIMESTAMP_TOO_OLD"
   | "MALFORMED_HEADER"
   | "UNKNOWN_KEY_ID"
   | "RAW_BYTES_MISMATCH_DETECTED"
+  | "EVENT_VALIDATION"
   | "ENDPOINT_DISABLED"
   | "ENDPOINT_NOT_FOUND"
   | "IDEMPOTENCY_KEY_CONFLICT"
@@ -38,6 +41,19 @@ export class UnknownKeyId extends PostelError {
 
 export class RawBytesMismatchDetected extends PostelError {
   readonly code = "RAW_BYTES_MISMATCH_DETECTED" as const;
+}
+
+export class EventValidation extends PostelError {
+  readonly code = "EVENT_VALIDATION" as const;
+  constructor(
+    readonly issues: ReadonlyArray<StandardSchemaV1.Issue>,
+    options?: ErrorOptions,
+  ) {
+    super(
+      `event payload failed schema validation: ${issues.map((i) => i.message).join("; ")}`,
+      options,
+    );
+  }
 }
 
 export class EndpointDisabled extends PostelError {

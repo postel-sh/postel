@@ -14,11 +14,8 @@ export interface NormalizedRequest {
   readonly method: string;
 }
 
-export interface GateSource {
-  verify<TData = unknown>(
-    rawBody: RawBody,
-    headers: WebhookHeaders,
-  ): Promise<ComposedVerifyResult<TData>>;
+export interface GateSource<TData = unknown> {
+  verify(rawBody: RawBody, headers: WebhookHeaders): Promise<ComposedVerifyResult<TData>>;
   dedup?(messageId: string, options?: { readonly ttl?: number | string }): Promise<DedupResult>;
 }
 

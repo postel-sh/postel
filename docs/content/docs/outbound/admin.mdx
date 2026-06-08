@@ -26,17 +26,39 @@ HonoWebAdapter(postel, app).admin.bindAdminRoutes("/admin", {
 });
 ```
 
-Or mount the `adminRouter` Fetch handler yourself:
+Or mount the `adminRouter` Fetch handler yourself — Hono speaks Fetch natively; Node frameworks bridge through `fetchToExpress` / `fetchToFastify`:
+
+<Tabs items={["Hono", "Express", "Fastify"]}>
+
+<Tab value="Hono">
 
 ```ts
-app.all("/admin/*", (c) => admin(c.req.raw));   // Hono — Fetch-native
-
-import { fetchToExpress } from "@postel/express";
-app.use("/admin", fetchToExpress(admin));        // Express
-
-import { fetchToFastify } from "@postel/fastify";
-app.all("/admin/*", fetchToFastify(admin));       // Fastify
+app.all("/admin/*", (c) => admin(c.req.raw));
 ```
+
+</Tab>
+
+<Tab value="Express">
+
+```ts
+import { fetchToExpress } from "@postel/express";
+
+app.use("/admin", fetchToExpress(admin));
+```
+
+</Tab>
+
+<Tab value="Fastify">
+
+```ts
+import { fetchToFastify } from "@postel/fastify";
+
+app.all("/admin/*", fetchToFastify(admin));
+```
+
+</Tab>
+
+</Tabs>
 
 ## Authorization — default-deny
 
