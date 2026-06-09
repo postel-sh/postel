@@ -136,6 +136,7 @@ export {
   InProcess,
   Keyset,
   LinearBackoff,
+  Noop,
   PgBoss,
   PlaintextKms,
   PublicKey,

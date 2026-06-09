@@ -1,4 +1,4 @@
-export { Secret, PublicKey, Keyset } from "./verify.js";
+export { Secret, PublicKey, Keyset, Noop } from "./verify.js";
 export type { Verifier } from "./verify.js";
 
 export { InMemoryDedup } from "./dedup.js";
