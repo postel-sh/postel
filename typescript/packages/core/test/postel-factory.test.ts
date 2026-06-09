@@ -225,9 +225,9 @@ describe("Verifier strategy composition", () => {
     expect(result.event.type).toBe("order.created");
   });
 
-  it("PublicKey verifier factory produces a tagged Verifier object", () => {
+  it("PublicKey verifier factory produces a Verifier exposing a verify method", () => {
     const v = PublicKey("whpk_demo");
-    expect(v.kind).toBe("public-key");
+    expect(typeof v.verify).toBe("function");
   });
 });
 
@@ -389,9 +389,9 @@ describe("Inbound dedup wiring", () => {
 });
 
 describe("Strategy factories", () => {
-  it("strategies are tagged config objects (no runtime work at construction)", () => {
-    expect(Secret("whsec_x").kind).toBe("secret");
-    expect(PublicKey("whpk_x").kind).toBe("public-key");
+  it("strategies are config objects (no runtime work at construction)", () => {
+    expect(typeof Secret("whsec_x").verify).toBe("function");
+    expect(typeof PublicKey("whpk_x").verify).toBe("function");
     expect(HmacV1().kind).toBe("hmac-v1");
     expect(Ed25519V1a().kind).toBe("ed25519-v1a");
     expect(ExponentialBackoff().kind).toBe("exponential");

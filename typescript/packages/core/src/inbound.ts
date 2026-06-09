@@ -1,19 +1,15 @@
 import { EventValidation, MalformedHeader, SignatureInvalid, TimestampTooOld } from "./errors.js";
 import type { StandardSchemaV1 } from "./standard-schema.js";
+import type { Verifier } from "./strategies/verify.js";
 import { ttlToSeconds } from "./ttl.js";
 import type {
   DedupAdapter,
   DedupResult,
-  Secret as RawSecret,
-  SecretOrKeyset,
   VerifyOptions,
   VerifyResult,
   WebhookEvent,
   WebhookHeaders,
 } from "./types.js";
-import { verify } from "./verify.js";
-
-import type { Verifier } from "./strategies/verify.js";
 
 export interface InboundSource<TData = unknown> {
   readonly verify: Verifier | ReadonlyArray<Verifier>;
@@ -61,20 +57,13 @@ export type InboundApi<S extends Record<string, InboundSource>> = {
   [K in keyof S]: InboundSourceApi<S[K]>;
 };
 
-function verifierToSecretOrKeyset(v: Verifier): SecretOrKeyset {
-  if (v.kind === "secret") return v.value satisfies RawSecret;
-  if (v.kind === "public-key") return v.value satisfies RawSecret;
-  return v.keyset;
-}
-
 async function attempt<TData>(
   v: Verifier,
   rawBody: ArrayBuffer | Uint8Array | string,
   headers: WebhookHeaders,
   options: VerifyOptions,
 ): Promise<VerifyResult<TData>> {
-  const secretOrKeyset = verifierToSecretOrKeyset(v);
-  return verify<TData>(rawBody, headers, secretOrKeyset, options);
+  return (await v.verify(rawBody, headers, options)) as VerifyResult<TData>;
 }
 
 async function verifySource<TData>(

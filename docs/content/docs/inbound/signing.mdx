@@ -95,6 +95,8 @@ if (matchedVerifierIndex > 0) {
 
 Mixed-scheme arrays are supported — e.g. `[Secret(LEGACY_HMAC), Keyset({ jwksUri: NEW_JWKS })]` for an HMAC → Ed25519 migration window. The same `matchedVerifierIndex` signal works for both same-scheme rotation and cross-scheme migration. See [Key rotation](/docs/inbound/key-rotation).
 
+`Verifier` is an open contract, so the array can also include your own [custom verifiers](/docs/inbound/verify#custom-verifiers) — they participate in the same ordering and `matchedVerifierIndex`.
+
 ## Constant-time comparison
 
 The signature check uses Web Crypto's constant-time comparison (or an equivalent constant-time XOR-and-OR when the platform doesn't ship it). Naive `===` leaks information about which byte differs — an attacker observing response timing can mount a byte-by-byte chosen-plaintext attack on the signature.

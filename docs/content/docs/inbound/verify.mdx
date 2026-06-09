@@ -104,7 +104,7 @@ Each carries a stable `code` string for log filters and cross-port discriminatio
 Postel({
   inbound: {
     <source-name>: {
-      verify: Verifier | ReadonlyArray<Verifier>,  // required
+      verify: Verifier | ReadonlyArray<Verifier>,  // required — Secret/PublicKey/Keyset/Noop, or your own
       schema?: StandardSchemaV1,                     // zod / valibot / … — validates & types event.data
       dedup?: DedupAdapter,                          // see /docs/inbound/deduplication
       dedupTtl?: number | string,                    // "24h", "1d", or seconds
@@ -119,6 +119,57 @@ Postel({
 ```
 
 Each source is independently typed. `postel.inbound.<source>.dedup` only appears on the instance type if `dedup` is configured — call it on a source without a configured adapter and TypeScript refuses to compile.
+
+## Custom verifiers
+
+`Verifier` is an open contract, not a fixed set — `Secret`, `PublicKey`, and `Keyset` are just the built-ins. Anything implementing the contract works in a `verify` slot, so you can plug a vendor whose scheme isn't Standard Webhooks, a shared-token check, or a call out to a verification service:
+
+```ts title="lib/postel.ts"
+import { Postel, SignatureInvalid, type Verifier } from "@postel/core";
+import { config } from "./config.js";
+
+function PartnerToken(expected: string): Verifier {
+  return {
+    async verify(rawBody, headers) {
+      if (headers["x-partner-token"] !== expected) {
+        throw new SignatureInvalid("partner token mismatch");
+      }
+      const text = typeof rawBody === "string" ? rawBody : new TextDecoder().decode(rawBody);
+      return { event: JSON.parse(text), matchedSecretIndex: 0 };
+    },
+  };
+}
+
+export const postel = Postel({
+  inbound: {
+    partner: { verify: PartnerToken(config.partnerToken) },
+  },
+});
+```
+
+A verifier returns a `VerifyResult` (`{ event, matchedSecretIndex }`) on success and throws on failure. Throw a `PostelError` subclass — `SignatureInvalid`, `MalformedHeader`, … — so the [framework gate](/docs/web-adapters) maps it to the right HTTP status; any other error bubbles as a 5xx. Custom verifiers compose in arrays alongside the built-ins exactly like `Secret`/`Keyset` do — tried in order, first match wins, and `matchedVerifierIndex` reports which one matched:
+
+```ts
+verify: [Secret(config.legacySecret), PartnerToken(config.partnerToken)]
+```
+
+## Skipping verification with `Noop()`
+
+If your receiver sits behind a trusted boundary — a private network, or a gateway that already authenticated the caller — and you accept the trade-off, `Noop()` skips the signature check, the timestamp window, and the signing-header requirement entirely:
+
+```ts title="lib/postel.ts"
+import { Postel, Noop } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    internal: { verify: Noop() },
+  },
+});
+```
+
+`Noop()` still parses the Standard Webhooks envelope, so `event.type`, `event.data`, and a source `schema` behave exactly as they do for a verified source — a body that isn't a JSON object with a string `type` is still rejected. What it does *not* do is authenticate the sender.
+
+> **Security.** `Noop()` accepts unauthenticated requests: anyone who can reach the endpoint can deliver an event. Reach for it only when something in front of the receiver already establishes trust.
 
 ## What's next
 

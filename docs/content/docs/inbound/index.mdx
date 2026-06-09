@@ -31,6 +31,8 @@ First time? Start with **Verify a signed request**. Before you ship to productio
 | Ed25519 (`v1a`) signature verification (Postel extension) | Ships | `PublicKey(...)` strategy |
 | JWKS consumer with caching and auto-refresh | Ships | `Keyset({ jwksUri })` strategy |
 | Multi-secret rotation windows and cross-scheme migration | Ships | Pass `[Verifier, Verifier, …]` |
+| Custom verification schemes — plug your own | Ships | Implement the `Verifier` contract |
+| Skip verification at a trusted boundary | Ships | `Noop()` strategy |
 | Constant-time signature comparison | Ships | (always on) |
 | Structured `PostelError` subclasses for every failure mode | Ships | `SignatureInvalid`, `TimestampTooOld`, `MalformedHeader`, `UnknownKeyId`, `RawBytesMismatchDetected` |
 | Idempotency dedup with Postgres / SQLite / MySQL / in-memory adapters | Ships | `@postel/pg`, `@postel/sqlite`, `@postel/mysql`, `InMemoryDedup` |

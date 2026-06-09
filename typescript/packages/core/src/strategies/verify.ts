@@ -1,19 +1,40 @@
+import { bodyToText, parseEvent } from "../internal/event.js";
 import { createKeyset } from "../keyset.js";
-import type { Keyset as EdgeKeyset, KeysetOptions } from "../types.js";
+import type { KeysetOptions, VerifyOptions, VerifyResult, WebhookHeaders } from "../types.js";
+import { verify } from "../verify.js";
 
-export type Verifier =
-  | { readonly kind: "secret"; readonly value: string }
-  | { readonly kind: "public-key"; readonly value: string }
-  | { readonly kind: "keyset"; readonly keyset: EdgeKeyset };
+export interface Verifier {
+  verify(
+    rawBody: ArrayBuffer | Uint8Array | string,
+    headers: WebhookHeaders,
+    options?: VerifyOptions,
+  ): Promise<VerifyResult>;
+}
 
 export function Secret(value: string): Verifier {
-  return { kind: "secret", value };
+  return {
+    verify: (rawBody, headers, options) => verify(rawBody, headers, value, options),
+  };
 }
 
 export function PublicKey(value: string): Verifier {
-  return { kind: "public-key", value };
+  return {
+    verify: (rawBody, headers, options) => verify(rawBody, headers, value, options),
+  };
 }
 
 export function Keyset(opts: KeysetOptions): Verifier {
-  return { kind: "keyset", keyset: createKeyset(opts) };
+  const keyset = createKeyset(opts);
+  return {
+    verify: (rawBody, headers, options) => verify(rawBody, headers, keyset, options),
+  };
+}
+
+export function Noop(): Verifier {
+  return {
+    verify: async (rawBody) => ({
+      event: parseEvent(bodyToText(rawBody)),
+      matchedSecretIndex: 0,
+    }),
+  };
 }
