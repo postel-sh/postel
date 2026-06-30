@@ -32,8 +32,10 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 |---|---|---|
 | `@postel/nextjs` | Next.js Route Handler ergonomics | Planned |
 | `@postel/bun` | Bun.serve adapter | Planned |
+| `@postel/effect` | Effect-TS layer over the core API | Planned |
+| `@postel/cli` | `postel` CLI (migrate, sign, verify, replay, simulate) | Planned |
 
-Each "stub" package exports only `__postelPackage` today. Don't depend on them in production yet — the framework-agnostic [factory recipe](/docs/inbound/verify) works directly against each runtime's native `Request`.
+Each "stub" package exports only `__postelPackage` today, is marked `private`, and is **not part of the published 1.0 set** — a guard test fails CI if a name-only package is ever made publishable. Don't depend on them in production yet — the framework-agnostic [factory recipe](/docs/inbound/verify) works directly against each runtime's native `Request`.
 
 ## Storage adapters
 
