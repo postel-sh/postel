@@ -275,13 +275,15 @@ describe("Outbound defaults are overridable per endpoint", () => {
     expect(_retryOverride.kind).toBe("exponential");
   });
 
-  it("Per-endpoint TLS opt-out: outbound.endpoints.create accepts http.tls override (type-level)", () => {
+  it("Per-endpoint request-timeout override: outbound.endpoints.create accepts http.requestTimeout override (type-level)", () => {
     const postel = Postel({
-      outbound: { storage: InMemoryStorage(), http: { tls: { verify: true } } },
+      outbound: { storage: InMemoryStorage(), http: { requestTimeout: "30s" } },
     });
+    // Wired http sub-fields are overridable per endpoint; the unwired tls/dns
+    // knobs fail fast instead — see config-audit.test.ts.
     expect(typeof postel.outbound.endpoints.create).toBe("function");
-    const opts = { url: "https://customer.example.test/hook", http: { tls: { verify: false } } };
-    expect(opts.http.tls.verify).toBe(false);
+    const opts = { url: "https://customer.example.test/hook", http: { requestTimeout: "5s" } };
+    expect(opts.http.requestTimeout).toBe("5s");
   });
 });
 

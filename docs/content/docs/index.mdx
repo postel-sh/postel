@@ -37,7 +37,7 @@ Both halves are implemented and exercised end-to-end by the [`@postel/compliance
 What's still ahead is tracked honestly, not hidden:
 
 - **No release is cut yet.** Every `@postel/*` package sits at `0.0.0` with no git tag, so nothing is on npm. Clone the repo to use it today; pin to a minor once releases ship.
-- **Some config slots aren't wired.** External job-queue workers (BullMQ, PgBoss), KMS-backed keys, and OpenTelemetry are accepted in config but not implemented — [Outbound](/docs/outbound) marks each one.
+- **Unwired config slots fail fast instead of lying.** External job-queue workers (BullMQ, PgBoss), KMS-backed keys (`AwsKms` / `GcpKms` / `Vault`), retention, ephemeral keys, and the `http.tls` / `http.dns` knobs aren't wired yet — configuring any of them throws `NotImplementedError` rather than silently no-opping. `observability.logger` *is* wired and receives delivery / circuit events; full OpenTelemetry + Prometheus is deferred. [Outbound](/docs/outbound) marks each one.
 - **Other languages are on the way.** Go, Python, and Rust are on the [roadmap](/docs/get-started/polyglot); TypeScript ships first.
 
 This site is the public surface of that work. If a page describes behavior the source doesn't have, [open an issue](https://github.com/postel-sh/postel/issues).

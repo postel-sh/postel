@@ -37,8 +37,9 @@ If you're verifying webhooks that other services send to you — that's the [inb
 | **Storage** | ✅ | `InMemoryStorage()` for single-process/tests, plus database-backed adapters — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql` and the Drizzle / Kysely / Prisma / TypeORM / MikroORM ORM adapters — or implement the `Storage` interface against your own database. |
 | **Multi-tenancy** | ✅ scoping · ⏳ limits | Tenant-scoped fanout and persistence ship; per-tenant rate-limit *enforcement* and fair-scheduling land later (the config persists today). |
 | **Worker strategies** | ✅ in-process · ⏳ queues | The in-process worker pool ships and is the default; `BullMQ` / `PgBoss` / `External` are config slots that throw `NotImplementedError` until their adapters ship. |
-| **KMS integration** | ⏳ later | `PlaintextKms` only today; AWS KMS / GCP KMS / Vault adapters land later. |
-| **Observability** | ⏳ later | OpenTelemetry instrumentation is deferred. |
+| **KMS integration** | ⏳ later | `PlaintextKms` only today; `AwsKms` / `GcpKms` / `Vault` are config slots that throw `NotImplementedError` until envelope encryption ships. |
+| **Observability** | ✅ logger · ⏳ otel/metrics | `observability.logger` receives the runtime's `attempt` / `circuit-open` / `circuit-close` / `dead-letter` events as they happen; OpenTelemetry spans and Prometheus metrics are deferred. |
+| **Unwired config slots fail fast** | ⏳ later | `retention`, `ephemeralKeys`, and the `http.tls` / `http.dns` knobs are typed for forward-compatibility but not yet wired — configuring any of them throws `NotImplementedError` rather than silently doing nothing. |
 
 ## The mental model
 
@@ -79,6 +80,7 @@ The outbound runtime is implemented and exercised end-to-end by the `@postel/com
 
 Still ahead, in a later release:
 - The external job-queue worker adapters (BullMQ, PgBoss) — the config slots exist but throw `NotImplementedError` today; the in-process worker pool is the supported runtime.
+- KMS-backed encryption at rest (`AwsKms` / `GcpKms` / `Vault`), automatic retention pruning, ephemeral auto-rotating keys, and the `http.tls` / `http.dns` knobs. Their config slots are typed but unwired, so configuring them throws `NotImplementedError` rather than silently no-opping. `observability.logger` is wired today and receives delivery / circuit events; full OpenTelemetry + Prometheus instrumentation is deferred.
 
 ## Where to read next
 
