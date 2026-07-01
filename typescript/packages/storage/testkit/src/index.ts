@@ -204,7 +204,9 @@ export function runStorageTests(factory: StorageTestFactory): void {
         expect(listed.map((m) => m.id)).toContain("msg_intro_1");
         const filtered = await storage.listMessages({ tenantId: "t_intro", types: ["nope"] });
         expect(filtered.map((m) => m.id)).not.toContain("msg_intro_1");
-      });
+        // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
+        // this multi-round-trip case well past vitest's 5s default under CI load.
+      }, 30_000);
 
       it("Worker reservation can't be expressed as CRUD: reserveBatch combines lock + lease + return atomically", async () => {
         const { storage, clock } = await factory.create();
