@@ -2,6 +2,9 @@ export { Postel } from "./postel.js";
 export type {
   HealthStatus,
   LifecycleApi,
+  LogEvent,
+  Logger,
+  LogLevel,
   ObservabilityConfig,
   PostelConfig,
   PostelInstance,

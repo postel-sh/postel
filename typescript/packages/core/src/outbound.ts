@@ -1,5 +1,6 @@
 import { type Clock, systemClock } from "./clock.js";
 import { NotImplementedError } from "./errors.js";
+import { assertHttpWired } from "./internal/config-guards.js";
 import { ed25519Jwk, ed25519Kid } from "./internal/jwk.js";
 import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
 import { buildEndpointApi } from "./sender/endpoint/crud.js";
@@ -208,6 +209,21 @@ export function buildOutboundRuntime<TTx = unknown>(
     // fail fast rather than silently running them in-process.
     notImplemented(`Worker strategy '${config.workers.kind}' (only 'in-process' is supported)`);
   }
+  // Typed-but-unshipped slots fail fast at construction rather than accepting a
+  // value the runtime silently ignores. See `Unimplemented config slots fail
+  // fast at construction` in openspec/specs/api-surface-typescript/spec.md.
+  if (config.kms && config.kms.kind !== "plaintext") {
+    notImplemented(
+      `KMS strategy '${config.kms.kind}' (only PlaintextKms is supported; envelope encryption has not shipped)`,
+    );
+  }
+  if (config.retention) {
+    notImplemented("retention (automatic pruning has not shipped)");
+  }
+  if (config.ephemeralKeys) {
+    notImplemented("ephemeralKeys (timer-driven key rotation has not shipped)");
+  }
+  assertHttpWired(config.http, "outbound");
   const concurrency = config.workers?.kind === "in-process" ? config.workers.concurrency : 4;
   const fetchImpl = config.http?.fetch ?? globalThis.fetch;
   const httpDispatcher = buildHttpDispatcher({
@@ -330,7 +346,6 @@ export function buildOutboundRuntime<TTx = unknown>(
       return reconcileImpl({ storage: config.storage, clock }, opts.endpointId, opts.since);
     },
   };
-  void notImplemented;
   return { api, pool, storage: config.storage, clock, emitter };
 }
 

@@ -1,5 +1,6 @@
 import { EndpointNotFound } from "../../errors.js";
 import { bytesToBase64 } from "../../internal/base64.js";
+import { assertHttpWired } from "../../internal/config-guards.js";
 import type {
   Endpoint,
   EndpointCreateOptions,
@@ -65,6 +66,7 @@ export function buildEndpointApi(
   };
   return {
     async create(opts, runtime) {
+      assertHttpWired(opts.http, "endpoint");
       const allowHttp = opts.allowHttp === true;
       const ssrfPolicy = resolveSsrfPolicy(opts.http?.ssrf);
       await validateEndpointUrl({ url: opts.url, allowHttp, ssrfPolicy });
@@ -122,6 +124,7 @@ export function buildEndpointApi(
       return toPublicEndpoint(rec);
     },
     async update(id, opts, runtime) {
+      assertHttpWired(opts.http, "endpoint");
       // URL-affecting fields must re-run create-time validation against the
       // effective (post-patch) values, otherwise a safe HTTPS endpoint could be
       // downgraded to a cleartext or SSRF-eligible URL.
