@@ -29,8 +29,11 @@ function isPlaceholder(pkgDir: string): boolean {
   const exportLines = readFileSync(entry, "utf8")
     .split("\n")
     .filter((l) => /^\s*export\b/.test(l));
+  const [onlyExport] = exportLines;
   return (
-    exportLines.length === 1 && /^\s*export\s+const\s+__postelPackage\s*=/.test(exportLines[0])
+    exportLines.length === 1 &&
+    onlyExport !== undefined &&
+    /^\s*export\s+const\s+__postelPackage\s*=/.test(onlyExport)
   );
 }
 
