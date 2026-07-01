@@ -20,6 +20,10 @@ export type EndpointState = "active" | "disabled" | "circuit-open";
 export type EndpointSecretStatus = "primary" | "verifying" | "expiring";
 export type SecretAlgorithm = "v1" | "v1a";
 
+// Message-level outbox lifecycle. Per-endpoint delivery outcomes live on
+// attempts (see AttemptStatus); this is the coarse state of the outbox row.
+export type MessageStatus = "pending" | "dispatched" | "expired";
+
 export interface StorageCapabilities {
   readonly notify: boolean;
   readonly subscribe: boolean;
@@ -62,6 +66,26 @@ export interface ReservedMessage {
   readonly createdAt: Date;
   readonly expiresAt: Date | null;
   readonly leaseExpiresAt: Date;
+  readonly attemptNumber: number;
+  readonly scheduledFor: Date | null;
+  readonly replayOf: MessageId | null;
+}
+
+// Read-shaped message for the introspection surface. Unlike ReservedMessage
+// (the dispatch shape) it carries the outbox `status` and `idempotencyKey`,
+// so callers can answer "what happened to message X?".
+export interface StoredMessage {
+  readonly id: MessageId;
+  readonly tenantId: TenantId | null;
+  readonly type: string;
+  readonly data: unknown;
+  readonly channels: ReadonlyArray<string> | null;
+  readonly idempotencyKey: string | null;
+  readonly version: string | null;
+  readonly ttlSeconds: number | null;
+  readonly createdAt: Date;
+  readonly expiresAt: Date | null;
+  readonly status: MessageStatus;
   readonly attemptNumber: number;
   readonly scheduledFor: Date | null;
   readonly replayOf: MessageId | null;
@@ -156,6 +180,17 @@ export interface ReconcileFilter {
   readonly tenantId?: TenantId;
 }
 
+// Filter for the message-introspection list read. Results are newest-first and
+// bounded by `limit` (adapters apply DEFAULT_MESSAGE_LIST_LIMIT when omitted).
+export interface MessageListFilter {
+  readonly tenantId?: TenantId;
+  readonly types?: ReadonlyArray<string>;
+  readonly status?: ReadonlyArray<MessageStatus>;
+  readonly since?: Date;
+  readonly until?: Date;
+  readonly limit?: number;
+}
+
 export interface EndpointStateTransition {
   readonly id: string;
   readonly endpointId: EndpointId;
@@ -213,6 +248,12 @@ export interface Storage<TTx = unknown> {
   rescheduleMessage(messageId: MessageId, opts: RescheduleOpts<TTx>): Promise<boolean>;
 
   loadEndpointsForMessage(messageId: MessageId): Promise<ReadonlyArray<EndpointWithSecrets>>;
+
+  // Introspection reads (back the `message-introspection` capability). A plain
+  // read (no tx) MUST NOT surface rows staged by an uncommitted host
+  // transaction, matching worker-reservation visibility.
+  getMessage(id: MessageId, opts?: HostTxOption<TTx>): Promise<StoredMessage | undefined>;
+  listMessages(filter: MessageListFilter): Promise<ReadonlyArray<StoredMessage>>;
 
   rangeQuery(filter: RangeQueryFilter): AsyncIterable<ReservedMessage>;
   reconcile(filter: ReconcileFilter): AsyncIterable<MessageId>;

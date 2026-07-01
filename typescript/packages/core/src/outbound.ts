@@ -11,7 +11,13 @@ import { reconcileImpl, replayImpl } from "./sender/replay/replay.js";
 import { buildRetryDispatcher } from "./sender/retry/orchestrator.js";
 import { sendImpl } from "./sender/send.js";
 import { WorkerPool } from "./sender/worker/pool.js";
-import type { Storage } from "./storage/types.js";
+import type {
+  AttemptStatus,
+  MessageListFilter,
+  MessageStatus,
+  Storage,
+  StoredMessage,
+} from "./storage/types.js";
 import type { KmsStrategy } from "./strategies/kms.js";
 import type { RetryStrategy } from "./strategies/retry.js";
 import type { SigningStrategy } from "./strategies/signing.js";
@@ -162,6 +168,55 @@ export interface ReconcileOptions<TTx = unknown> {
   readonly tx?: TTx;
 }
 
+// A stored outbound message as returned by the introspection reads: metadata +
+// the original event payload. `status` is the message-level outbox lifecycle
+// (`MessageStatus`); per-endpoint delivery outcomes are on DeliveryAttempt.status.
+export interface Message<TData = unknown> {
+  readonly id: MessageId;
+  readonly type: string;
+  readonly data: TData;
+  readonly channels: ReadonlyArray<string> | null;
+  readonly idempotencyKey: string | null;
+  readonly version: string | null;
+  readonly tenantId: string | null;
+  readonly ttlSeconds: number | null;
+  readonly createdAt: Date;
+  readonly expiresAt: Date | null;
+  readonly status: MessageStatus;
+  readonly attemptNumber: number;
+  readonly scheduledFor: Date | null;
+  readonly replayOf: MessageId | null;
+}
+
+// A single delivery attempt against one endpoint, with its status, response,
+// latency, and replay tag.
+export interface DeliveryAttempt {
+  readonly id: string;
+  readonly messageId: MessageId;
+  readonly endpointId: string;
+  readonly tenantId: string | null;
+  readonly attemptNumber: number;
+  readonly status: AttemptStatus;
+  readonly scheduledFor: Date | null;
+  readonly startedAt: Date | null;
+  readonly completedAt: Date | null;
+  readonly responseCode: number | null;
+  readonly responseHeaders: Readonly<Record<string, string>> | null;
+  readonly responseBody: string | null;
+  readonly latencyMs: number | null;
+  readonly error: string | null;
+  readonly replayOf: MessageId | null;
+}
+
+export interface MessageListOptions {
+  readonly tenantId?: string;
+  readonly types?: ReadonlyArray<string>;
+  readonly status?: MessageStatus | ReadonlyArray<MessageStatus>;
+  readonly since?: Date | string;
+  readonly until?: Date | string;
+  readonly limit?: number;
+}
+
 export interface OutboundApi<TTx = unknown> {
   send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<MessageId>;
   endpoints: {
@@ -184,6 +239,11 @@ export interface OutboundApi<TTx = unknown> {
   };
   replay(opts: ReplayOptions<TTx>): Promise<ReplayResult>;
   reconcile(opts: ReconcileOptions<TTx>): Promise<ReadonlyArray<MessageId>>;
+  messages: {
+    get<TData = unknown>(id: string, opts?: { tx?: TTx }): Promise<Message<TData> | undefined>;
+    attempts(id: string): Promise<ReadonlyArray<DeliveryAttempt>>;
+    list(opts?: MessageListOptions): Promise<ReadonlyArray<Message>>;
+  };
 }
 
 export interface OutboundRuntime<TTx = unknown> {
@@ -196,6 +256,14 @@ export interface OutboundRuntime<TTx = unknown> {
 
 function notImplemented(symbol: string): never {
   throw new NotImplementedError(symbol);
+}
+
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function toMessage<TData = unknown>(m: StoredMessage): Message<TData> {
+  return { ...m, data: m.data as TData };
 }
 
 export function buildOutboundRuntime<TTx = unknown>(
@@ -344,6 +412,33 @@ export function buildOutboundRuntime<TTx = unknown>(
     },
     async reconcile(opts) {
       return reconcileImpl({ storage: config.storage, clock }, opts.endpointId, opts.since);
+    },
+    messages: {
+      async get<TData = unknown>(id: string, opts?: { tx?: TTx }) {
+        const stored = await config.storage.getMessage(
+          id,
+          opts?.tx !== undefined ? { tx: opts.tx } : undefined,
+        );
+        return stored ? toMessage<TData>(stored) : undefined;
+      },
+      async attempts(id: string) {
+        return config.storage.attempts.latestForMessage(id);
+      },
+      async list(opts?: MessageListOptions) {
+        const filter: {
+          -readonly [K in keyof MessageListFilter]?: MessageListFilter[K];
+        } = {};
+        if (opts?.tenantId !== undefined) filter.tenantId = opts.tenantId;
+        if (opts?.types !== undefined) filter.types = opts.types;
+        if (opts?.status !== undefined) {
+          filter.status = Array.isArray(opts.status) ? opts.status : [opts.status];
+        }
+        if (opts?.since !== undefined) filter.since = toDate(opts.since);
+        if (opts?.until !== undefined) filter.until = toDate(opts.until);
+        if (opts?.limit !== undefined) filter.limit = opts.limit;
+        const rows = await config.storage.listMessages(filter);
+        return rows.map((m) => toMessage(m));
+      },
     },
   };
   return { api, pool, storage: config.storage, clock, emitter };

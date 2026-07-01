@@ -12,6 +12,7 @@ import type {
   HostTxOption,
   InsertOrReuseResult,
   MessageId,
+  MessageListFilter,
   NewAttempt,
   NewMessage,
   RangeQueryFilter,
@@ -22,6 +23,7 @@ import type {
   SecretAlgorithm,
   Storage,
   StorageCapabilities,
+  StoredMessage,
   TenantId,
   TenantRecord,
   Unsubscribe,
@@ -74,6 +76,10 @@ const CAPABILITIES: StorageCapabilities = {
 // in-memory adapter implements that current shape, so it reports the same
 // version a fully-migrated SQL adapter would.
 const SCHEMA_VERSION = 4;
+
+// Mirrors DEFAULT_MESSAGE_LIST_LIMIT in @postel/storage-helpers; kept local
+// because @postel/core takes no dependency on the helpers package.
+const DEFAULT_MESSAGE_LIST_LIMIT = 100;
 
 function newId(prefix: string): string {
   const bytes = new Uint8Array(12);
@@ -133,6 +139,25 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
     queueMicrotask(() => {
       for (const handler of ls) handler(payload);
     });
+  }
+
+  function asStored(row: MessageRow): StoredMessage {
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      type: row.type,
+      data: row.data,
+      channels: row.channels,
+      idempotencyKey: row.idempotencyKey,
+      version: row.version,
+      ttlSeconds: row.ttlSeconds,
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      status: row.status,
+      attemptNumber: row.attemptNumber,
+      scheduledFor: row.scheduledFor,
+      replayOf: row.replayOf,
+    };
   }
 
   function asReserved(row: MessageRow, leaseExpiresAt: Date): ReservedMessage {
@@ -379,6 +404,34 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
         out.push({ endpoint, secrets: eps });
       }
       return out;
+    },
+
+    async getMessage(id) {
+      const row = messages.get(id);
+      // A row staged by an open host transaction is invisible to plain reads,
+      // matching reserveBatch and SQL cross-connection visibility.
+      if (!row || row.uncommitted) return undefined;
+      return asStored(row);
+    },
+
+    async listMessages(filter: MessageListFilter) {
+      const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
+      const out: StoredMessage[] = [];
+      for (const row of messages.values()) {
+        if (row.uncommitted) continue;
+        if (filter.tenantId !== undefined && row.tenantId !== filter.tenantId) continue;
+        if (filter.types !== undefined && !filter.types.includes(row.type)) continue;
+        if (filter.status !== undefined && !filter.status.includes(row.status)) continue;
+        if (filter.since !== undefined && row.createdAt < filter.since) continue;
+        if (filter.until !== undefined && row.createdAt > filter.until) continue;
+        out.push(asStored(row));
+      }
+      out.sort((a, b) => {
+        const byTime = b.createdAt.getTime() - a.createdAt.getTime();
+        if (byTime !== 0) return byTime;
+        return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+      });
+      return out.slice(0, limit);
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {

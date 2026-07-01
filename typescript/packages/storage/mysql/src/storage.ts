@@ -10,6 +10,7 @@ import type {
   HostTxOption,
   InsertOrReuseResult,
   MessageId,
+  MessageListFilter,
   NewAttempt,
   NewMessage,
   RangeQueryFilter,
@@ -22,6 +23,7 @@ import type {
   TenantRecord,
 } from "@postel/core";
 import {
+  DEFAULT_MESSAGE_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
   MYSQL_MIGRATIONS,
@@ -32,6 +34,7 @@ import {
   decodeJson,
   decodeReservedMessage,
   decodeSecret,
+  decodeStoredMessage,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
@@ -387,6 +390,47 @@ export function MysqlStorage(options: MysqlStorageOptions = {}): Storage<MysqlQu
         out.push({ endpoint, secrets: secretRows.map((s) => decodeSecret(s, codec)) });
       }
       return out;
+    },
+
+    async getMessage(id, opts) {
+      await ready();
+      const res = await rows(exec(opts), "SELECT * FROM messages WHERE id = ?", [id]);
+      const row = res[0];
+      return row ? decodeStoredMessage(row, codec) : undefined;
+    },
+
+    async listMessages(filter: MessageListFilter) {
+      await ready();
+      const clauses: string[] = [];
+      const values: unknown[] = [];
+      if (filter.tenantId !== undefined) {
+        values.push(filter.tenantId);
+        clauses.push("tenant_id = ?");
+      }
+      if (filter.since !== undefined) {
+        values.push(filter.since.getTime());
+        clauses.push("created_at >= ?");
+      }
+      if (filter.until !== undefined) {
+        values.push(filter.until.getTime());
+        clauses.push("created_at <= ?");
+      }
+      if (filter.types !== undefined && filter.types.length > 0) {
+        values.push(filter.types);
+        clauses.push("type IN (?)");
+      }
+      if (filter.status !== undefined && filter.status.length > 0) {
+        values.push(filter.status);
+        clauses.push("status IN (?)");
+      }
+      const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+      values.push(filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT);
+      const res = await rows(
+        pool(),
+        `SELECT * FROM messages ${where} ORDER BY created_at DESC, id DESC LIMIT ?`,
+        values,
+      );
+      return res.map((row) => decodeStoredMessage(row, codec));
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {

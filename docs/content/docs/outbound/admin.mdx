@@ -77,7 +77,10 @@ When `authorize` returns a `tenantId`, every route is scoped to it: lists and cr
 | `POST /replay` · `POST /reconcile` | replay · reconcile |
 | `POST /tenants/:id/rate-limit` · `DELETE /tenants/:id` | tenant rate limit · delete |
 | `POST /keys/symmetric` · `POST /keys/asymmetric` | generate signing keys |
+| `GET /messages` | list messages (`?type=`, `?status=`, `?since=`, `?until=`, `?limit=`) |
+| `GET /messages/:id` | fetch one message, including its payload |
+| `GET /messages/:id/attempts` | the message's delivery-attempt history |
 
-Failures map to status by `PostelError.code` — `ENDPOINT_NOT_FOUND` → 404, `ENDPOINT_VALIDATION` → 422, `ENDPOINT_DISABLED` → 409, `MIGRATION_REQUIRED` → 503 — with a `{ errorCode, error }` JSON body. Code-only endpoint options (`filter`, `transform`, callable `headers`) aren't configurable over HTTP; set them in your `Postel` config.
+Failures map to status by `PostelError.code` — `ENDPOINT_NOT_FOUND` → 404, `ENDPOINT_VALIDATION` → 422, `ENDPOINT_DISABLED` → 409, `MIGRATION_REQUIRED` → 503 — with a `{ errorCode, error }` JSON body. A read for a message id that doesn't exist (or is outside the caller's tenant) responds `404` with `errorCode: "MESSAGE_NOT_FOUND"`. Code-only endpoint options (`filter`, `transform`, callable `headers`) aren't configurable over HTTP; set them in your `Postel` config.
 
-> Listing events/attempts and viewing raw payloads aren't part of the control-plane router yet — they land when the outbound surface gains a message/attempt query API.
+The read routes (`GET /messages…`) are the HTTP projection of the [message introspection API](/docs/outbound/messages) and are tenant-scoped exactly like the control-plane routes: a tenant-bound caller sees only its own tenant's messages and attempts.

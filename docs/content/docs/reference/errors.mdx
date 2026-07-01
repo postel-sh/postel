@@ -134,7 +134,7 @@ if (err instanceof EndpointValidation) {
 
 **Code:** `NOT_IMPLEMENTED`
 **Thrown by:** Configuring a worker strategy that has no runtime yet.
-**When:** You set `outbound.workers` to a non-in-process strategy — `BullMQ(...)`, `PgBoss(...)`, or `External(...)`. The outbound runtime itself is available; `send`, `replay`, `endpoints.*`, `keys.*`, and `tenants.*` all work against the in-process `InMemoryStorage` adapter. Only the external job-queue strategies are config slots without an adapter today.
+**When:** You set `outbound.workers` to a non-in-process strategy — `BullMQ(...)`, `PgBoss(...)`, or `External(...)`. The outbound runtime itself is available; `send`, `replay`, `endpoints.*`, `keys.*`, `tenants.*`, and `messages.*` all work against the in-process `InMemoryStorage` adapter. Only the external job-queue strategies are config slots without an adapter today.
 
 **Recovery:** Use the in-process worker pool (`InProcess(...)`, the default) until the BullMQ / PgBoss adapters ship. Failing fast here is deliberate — it stops a queue-backed config from silently running in-process.
 

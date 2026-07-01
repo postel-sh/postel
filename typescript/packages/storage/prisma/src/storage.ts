@@ -9,6 +9,7 @@ import type {
   HostTxOption,
   InsertOrReuseResult,
   MessageId,
+  MessageListFilter,
   NewAttempt,
   NewMessage,
   RangeQueryFilter,
@@ -22,6 +23,7 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  DEFAULT_MESSAGE_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
   MYSQL_MIGRATIONS,
@@ -36,6 +38,7 @@ import {
   decodeEndpoint,
   decodeReservedMessage,
   decodeSecret,
+  decodeStoredMessage,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
@@ -369,6 +372,37 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
         out.push({ endpoint, secrets: secretRows.map((s) => decodeSecret(s, codec)) });
       }
       return out;
+    },
+
+    async getMessage(id, opts) {
+      await ready();
+      const found = await exec(opts).$queryRawUnsafe<Record<string, unknown>>(
+        `select * from messages where id = ${isPg ? "$1" : "?"}`,
+        id,
+      );
+      const row = found[0];
+      return row ? decodeStoredMessage(row, codec) : undefined;
+    },
+
+    async listMessages(filter: MessageListFilter) {
+      await ready();
+      const p = new Params();
+      const conds = ["1 = 1"];
+      if (filter.tenantId !== undefined) conds.push(`tenant_id = ${p.add(filter.tenantId)}`);
+      if (filter.since !== undefined) conds.push(`created_at >= ${p.add(tsParam(filter.since))}`);
+      if (filter.until !== undefined) conds.push(`created_at <= ${p.add(tsParam(filter.until))}`);
+      if (filter.types !== undefined && filter.types.length > 0) {
+        conds.push(`type in (${filter.types.map((t) => p.add(t)).join(", ")})`);
+      }
+      if (filter.status !== undefined && filter.status.length > 0) {
+        conds.push(`status in (${filter.status.map((s) => p.add(s)).join(", ")})`);
+      }
+      const limitPlaceholder = p.add(filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT);
+      const rows = await prisma.$queryRawUnsafe<Record<string, unknown>>(
+        `select * from messages where ${conds.join(" and ")} order by created_at desc, id desc limit ${limitPlaceholder}`,
+        ...p.values,
+      );
+      return rows.map((row) => decodeStoredMessage(row, codec));
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {

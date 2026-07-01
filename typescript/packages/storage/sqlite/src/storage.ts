@@ -10,6 +10,7 @@ import type {
   HostTxOption,
   InsertOrReuseResult,
   MessageId,
+  MessageListFilter,
   NewAttempt,
   NewMessage,
   RangeQueryFilter,
@@ -22,6 +23,7 @@ import type {
   TenantRecord,
 } from "@postel/core";
 import {
+  DEFAULT_MESSAGE_LIST_LIMIT,
   SQLITE_CAPABILITIES,
   SQLITE_CODEC,
   SQLITE_MIGRATIONS,
@@ -31,6 +33,7 @@ import {
   decodeEndpoint,
   decodeReservedMessage,
   decodeSecret,
+  decodeStoredMessage,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
@@ -302,6 +305,44 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
         out.push({ endpoint, secrets: secretRows.map((s) => decodeSecret(s, codec)) });
       }
       return out;
+    },
+
+    async getMessage(id) {
+      const row = db.prepare("SELECT * FROM messages WHERE id = ?").get(id) as
+        | Record<string, unknown>
+        | undefined;
+      return row ? decodeStoredMessage(row, codec) : undefined;
+    },
+
+    async listMessages(filter: MessageListFilter) {
+      const clauses: string[] = [];
+      const values: unknown[] = [];
+      if (filter.tenantId !== undefined) {
+        clauses.push("tenant_id = ?");
+        values.push(filter.tenantId);
+      }
+      if (filter.since !== undefined) {
+        clauses.push("created_at >= ?");
+        values.push(iso(filter.since));
+      }
+      if (filter.until !== undefined) {
+        clauses.push("created_at <= ?");
+        values.push(iso(filter.until));
+      }
+      if (filter.types !== undefined && filter.types.length > 0) {
+        clauses.push(`type IN (${filter.types.map(() => "?").join(", ")})`);
+        values.push(...filter.types);
+      }
+      if (filter.status !== undefined && filter.status.length > 0) {
+        clauses.push(`status IN (${filter.status.map(() => "?").join(", ")})`);
+        values.push(...filter.status);
+      }
+      const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+      values.push(filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT);
+      const rows = db
+        .prepare(`SELECT * FROM messages ${where} ORDER BY created_at DESC, id DESC LIMIT ?`)
+        .all(...values) as Record<string, unknown>[];
+      return rows.map((row) => decodeStoredMessage(row, codec));
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {

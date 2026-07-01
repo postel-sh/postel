@@ -34,6 +34,7 @@ If you're verifying webhooks that other services send to you — that's the [inb
 | **Signing** | ✅ | HMAC (`HmacV1()`) or Ed25519 (`Ed25519V1a()`). Asymmetric signing pairs with JWKS publication so receivers verify without a shared secret. |
 | **Key management** | ✅ | Symmetric (`generateSymmetric`) and asymmetric (`generateAsymmetric`) generation; `rotateSecret` preserves the endpoint's algorithm. Current public keys are retrievable via `keys.publicJwks()` and served through each adapter's [`outbound.bindJwks()`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side) mount. |
 | **Admin API** | ✅ | [`@postel/admin`](/docs/outbound/admin) — a default-deny HTTP control plane over the outbound API: endpoint CRUD, replay, reconcile, tenants, and key generation. |
+| **Message & attempt introspection** | ✅ | [`messages.get / attempts / list`](/docs/outbound/messages) — read a message and its payload, its delivery-attempt history (status, code, latency), and filter recent messages. Exposed over HTTP as `GET /messages…` in the admin API. |
 | **Storage** | ✅ | `InMemoryStorage()` for single-process/tests, plus database-backed adapters — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql` and the Drizzle / Kysely / Prisma / TypeORM / MikroORM ORM adapters — or implement the `Storage` interface against your own database. |
 | **Multi-tenancy** | ✅ scoping · ⏳ limits | Tenant-scoped fanout and persistence ship; per-tenant rate-limit *enforcement* and fair-scheduling land later (the config persists today). |
 | **Worker strategies** | ✅ in-process · ⏳ queues | The in-process worker pool ships and is the default; `BullMQ` / `PgBoss` / `External` are config slots that throw `NotImplementedError` until their adapters ship. |
@@ -84,4 +85,4 @@ Still ahead, in a later release:
 
 ## Where to read next
 
-The four pages above cover the runtime. For the design rationale behind the library-not-service shape, read [Why Postel](/docs/get-started/why).
+The pages above cover the runtime. For the design rationale behind the library-not-service shape, read [Why Postel](/docs/get-started/why).

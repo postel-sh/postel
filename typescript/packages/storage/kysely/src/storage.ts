@@ -9,6 +9,7 @@ import type {
   HostTxOption,
   InsertOrReuseResult,
   MessageId,
+  MessageListFilter,
   NewAttempt,
   NewMessage,
   RangeQueryFilter,
@@ -22,6 +23,7 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  DEFAULT_MESSAGE_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
   MYSQL_MIGRATIONS,
@@ -36,6 +38,7 @@ import {
   decodeEndpoint,
   decodeReservedMessage,
   decodeSecret,
+  decodeStoredMessage,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
@@ -317,6 +320,33 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
         out.push({ endpoint, secrets: secretRows.rows.map((s) => decodeSecret(s, codec)) });
       }
       return out;
+    },
+
+    async getMessage(id, opts) {
+      await ready();
+      const res = await sql<Record<string, unknown>>`select * from messages
+        where id = ${id}`.execute(exec(opts));
+      const row = res.rows[0];
+      return row ? decodeStoredMessage(row, codec) : undefined;
+    },
+
+    async listMessages(filter: MessageListFilter) {
+      await ready();
+      const conds = [sql`1 = 1`];
+      if (filter.tenantId !== undefined) conds.push(sql`tenant_id = ${filter.tenantId}`);
+      if (filter.since !== undefined) conds.push(sql`created_at >= ${tsParam(filter.since)}`);
+      if (filter.until !== undefined) conds.push(sql`created_at <= ${tsParam(filter.until)}`);
+      if (filter.types !== undefined && filter.types.length > 0) {
+        conds.push(sql`type in (${sql.join(filter.types.map((t) => sql`${t}`))})`);
+      }
+      if (filter.status !== undefined && filter.status.length > 0) {
+        conds.push(sql`status in (${sql.join(filter.status.map((s) => sql`${s}`))})`);
+      }
+      const where = sql.join(conds, sql` and `);
+      const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
+      const res = await sql<Record<string, unknown>>`select * from messages where ${where}
+        order by created_at desc, id desc limit ${limit}`.execute(db);
+      return res.rows.map((row) => decodeStoredMessage(row, codec));
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {
