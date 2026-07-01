@@ -40,6 +40,13 @@ describe("Postel factory returns the library instance", () => {
     postel.inbound;
   });
 
+  it("Outbound read surface is present: messages.{get,attempts,list}", () => {
+    const postel = Postel({ outbound: { storage: InMemoryStorage() } });
+    expect(typeof postel.outbound.messages.get).toBe("function");
+    expect(typeof postel.outbound.messages.attempts).toBe("function");
+    expect(typeof postel.outbound.messages.list).toBe("function");
+  });
+
   it("Type inference for the inbound surface", () => {
     const postel = Postel({
       inbound: { github: { verify: Secret(TEST_SECRET_A) } },

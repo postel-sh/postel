@@ -154,6 +154,8 @@ export function runStorageTests(factory: StorageTestFactory): void {
         expect(typeof storage.releaseLease).toBe("function");
         expect(typeof storage.expireStaleLeases).toBe("function");
         expect(typeof storage.loadEndpointsForMessage).toBe("function");
+        expect(typeof storage.getMessage).toBe("function");
+        expect(typeof storage.listMessages).toBe("function");
         expect(typeof storage.rangeQuery).toBe("function");
         expect(typeof storage.reconcile).toBe("function");
         expect(typeof storage.dedup).toBe("function");
@@ -161,6 +163,47 @@ export function runStorageTests(factory: StorageTestFactory): void {
         expect(typeof storage.endpoints.create).toBe("function");
         expect(typeof storage.secrets.insert).toBe("function");
         expect(typeof storage.tenants.upsert).toBe("function");
+      });
+
+      it("Introspection reads return a message and its attempts: getMessage / listMessages / attempts", async () => {
+        const { storage, clock } = await factory.create();
+        await storage.insertMessage(
+          buildMessage(clock, { id: "msg_intro_1", tenantId: "t_intro", type: "order.created" }),
+        );
+        await storage.recordAttempt({
+          id: "att_intro_1",
+          messageId: "msg_intro_1",
+          endpointId: "ep_1",
+          tenantId: "t_intro",
+          attemptNumber: 1,
+          status: "success",
+          scheduledFor: null,
+          startedAt: clock.now(),
+          completedAt: clock.now(),
+          responseCode: 200,
+          responseHeaders: null,
+          responseBody: null,
+          latencyMs: 12,
+          error: null,
+          replayOf: null,
+        });
+
+        const message = await storage.getMessage("msg_intro_1");
+        expect(message?.id).toBe("msg_intro_1");
+        expect(message?.status).toBe("pending");
+        expect(message?.data).toEqual({ id: "ord_1" });
+
+        expect(await storage.getMessage("msg_missing")).toBeUndefined();
+
+        const attempts = await storage.attempts.latestForMessage("msg_intro_1");
+        expect(attempts.map((a) => a.status)).toEqual(["success"]);
+        expect(attempts[0]?.responseCode).toBe(200);
+        expect(attempts[0]?.latencyMs).toBe(12);
+
+        const listed = await storage.listMessages({ tenantId: "t_intro" });
+        expect(listed.map((m) => m.id)).toContain("msg_intro_1");
+        const filtered = await storage.listMessages({ tenantId: "t_intro", types: ["nope"] });
+        expect(filtered.map((m) => m.id)).not.toContain("msg_intro_1");
       });
 
       it("Worker reservation can't be expressed as CRUD: reserveBatch combines lock + lease + return atomically", async () => {

@@ -1,0 +1,67 @@
+---
+title: Messages & attempts
+description: Read a message, its payload, and its delivery-attempt history — the "what happened to message X?" API.
+---
+
+Postel persists every message and every delivery attempt — status, response code, latency, error. The `messages` read surface hands that back to you, so you can answer *"what happened to message X?"* without querying the outbox tables by hand.
+
+`postel.outbound.messages` has three reads. All are read-only; none re-enqueue or mutate.
+
+## Read one message
+
+```ts
+const message = await postel.outbound.messages.get("msg_2k4n8...");
+// => undefined when no message matches the id (no throw)
+
+message?.id;            // "msg_2k4n8..."
+message?.type;          // "order.created"
+message?.data;          // the original event payload
+message?.status;        // "pending" | "dispatched" | "expired"  (outbox lifecycle)
+message?.tenantId;      // the owning tenant, or null
+message?.createdAt;     // Date
+message?.attemptNumber; // dispatch attempt counter
+```
+
+`get` returns the message metadata and its payload, or `undefined` when the id is unknown. The `status` here is the message-level outbox lifecycle; **per-endpoint delivery outcomes live on the attempts** below.
+
+```ts
+const message = await postel.outbound.messages.get<OrderCreated>(id);
+// message.data is typed as OrderCreated
+```
+
+## Read a message's delivery attempts
+
+```ts
+const attempts = await postel.outbound.messages.attempts("msg_2k4n8...");
+
+for (const a of attempts) {
+  a.attemptNumber; // 1, 2, 3, …  (ordered)
+  a.endpointId;    // which endpoint this attempt targeted
+  a.status;        // "success" | "failed" | "failed-permanent" | "dead-letter" | …
+  a.responseCode;  // HTTP status, or null
+  a.latencyMs;     // round-trip latency, or null
+  a.error;         // failure reason, or null
+  a.replayOf;      // set when this attempt came from a replay of another message
+}
+```
+
+Attempts are returned ordered by attempt number and cover every endpoint the message fanned out to. A message with no recorded attempts yields an empty list. Replay attempts carry a `replayOf` tag referencing the original message id, so replayed traffic is distinguishable in the audit trail.
+
+## List and filter messages
+
+```ts
+const recent = await postel.outbound.messages.list({
+  tenantId: "t_42",                // scope to one tenant
+  types:    ["order.created"],     // filter by event type(s)
+  status:   "dispatched",          // one status or an array
+  since:    "2026-06-01T00:00:00Z",
+  until:    "2026-07-01T00:00:00Z",
+  limit:    50,                    // default 100
+});
+```
+
+`list` returns messages newest-first, bounded by `limit`. Every filter is optional; omit them all to get the most recent messages across the store.
+
+## Over HTTP
+
+The same three reads are exposed by the [admin API](/docs/outbound/admin) as `GET /messages`, `GET /messages/:id`, and `GET /messages/:id/attempts` (with `?type=`, `?status=`, `?since=`, `?until=`, `?limit=` query filters). Those routes are tenant-scoped from the `authorize` decision, and an unknown or cross-tenant id responds `404 MESSAGE_NOT_FOUND`.

@@ -10,6 +10,7 @@ import type {
   HostTxOption,
   InsertOrReuseResult,
   MessageId,
+  MessageListFilter,
   NewAttempt,
   NewMessage,
   RangeQueryFilter,
@@ -23,6 +24,7 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  DEFAULT_MESSAGE_LIST_LIMIT,
   PG_CAPABILITIES,
   PG_MIGRATIONS,
   attachCallbacks,
@@ -31,6 +33,7 @@ import {
   decodeEndpoint,
   decodeReservedMessage,
   decodeSecret,
+  decodeStoredMessage,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
@@ -327,6 +330,46 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
         out.push({ endpoint, secrets: secretRows.rows.map((s) => decodeSecret(s, codec)) });
       }
       return out;
+    },
+
+    async getMessage(id, opts) {
+      await ready();
+      const res = await exec(opts).query("SELECT * FROM messages WHERE id = $1", [id]);
+      const row = res.rows[0];
+      return row ? decodeStoredMessage(row, codec) : undefined;
+    },
+
+    async listMessages(filter: MessageListFilter) {
+      await ready();
+      const clauses: string[] = [];
+      const values: unknown[] = [];
+      if (filter.tenantId !== undefined) {
+        values.push(filter.tenantId);
+        clauses.push(`tenant_id = $${values.length}`);
+      }
+      if (filter.since !== undefined) {
+        values.push(iso(filter.since));
+        clauses.push(`created_at >= $${values.length}`);
+      }
+      if (filter.until !== undefined) {
+        values.push(iso(filter.until));
+        clauses.push(`created_at <= $${values.length}`);
+      }
+      if (filter.types !== undefined && filter.types.length > 0) {
+        values.push(filter.types);
+        clauses.push(`type = ANY($${values.length})`);
+      }
+      if (filter.status !== undefined && filter.status.length > 0) {
+        values.push(filter.status);
+        clauses.push(`status = ANY($${values.length})`);
+      }
+      const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+      values.push(filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT);
+      const res = await pool().query(
+        `SELECT * FROM messages ${where} ORDER BY created_at DESC, id DESC LIMIT $${values.length}`,
+        values,
+      );
+      return res.rows.map((row) => decodeStoredMessage(row, codec));
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {

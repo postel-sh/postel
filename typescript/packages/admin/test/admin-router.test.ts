@@ -98,4 +98,73 @@ describe("Admin HTTP handlers", () => {
     expect(res.status).toBe(201);
     expect(((await res.json()) as { secret: string }).secret).toMatch(/^whsec_/);
   });
+
+  it("Read a message and its attempts via admin router: GET /messages/:id and /attempts", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage, ...SSRF } });
+    const router = adminRouter(postel, ALLOW);
+    const messageId = await postel.outbound.send({ type: "order.created", data: { id: "o1" } });
+    await storage.recordAttempt({
+      id: "att_admin_1",
+      messageId,
+      endpointId: "ep_1",
+      tenantId: null,
+      attemptNumber: 1,
+      status: "success",
+      scheduledFor: null,
+      startedAt: new Date(),
+      completedAt: new Date(),
+      responseCode: 200,
+      responseHeaders: null,
+      responseBody: null,
+      latencyMs: 8,
+      error: null,
+      replayOf: null,
+    });
+
+    const got = await router(req("GET", `/admin/messages/${messageId}`));
+    expect(got.status).toBe(200);
+    const msg = (await got.json()) as { id: string; type: string; data: { id: string } };
+    expect(msg.id).toBe(messageId);
+    expect(msg.type).toBe("order.created");
+    expect(msg.data).toEqual({ id: "o1" });
+
+    const attempts = await router(req("GET", `/admin/messages/${messageId}/attempts`));
+    expect(attempts.status).toBe(200);
+    const body = (await attempts.json()) as {
+      attempts: Array<{ status: string; responseCode: number; latencyMs: number }>;
+    };
+    expect(body.attempts[0]?.status).toBe("success");
+    expect(body.attempts[0]?.responseCode).toBe(200);
+    expect(body.attempts[0]?.latencyMs).toBe(8);
+  });
+
+  it("Read of an unknown message maps to 404 (MESSAGE_NOT_FOUND)", async () => {
+    const { router } = build(ALLOW);
+    const res = await router(req("GET", "/admin/messages/msg_nope"));
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { errorCode: string }).errorCode).toBe("MESSAGE_NOT_FOUND");
+  });
+
+  it("List messages via admin router: GET /messages filters by type and limit", async () => {
+    const { postel, router } = build(ALLOW);
+    await postel.outbound.send({ type: "order.created", data: { id: "a" } });
+    await postel.outbound.send({ type: "order.created", data: { id: "b" } });
+    await postel.outbound.send({ type: "user.deleted" });
+
+    const res = await router(req("GET", "/admin/messages?type=order.created&limit=50"));
+    expect(res.status).toBe(200);
+    const { messages } = (await res.json()) as { messages: Array<{ type: string }> };
+    expect(messages).toHaveLength(2);
+    expect(messages.every((m) => m.type === "order.created")).toBe(true);
+  });
+
+  it("Tenant-scoped admin: a tenant-bound caller cannot read another tenant's message (404, no leak)", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage, ...SSRF, defaultTenantId: "t_2" } });
+    const messageId = await postel.outbound.send({ type: "order.created", data: { id: "o1" } });
+    const asT1 = adminRouter(postel, { authorize: () => ({ allow: true, tenantId: "t_1" }) });
+    const res = await asT1(req("GET", `/admin/messages/${messageId}`));
+    expect(res.status).toBe(404);
+  });
 });

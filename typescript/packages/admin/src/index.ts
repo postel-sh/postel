@@ -10,6 +10,9 @@ import type {
   Endpoint,
   EndpointCreateOptions,
   EndpointUpdateOptions,
+  Message,
+  MessageListOptions,
+  MessageStatus,
   OutboundApi,
   ReplayOptions,
   RetryStrategy,
@@ -163,6 +166,24 @@ export function adminRouter(
     return ep;
   }
 
+  // A cross-tenant read resolves as not-found rather than leaking existence.
+  async function messageForTenant(
+    id: string,
+    tenantId: string | undefined,
+  ): Promise<Message | undefined> {
+    const msg = await out.messages.get(id);
+    if (!msg || (tenantId !== undefined && msg.tenantId !== tenantId)) return undefined;
+    return msg;
+  }
+
+  function csvParam(url: URL, key: string): string[] {
+    return url.searchParams
+      .getAll(key)
+      .flatMap((v) => v.split(","))
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+  }
+
   async function dispatch(req: Request, tenantId: string | undefined): Promise<Response> {
     const method = req.method.toUpperCase();
     const url = new URL(req.url);
@@ -216,6 +237,47 @@ export function adminRouter(
         }
         return json(201, await out.endpoints.create(fields as EndpointCreateOptions));
       }
+    }
+
+    const messageAttempts = /\/messages\/([^/]+)\/attempts$/.exec(path);
+    if (messageAttempts && method === "GET") {
+      const id = messageAttempts[1] as string;
+      const msg = await messageForTenant(id, tenantId);
+      if (!msg) {
+        return json(404, { errorCode: "MESSAGE_NOT_FOUND", error: `message not found: ${id}` });
+      }
+      return json(200, { attempts: await out.messages.attempts(id) });
+    }
+
+    const messageById = /\/messages\/([^/]+)$/.exec(path);
+    if (messageById && method === "GET") {
+      const id = messageById[1] as string;
+      const msg = await messageForTenant(id, tenantId);
+      if (!msg) {
+        return json(404, { errorCode: "MESSAGE_NOT_FOUND", error: `message not found: ${id}` });
+      }
+      return json(200, msg);
+    }
+
+    if (/\/messages$/.test(path) && method === "GET") {
+      const listOpts: { -readonly [K in keyof MessageListOptions]?: MessageListOptions[K] } = {};
+      const types = csvParam(url, "type");
+      if (types.length > 0) listOpts.types = types;
+      const statuses = csvParam(url, "status") as MessageStatus[];
+      if (statuses.length > 0) listOpts.status = statuses;
+      const since = url.searchParams.get("since");
+      if (since) listOpts.since = since;
+      const until = url.searchParams.get("until");
+      if (until) listOpts.until = until;
+      const limit = url.searchParams.get("limit");
+      if (limit !== null && Number.isFinite(Number(limit))) listOpts.limit = Number(limit);
+      // Tenant scoping is authorize-derived; a bound caller can't widen it via query.
+      if (tenantId !== undefined) listOpts.tenantId = tenantId;
+      else {
+        const qt = url.searchParams.get("tenantId");
+        if (qt) listOpts.tenantId = qt;
+      }
+      return json(200, { messages: await out.messages.list(listOpts) });
     }
 
     if (/\/replay$/.test(path) && method === "POST") {

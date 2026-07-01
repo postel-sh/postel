@@ -3,10 +3,12 @@ import type {
   EndpointRecord,
   EndpointSecretRecord,
   MessageId,
+  MessageStatus,
   NewAttempt,
   NewMessage,
   ReservedMessage,
   StorageCapabilities,
+  StoredMessage,
 } from "@postel/core";
 
 export {
@@ -208,6 +210,47 @@ export function decodeReservedMessage(row: Row, codec: ColumnCodec): ReservedMes
     createdAt: createdAt ?? new Date(0),
     expiresAt: decodeTimestamp(expires_at, codec),
     leaseExpiresAt: leaseExpiresAt ?? createdAt ?? new Date(0),
+    attemptNumber: Number(attempt_number ?? 0),
+    scheduledFor: decodeTimestamp(scheduled_for, codec),
+    replayOf: (replay_of as MessageId | null) ?? null,
+  };
+}
+
+// Conservative default page size for the message-introspection list read.
+// Adapters apply this when `MessageListFilter.limit` is omitted.
+export const DEFAULT_MESSAGE_LIST_LIMIT = 100;
+
+// Read-shaped decode for getMessage / listMessages. Adds the outbox `status`,
+// `idempotency_key`, and `ttl_seconds` that decodeReservedMessage omits.
+export function decodeStoredMessage(row: Row, codec: ColumnCodec): StoredMessage {
+  const {
+    id,
+    tenant_id,
+    type,
+    data,
+    channels,
+    idempotency_key,
+    version,
+    ttl_seconds,
+    created_at,
+    expires_at,
+    status,
+    attempt_number,
+    scheduled_for,
+    replay_of,
+  } = row;
+  return {
+    id: id as MessageId,
+    tenantId: (tenant_id as string | null) ?? null,
+    type: type as string,
+    data: decodeJson(data, codec),
+    channels: decodeJson<ReadonlyArray<string>>(channels, codec),
+    idempotencyKey: (idempotency_key as string | null) ?? null,
+    version: (version as string | null) ?? null,
+    ttlSeconds: ttl_seconds === null || ttl_seconds === undefined ? null : Number(ttl_seconds),
+    createdAt: decodeTimestamp(created_at, codec) ?? new Date(0),
+    expiresAt: decodeTimestamp(expires_at, codec),
+    status: (status as MessageStatus | undefined) ?? "pending",
     attemptNumber: Number(attempt_number ?? 0),
     scheduledFor: decodeTimestamp(scheduled_for, codec),
     replayOf: (replay_of as MessageId | null) ?? null,
