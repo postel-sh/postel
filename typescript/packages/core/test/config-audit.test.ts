@@ -74,13 +74,16 @@ async function seedEndpoint(
   });
 }
 
-// Issue #78 — config-field audit. Every field on the documented config
-// interfaces traces to a live runtime consumer, or it fails fast at
-// construction. This table IS the mapping deliverable; the `fails-fast` rows
-// are asserted below, and the consumer rows cite where the value is read.
+// Issue #78 — config-field audit. Every *leaf* field on the documented config
+// interfaces (OutboundConfig, HttpDefaults, CircuitBreakerDefaults,
+// AutoDisableDefaults, ReplayDefaults, RetentionDefaults, EphemeralKeysDefaults,
+// ObservabilityConfig) traces to a live runtime consumer, or it fails fast at
+// construction. This table IS the mapping deliverable; the `fails-fast` rows are
+// asserted below, and the consumer rows cite where the value is read. Enumerated
+// down to the leaf so a newly-added default field can't slip in unmapped.
 type Disposition = { kind: "consumer"; readBy: string } | { kind: "fails-fast" };
 const CONFIG_FIELD_MAP: Record<string, Disposition> = {
-  // PostelConfig
+  // PostelConfig / ObservabilityConfig
   "observability.logger": { kind: "consumer", readBy: "postel.ts — forwarded to emitter events" },
   // OutboundConfig
   "outbound.storage": { kind: "consumer", readBy: "outbound.ts — every API path" },
@@ -91,28 +94,30 @@ const CONFIG_FIELD_MAP: Record<string, Disposition> = {
     readBy: "outbound.ts — concurrency (non-in-process fails fast)",
   },
   "outbound.kms": { kind: "fails-fast" },
-  "outbound.http": {
-    kind: "consumer",
-    readBy: "http-dispatcher.ts (tls/dns sub-fields fail fast)",
-  },
-  "outbound.circuitBreaker": { kind: "consumer", readBy: "circuit.ts — threshold/cooldown" },
-  "outbound.autoDisable": {
-    kind: "consumer",
-    readBy: "auto-disable.ts — window/minAttempts/failureRate",
-  },
-  "outbound.replay": { kind: "consumer", readBy: "replay.ts — defaultThroughput" },
-  "outbound.retention": { kind: "fails-fast" },
-  "outbound.ephemeralKeys": { kind: "fails-fast" },
   "outbound.clock": { kind: "consumer", readBy: "outbound.ts — clock" },
   "outbound.defaultTenantId": { kind: "consumer", readBy: "send.ts — defaultTenantId" },
-  // HttpDefaults
+  // HttpDefaults (outbound.http.*)
   "http.requestTimeout": { kind: "consumer", readBy: "http-dispatcher.ts — resolveTimeoutMs" },
   "http.overallDeadline": { kind: "consumer", readBy: "http-dispatcher.ts — resolveDeadlineMs" },
   "http.ssrf": { kind: "consumer", readBy: "http-dispatcher.ts — resolvePolicy" },
   "http.userAgent": { kind: "consumer", readBy: "http-dispatcher.ts — resolveUserAgent" },
   "http.fetch": { kind: "consumer", readBy: "outbound.ts — fetchImpl" },
-  "http.tls": { kind: "fails-fast" },
-  "http.dns": { kind: "fails-fast" },
+  "http.tls.verify": { kind: "fails-fast" },
+  "http.dns.pinResolution": { kind: "fails-fast" },
+  // CircuitBreakerDefaults (outbound.circuitBreaker.*)
+  "circuitBreaker.threshold": { kind: "consumer", readBy: "circuit.ts — threshold" },
+  "circuitBreaker.cooldown": { kind: "consumer", readBy: "circuit.ts — cooldown" },
+  // AutoDisableDefaults (outbound.autoDisable.*)
+  "autoDisable.failureRate": { kind: "consumer", readBy: "auto-disable.ts — failureRate" },
+  "autoDisable.window": { kind: "consumer", readBy: "auto-disable.ts — window" },
+  "autoDisable.minAttempts": { kind: "consumer", readBy: "auto-disable.ts — minAttempts" },
+  // ReplayDefaults (outbound.replay.*)
+  "replay.defaultThroughput": { kind: "consumer", readBy: "replay.ts — defaultThroughput" },
+  // RetentionDefaults (outbound.retention.*) — whole slot fails fast
+  "retention.messages": { kind: "fails-fast" },
+  "retention.attempts": { kind: "fails-fast" },
+  // EphemeralKeysDefaults (outbound.ephemeralKeys.*) — whole slot fails fast
+  "ephemeralKeys.rotateEvery": { kind: "fails-fast" },
 };
 
 describe("Unimplemented config slots fail fast at construction [PORT-SPECIFIC]", () => {
@@ -182,11 +187,12 @@ describe("Unimplemented config slots fail fast at construction [PORT-SPECIFIC]",
     // each one actually rejects so the table can't silently rot.
     const failsFast = Object.entries(CONFIG_FIELD_MAP).filter(([, d]) => d.kind === "fails-fast");
     expect(failsFast.map(([k]) => k).sort()).toEqual([
-      "http.dns",
-      "http.tls",
-      "outbound.ephemeralKeys",
+      "ephemeralKeys.rotateEvery",
+      "http.dns.pinResolution",
+      "http.tls.verify",
       "outbound.kms",
-      "outbound.retention",
+      "retention.attempts",
+      "retention.messages",
     ]);
     for (const [, d] of Object.entries(CONFIG_FIELD_MAP)) {
       expect(d.kind === "consumer" ? d.readBy.length > 0 : true).toBe(true);

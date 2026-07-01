@@ -15,8 +15,6 @@ import {
 } from "./sender/events.js";
 import type { Storage } from "./storage/types.js";
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
-
 // A forwarded runtime event. The library forwards the same events surfaced by
 // `postel.on(...)` to `observability.logger` with a severity level. See
 // `Logger pass-through for runtime events` in openspec/specs/observability/spec.md.
@@ -33,6 +31,9 @@ export type LogEvent =
       readonly data: CircuitTransitionPayload;
     }
   | { readonly event: "dead-letter"; readonly level: "error"; readonly data: DeadLetterPayload };
+
+// Derived from LogEvent so the two can't drift as events/levels are added.
+export type LogLevel = LogEvent["level"];
 
 export type Logger = (entry: LogEvent) => void;
 
