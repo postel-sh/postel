@@ -19,14 +19,19 @@ function findPackageDirs(root: string): string[] {
 }
 
 // A package whose `src/index.ts` exports nothing but the `__postelPackage` name
-// marker has no claimable runtime surface — a pre-alpha placeholder.
+// marker has no claimable runtime surface — a pre-alpha placeholder. The single
+// export must be exactly `export const __postelPackage = …`; a re-export list
+// that merely includes the marker (`export { __postelPackage, foo }`) is a real
+// surface and must NOT be treated as a placeholder.
 function isPlaceholder(pkgDir: string): boolean {
   const entry = join(pkgDir, "src", "index.ts");
   if (!existsSync(entry)) return false;
   const exportLines = readFileSync(entry, "utf8")
     .split("\n")
     .filter((l) => /^\s*export\b/.test(l));
-  return exportLines.length > 0 && exportLines.every((l) => l.includes("__postelPackage"));
+  return (
+    exportLines.length === 1 && /^\s*export\s+const\s+__postelPackage\s*=/.test(exportLines[0])
+  );
 }
 
 function readPkg(pkgDir: string): { name: string; private?: boolean } {
