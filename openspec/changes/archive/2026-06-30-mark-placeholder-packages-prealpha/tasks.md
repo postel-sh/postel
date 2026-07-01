@@ -6,15 +6,15 @@
 
 ## 2. Implementation
 
-- [ ] 2.1 Confirm `@postel/effect` / `@postel/test` / `@postel/nextjs` / `@postel/bun` are `private: true` (already so — no change expected).
+- [ ] 2.1 Confirm `@postel/effect` / `@postel/test` / `@postel/nextjs` / `@postel/bun` / `@postel/cli` are `private: true` (already so — no change expected). The audit surfaced `@postel/cli` as a fifth name-only placeholder beyond the four #79 enumerates.
 
 ## 3. Tests
 
-- [ ] 3.1 `distribution-packaging.test.ts` — guard: every package whose only export is `__postelPackage` is `private`; the detected placeholder set is exactly the four.
+- [ ] 3.1 `distribution-packaging.test.ts` — guard: every package whose only export is `__postelPackage` is `private`; the detected placeholder set is exactly the five (`effect`, `test`, `nextjs`, `bun`, `cli`).
 
 ## 4. Docs (rule 8)
 
-- [ ] 4.1 `docs/content/docs/reference/packages.mdx` — add `@postel/effect`; align pre-alpha framing.
+- [ ] 4.1 `docs/content/docs/reference/packages.mdx` — add `@postel/effect` and `@postel/cli`; align pre-alpha framing.
 
 ## 5. Validation and archive
 
