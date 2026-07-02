@@ -171,4 +171,21 @@ describe("List and filter messages", () => {
     const listed = await postel.outbound.messages.list({ limit: 2 });
     expect(listed).toHaveLength(2);
   });
+
+  it("Rejects a malformed since/until date rather than passing an Invalid Date to storage", async () => {
+    const { postel } = setup();
+    await expect(postel.outbound.messages.list({ since: "not-a-date" })).rejects.toThrow(
+      /invalid date/,
+    );
+    await expect(postel.outbound.messages.list({ until: new Date("nope") })).rejects.toThrow(
+      /invalid date/,
+    );
+  });
+
+  it("Rejects a non-positive or non-integer limit (guards LIMIT -1 unbounded reads)", async () => {
+    const { postel } = setup();
+    await expect(postel.outbound.messages.list({ limit: -1 })).rejects.toThrow(/positive integer/);
+    await expect(postel.outbound.messages.list({ limit: 0 })).rejects.toThrow(/positive integer/);
+    await expect(postel.outbound.messages.list({ limit: 1.5 })).rejects.toThrow(/positive integer/);
+  });
 });
