@@ -249,9 +249,20 @@ export interface Storage<TTx = unknown> {
 
   loadEndpointsForMessage(messageId: MessageId): Promise<ReadonlyArray<EndpointWithSecrets>>;
 
-  // Introspection reads (back the `message-introspection` capability). A plain
-  // read (no tx) MUST NOT surface rows staged by an uncommitted host
-  // transaction, matching worker-reservation visibility.
+  // Introspection reads (back the `message-introspection` capability). On
+  // adapters that isolate transactions on a separate connection (Postgres,
+  // MySQL, and the in-memory reference, which flags uncommitted rows), a plain
+  // read (no tx) does NOT surface rows staged by an uncommitted host
+  // transaction — the same visibility guarantee as `reserveBatch`.
+  //
+  // Single-connection adapters (better-sqlite3; pglite in tests) share the
+  // SQLite single-writer caveat: a non-tx read issued while a host
+  // `transaction()` is open on that one connection runs inside that
+  // transaction and MAY observe its uncommitted rows. This is the same
+  // limitation `reserveBatch` carries there, surfaced by the testkit's
+  // `txIsolation`-gated conformance cases (those adapters declare
+  // `txIsolation: false`). Hosts needing strict isolation on such adapters
+  // must not interleave non-tx reads with an open host transaction.
   getMessage(id: MessageId, opts?: HostTxOption<TTx>): Promise<StoredMessage | undefined>;
   listMessages(filter: MessageListFilter): Promise<ReadonlyArray<StoredMessage>>;
 

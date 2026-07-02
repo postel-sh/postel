@@ -307,6 +307,13 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
       return out;
     },
 
+    // Single-connection caveat (see Storage.getMessage): if a host
+    // `transaction()` is open on this one connection when getMessage /
+    // listMessages runs without a tx, the read executes inside that
+    // transaction and may observe its uncommitted rows. This adapter declares
+    // `txIsolation: false`; the same caveat applies to reserveBatch. Hosts
+    // needing strict isolation must not interleave non-tx reads with an open
+    // host transaction on the same connection.
     async getMessage(id) {
       const row = db.prepare("SELECT * FROM messages WHERE id = ?").get(id) as
         | Record<string, unknown>
