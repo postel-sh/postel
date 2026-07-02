@@ -266,11 +266,27 @@ export function adminRouter(
       const statuses = csvParam(url, "status") as MessageStatus[];
       if (statuses.length > 0) listOpts.status = statuses;
       const since = url.searchParams.get("since");
-      if (since) listOpts.since = since;
+      if (since) {
+        if (Number.isNaN(new Date(since).getTime())) {
+          return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'since' date: ${since}` });
+        }
+        listOpts.since = since;
+      }
       const until = url.searchParams.get("until");
-      if (until) listOpts.until = until;
+      if (until) {
+        if (Number.isNaN(new Date(until).getTime())) {
+          return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'until' date: ${until}` });
+        }
+        listOpts.until = until;
+      }
       const limit = url.searchParams.get("limit");
-      if (limit !== null && Number.isFinite(Number(limit))) listOpts.limit = Number(limit);
+      if (limit) {
+        const n = Number(limit);
+        if (!Number.isInteger(n) || n <= 0) {
+          return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'limit': ${limit}` });
+        }
+        listOpts.limit = n;
+      }
       // Tenant scoping is authorize-derived; a bound caller can't widen it via query.
       if (tenantId !== undefined) listOpts.tenantId = tenantId;
       else {

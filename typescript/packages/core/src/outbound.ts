@@ -259,7 +259,11 @@ function notImplemented(symbol: string): never {
 }
 
 function toDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new TypeError(`invalid date: ${String(value)}`);
+  }
+  return date;
 }
 
 function toMessage<TData = unknown>(m: StoredMessage): Message<TData> {
@@ -435,7 +439,16 @@ export function buildOutboundRuntime<TTx = unknown>(
         }
         if (opts?.since !== undefined) filter.since = toDate(opts.since);
         if (opts?.until !== undefined) filter.until = toDate(opts.until);
-        if (opts?.limit !== undefined) filter.limit = opts.limit;
+        if (opts?.limit !== undefined) {
+          // A non-positive or non-integer limit is a caller error, not a
+          // silent default: `LIMIT -1` is "no limit" on some dialects.
+          if (!Number.isInteger(opts.limit) || opts.limit <= 0) {
+            throw new RangeError(
+              `limit must be a positive integer, received ${String(opts.limit)}`,
+            );
+          }
+          filter.limit = opts.limit;
+        }
         const rows = await config.storage.listMessages(filter);
         return rows.map((m) => toMessage(m));
       },

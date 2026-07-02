@@ -167,4 +167,20 @@ describe("Admin HTTP handlers", () => {
     const res = await asT1(req("GET", `/admin/messages/${messageId}`));
     expect(res.status).toBe(404);
   });
+
+  it("List messages rejects malformed query params with 400 (not 500)", async () => {
+    const { router } = build(ALLOW);
+    const badSince = await router(req("GET", "/admin/messages?since=not-a-date"));
+    expect(badSince.status).toBe(400);
+    expect(((await badSince.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+
+    for (const bad of ["-1", "0", "1.5", "abc"]) {
+      const res = await router(req("GET", `/admin/messages?limit=${bad}`));
+      expect(res.status).toBe(400);
+    }
+
+    // A well-formed query still succeeds.
+    const ok = await router(req("GET", "/admin/messages?since=2026-06-01T00:00:00Z&limit=10"));
+    expect(ok.status).toBe(200);
+  });
 });

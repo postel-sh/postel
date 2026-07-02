@@ -384,6 +384,27 @@ export function runStorageTests(factory: StorageTestFactory): void {
         },
       );
 
+      itTxIsolation(
+        "Introspection reads are isolated: getMessage / listMessages do not surface an uncommitted message",
+        async () => {
+          const { storage, clock } = await factory.create();
+          await expect(
+            storage.transaction(async (tx) => {
+              await storage.insertMessage(
+                buildMessage(clock, { id: "msg_intro_dirty", tenantId: "t_intro_dirty" }),
+                { tx },
+              );
+              expect(await storage.getMessage("msg_intro_dirty")).toBeUndefined();
+              const listed = await storage.listMessages({ tenantId: "t_intro_dirty" });
+              expect(listed.map((m) => m.id)).not.toContain("msg_intro_dirty");
+              throw new Error("rollback");
+            }),
+          ).rejects.toThrow("rollback");
+          expect(await storage.getMessage("msg_intro_dirty")).toBeUndefined();
+        },
+        30_000,
+      );
+
       it("Outbox insert becomes reservable once the host transaction commits", async () => {
         const { storage, clock } = await factory.create();
         await storage.transaction(async (tx) => {
