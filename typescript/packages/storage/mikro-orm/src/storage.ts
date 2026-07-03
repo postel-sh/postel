@@ -711,6 +711,7 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
         });
       },
       async get(tenantId, opts) {
+        await ready();
         const res = await rows<Record<string, unknown>>(
           `select * from tenants where id = ${isPg ? "$1" : "?"}`,
           [tenantId],
@@ -720,6 +721,7 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
         return row ? decodeTenant(row, codec) : undefined;
       },
       async list(filter: TenantListFilter) {
+        await ready();
         const p = new Params();
         const conds = ["1 = 1"];
         if (filter.cursor !== undefined) {

@@ -612,12 +612,14 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
         });
       },
       async get(tenantId, opts) {
+        await ready();
         const res = await sql<Record<string, unknown>>`select * from tenants
           where id = ${tenantId}`.execute(exec(opts));
         const row = res.rows[0];
         return row ? decodeTenant(row, codec) : undefined;
       },
       async list(filter: TenantListFilter) {
+        await ready();
         const conds = [sql`1 = 1`];
         if (filter.cursor !== undefined) {
           const { createdAt, id } = decodeTenantCursor(filter.cursor);

@@ -699,6 +699,7 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
         });
       },
       async get(tenantId, opts) {
+        await ready();
         const rows = await exec(opts).$queryRawUnsafe<Record<string, unknown>>(
           `select * from tenants where id = ${isPg ? "$1" : "?"}`,
           tenantId,
@@ -707,6 +708,7 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
         return row ? decodeTenant(row, codec) : undefined;
       },
       async list(filter: TenantListFilter) {
+        await ready();
         const p = new Params();
         const conds = ["1 = 1"];
         if (filter.cursor !== undefined) {

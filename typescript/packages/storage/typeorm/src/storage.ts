@@ -792,6 +792,7 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
         });
       },
       async get(tenantId, opts) {
+        await ready();
         const res = await withExec(opts, (ex) =>
           rows<Record<string, unknown>>(
             ex,
@@ -803,6 +804,7 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
         return row ? decodeTenant(row, codec) : undefined;
       },
       async list(filter: TenantListFilter) {
+        await ready();
         const p = new Params();
         const conds = ["1 = 1"];
         if (filter.cursor !== undefined) {

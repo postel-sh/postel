@@ -741,6 +741,7 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
         });
       },
       async get(tenantId, opts) {
+        await ready();
         const res = await rows<Record<string, unknown>>(
           exec(opts),
           sql`select * from tenants where id = ${tenantId}`,
@@ -749,6 +750,7 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
         return row ? decodeTenant(row, codec) : undefined;
       },
       async list(filter: TenantListFilter) {
+        await ready();
         const conds = [sql`1 = 1`];
         if (filter.cursor !== undefined) {
           const { createdAt, id } = decodeTenantCursor(filter.cursor);
