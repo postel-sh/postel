@@ -198,6 +198,10 @@ importers:
       '@postel/core':
         specifier: workspace:*
         version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: 20.17.10
+        version: 20.17.10
 
   packages/storage/kysely:
     dependencies:

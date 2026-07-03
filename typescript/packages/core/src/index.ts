@@ -45,7 +45,12 @@ export type {
   SendEvent,
   SendOptions,
   SetRateLimitOptions,
+  Tenant,
+  TenantListOptions,
+  TenantPage,
 } from "./outbound.js";
+
+export type { CursorOptions, Page } from "./pagination.js";
 
 export {
   EndpointDisabled,
@@ -103,6 +108,7 @@ export type {
   StorageCapabilities,
   StoredMessage,
   TenantId,
+  TenantListFilter,
   TenantRecord,
   Unsubscribe as StorageUnsubscribe,
   WorkerId,
@@ -139,6 +145,7 @@ export {
   Ed25519V1a,
   ExponentialBackoff,
   External,
+  FixedRate,
   GcpKms,
   HmacV1,
   InMemoryDedup,
@@ -156,11 +163,13 @@ export type {
   AwsKmsOptions,
   CustomRetryOptions,
   ExponentialBackoffOptions,
+  FixedRateOptions,
   GcpKmsOptions,
   InProcessOptions,
   KmsStrategy,
   LinearBackoffOptions,
   PlaintextKmsOptions,
+  RateLimitStrategy,
   RetryStrategy,
   SigningOptions,
   SigningStrategy,

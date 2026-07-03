@@ -29,5 +29,8 @@
   },
   "dependencies": {
     "@postel/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10"
   }
 }

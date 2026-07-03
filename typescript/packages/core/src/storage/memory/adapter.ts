@@ -1,4 +1,5 @@
 import { type Clock, systemClock } from "../../clock.js";
+import type { Page } from "../../pagination.js";
 import type {
   AttemptId,
   AttemptStatsResult,
@@ -25,6 +26,7 @@ import type {
   StorageCapabilities,
   StoredMessage,
   TenantId,
+  TenantListFilter,
   TenantRecord,
   Unsubscribe,
   WorkerId,
@@ -80,6 +82,28 @@ const SCHEMA_VERSION = 4;
 // Mirrors DEFAULT_MESSAGE_LIST_LIMIT in @postel/storage-helpers; kept local
 // because @postel/core takes no dependency on the helpers package.
 const DEFAULT_MESSAGE_LIST_LIMIT = 100;
+
+// Mirrors DEFAULT_TENANT_LIST_LIMIT / encodeTenantCursor / decodeTenantCursor
+// in @postel/storage-helpers; kept local for the same reason.
+const DEFAULT_TENANT_LIST_LIMIT = 100;
+
+function encodeTenantCursor(rec: Pick<TenantRecord, "id" | "createdAt">): string {
+  return Buffer.from(`${rec.createdAt.toISOString()} ${rec.id}`, "utf8").toString("base64url");
+}
+
+function decodeTenantCursor(str: string): { createdAt: Date; id: string } {
+  const raw = Buffer.from(str, "base64url").toString("utf8");
+  const sep = raw.indexOf(" ");
+  if (sep < 0) {
+    throw new TypeError(`InMemoryStorage: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+  }
+  const createdAt = new Date(raw.slice(0, sep));
+  const id = raw.slice(sep + 1);
+  if (id.length === 0 || Number.isNaN(createdAt.getTime())) {
+    throw new TypeError(`InMemoryStorage: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+  }
+  return { createdAt, id };
+}
 
 function newId(prefix: string): string {
   const bytes = new Uint8Array(12);
@@ -728,8 +752,29 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
         });
         return rec;
       },
-      async get(tenantId) {
+      async get(tenantId, _opts) {
         return tenants.get(tenantId);
+      },
+      async list(filter: TenantListFilter): Promise<Page<TenantRecord>> {
+        const limit = filter.limit ?? DEFAULT_TENANT_LIST_LIMIT;
+        let rows = Array.from(tenants.values()).sort((a, b) => {
+          const byTime = b.createdAt.getTime() - a.createdAt.getTime();
+          if (byTime !== 0) return byTime;
+          return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+        });
+        if (filter.cursor !== undefined) {
+          const { createdAt, id } = decodeTenantCursor(filter.cursor);
+          rows = rows.filter((r) => {
+            const t = r.createdAt.getTime();
+            const ct = createdAt.getTime();
+            return t < ct || (t === ct && r.id < id);
+          });
+        }
+        const page = rows.slice(0, limit + 1);
+        const items = page.slice(0, limit);
+        const last = items[items.length - 1];
+        const nextCursor = page.length > limit && last ? encodeTenantCursor(last) : null;
+        return { items, nextCursor };
       },
       async delete(tenantId, opts) {
         await writeLock.run(async () => {

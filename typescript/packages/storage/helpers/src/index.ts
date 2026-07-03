@@ -9,6 +9,8 @@ import type {
   ReservedMessage,
   StorageCapabilities,
   StoredMessage,
+  TenantId,
+  TenantRecord,
 } from "@postel/core";
 
 export {
@@ -255,6 +257,48 @@ export function decodeStoredMessage(row: Row, codec: ColumnCodec): StoredMessage
     scheduledFor: decodeTimestamp(scheduled_for, codec),
     replayOf: (replay_of as MessageId | null) ?? null,
   };
+}
+
+// Conservative default page size for the tenant-read list. Adapters apply this
+// when `TenantListFilter.limit` is omitted.
+export const DEFAULT_TENANT_LIST_LIMIT = 100;
+
+export function decodeTenant(row: Row, codec: ColumnCodec): TenantRecord {
+  const { id, metadata, created_at } = row;
+  return {
+    id: id as TenantId,
+    metadata: decodeJson<Record<string, unknown>>(metadata, codec),
+    createdAt: decodeTimestamp(created_at, codec) ?? new Date(0),
+  };
+}
+
+// Opaque keyset cursor for tenant pagination: base64url of
+// "${createdAtISO} ${id}". Decoding splits on the FIRST space only (not
+// `.split(" ")`) because a tenant id may itself contain a space; the ISO
+// timestamp never does, so the first occurrence unambiguously separates them.
+export function encodeTenantCursor(rec: Pick<TenantRecord, "id" | "createdAt">): string {
+  const raw = `${rec.createdAt.toISOString()} ${rec.id}`;
+  return Buffer.from(raw, "utf8").toString("base64url");
+}
+
+export function decodeTenantCursor(str: string): { createdAt: Date; id: string } {
+  let raw: string;
+  try {
+    raw = Buffer.from(str, "base64url").toString("utf8");
+  } catch {
+    throw new TypeError(`storage-helpers: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+  }
+  const sep = raw.indexOf(" ");
+  if (sep < 0) {
+    throw new TypeError(`storage-helpers: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+  }
+  const createdAtIso = raw.slice(0, sep);
+  const id = raw.slice(sep + 1);
+  const createdAt = new Date(createdAtIso);
+  if (id.length === 0 || Number.isNaN(createdAt.getTime())) {
+    throw new TypeError(`storage-helpers: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+  }
+  return { createdAt, id };
 }
 
 export function encodeAttemptInsert(attempt: NewAttempt, codec: ColumnCodec): Row {

@@ -163,6 +163,7 @@ export function runStorageTests(factory: StorageTestFactory): void {
         expect(typeof storage.endpoints.create).toBe("function");
         expect(typeof storage.secrets.insert).toBe("function");
         expect(typeof storage.tenants.upsert).toBe("function");
+        expect(typeof storage.tenants.list).toBe("function");
       });
 
       it("Introspection reads return a message and its attempts: getMessage / listMessages / attempts", async () => {
@@ -204,6 +205,29 @@ export function runStorageTests(factory: StorageTestFactory): void {
         expect(listed.map((m) => m.id)).toContain("msg_intro_1");
         const filtered = await storage.listMessages({ tenantId: "t_intro", types: ["nope"] });
         expect(filtered.map((m) => m.id)).not.toContain("msg_intro_1");
+        // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
+        // this multi-round-trip case well past vitest's 5s default under CI load.
+      }, 30_000);
+
+      it("Tenant reads return a record and a paginated page: tenants.get / tenants.list", async () => {
+        const { storage, clock } = await factory.create();
+        await storage.tenants.upsert("t_page_1", null);
+        clock.advance(1000);
+        await storage.tenants.upsert("t_page_2", null);
+        clock.advance(1000);
+        await storage.tenants.upsert("t_page_3", null);
+
+        const got = await storage.tenants.get("t_page_2");
+        expect(got?.id).toBe("t_page_2");
+        expect(await storage.tenants.get("t_tenant_missing")).toBeUndefined();
+
+        const page1 = await storage.tenants.list({ limit: 2 });
+        expect(page1.items.map((t) => t.id)).toEqual(["t_page_3", "t_page_2"]);
+        expect(page1.nextCursor).not.toBeNull();
+
+        const page2 = await storage.tenants.list({ limit: 2, cursor: page1.nextCursor as string });
+        expect(page2.items.map((t) => t.id)).toEqual(["t_page_1"]);
+        expect(page2.nextCursor).toBeNull();
         // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
         // this multi-round-trip case well past vitest's 5s default under CI load.
       }, 30_000);
