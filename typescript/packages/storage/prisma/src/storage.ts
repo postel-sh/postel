@@ -685,9 +685,13 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
           const idP = p.add(tenantId);
           const meta1 = p.add(metaParam);
           const createdP = p.add(tsParam(createdAt));
-          const meta2 = p.add(metaParam);
+          // MySQL has no `ON CONFLICT`; re-use the inserted value via `VALUES()`
+          // instead of re-binding it, as the other MySQL-capable adapters do.
+          const conflict = isMysql
+            ? "on duplicate key update metadata = values(metadata)"
+            : `on conflict (id) do update set metadata = ${p.add(metaParam)}`;
           await q.$executeRawUnsafe(
-            `insert into tenants (id, metadata, created_at) values (${idP}, ${meta1}, ${createdP}) on conflict (id) do update set metadata = ${meta2}`,
+            `insert into tenants (id, metadata, created_at) values (${idP}, ${meta1}, ${createdP}) ${conflict}`,
             ...p.values,
           );
           const rec: TenantRecord = { id: tenantId, metadata, createdAt };
