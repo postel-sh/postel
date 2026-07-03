@@ -600,8 +600,13 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
           }>`select created_at from tenants where id = ${tenantId}`.execute(q);
           const createdAt = existing.rows[0] ? new Date(existing.rows[0].created_at) : clock.now();
           const metaParam = metadata === null ? null : JSON.stringify(metadata);
+          // MySQL has no `ON CONFLICT`; re-use the inserted value via `VALUES()`
+          // instead of re-binding it, as the other MySQL-capable adapters do.
+          const conflict = isMysql
+            ? sql.raw("on duplicate key update metadata = values(metadata)")
+            : sql`on conflict (id) do update set metadata = ${metaParam}`;
           await sql`insert into tenants (id, metadata, created_at) values (${tenantId}, ${metaParam}, ${tsParam(createdAt)})
-            on conflict (id) do update set metadata = ${metaParam}`.execute(q);
+            ${conflict}`.execute(q);
           const rec: TenantRecord = { id: tenantId, metadata, createdAt };
           return rec;
         });
