@@ -696,11 +696,13 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
         });
       },
       async get(tenantId, opts) {
+        await ready();
         const res = await exec(opts).query("SELECT * FROM tenants WHERE id = $1", [tenantId]);
         const row = res.rows[0];
         return row ? decodeTenant(row, codec) : undefined;
       },
       async list(filter: TenantListFilter) {
+        await ready();
         const clauses: string[] = [];
         const values: unknown[] = [];
         if (filter.cursor !== undefined) {

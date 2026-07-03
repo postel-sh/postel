@@ -1,4 +1,5 @@
 import { type Clock, systemClock } from "../../clock.js";
+import { base64UrlToBytes, bytesToBase64Url } from "../../internal/base64.js";
 import type { Page } from "../../pagination.js";
 import type {
   AttemptId,
@@ -87,12 +88,24 @@ const DEFAULT_MESSAGE_LIST_LIMIT = 100;
 // in @postel/storage-helpers; kept local for the same reason.
 const DEFAULT_TENANT_LIST_LIMIT = 100;
 
+// Uses the package's web-standard base64url codec (btoa/atob-backed), not
+// Node's `Buffer` — @postel/core targets Node/Bun/Deno without a Node-only
+// runtime dependency, and this is the only tenant-cursor codec that runs
+// in-process rather than through a SQL adapter (see @postel/storage-helpers
+// for the adapter-side equivalent, which is fine to use `Buffer` since every
+// SQL adapter already requires a Node-hosted DB driver).
 function encodeTenantCursor(rec: Pick<TenantRecord, "id" | "createdAt">): string {
-  return Buffer.from(`${rec.createdAt.toISOString()} ${rec.id}`, "utf8").toString("base64url");
+  const bytes = new TextEncoder().encode(`${rec.createdAt.toISOString()} ${rec.id}`);
+  return bytesToBase64Url(bytes);
 }
 
 function decodeTenantCursor(str: string): { createdAt: Date; id: string } {
-  const raw = Buffer.from(str, "base64url").toString("utf8");
+  let raw: string;
+  try {
+    raw = new TextDecoder().decode(base64UrlToBytes(str));
+  } catch {
+    throw new TypeError(`InMemoryStorage: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+  }
   const sep = raw.indexOf(" ");
   if (sep < 0) {
     throw new TypeError(`InMemoryStorage: cannot decode tenant cursor from ${JSON.stringify(str)}`);
