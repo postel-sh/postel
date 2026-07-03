@@ -9,6 +9,7 @@
     "replay",
     "endpoints",
     "messages",
+    "tenants",
     "admin"
   ]
 }

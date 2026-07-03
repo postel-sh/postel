@@ -16,6 +16,7 @@ import type {
   OutboundApi,
   ReplayOptions,
   RetryStrategy,
+  Tenant,
 } from "@postel/core";
 
 export interface AuthDecision {
@@ -176,6 +177,16 @@ export function adminRouter(
     return msg;
   }
 
+  // A tenant IS the scope key (unlike messages, there's no separate `tenantId`
+  // field to compare) — a bound caller can only ever resolve its own id.
+  async function tenantForTenant(
+    id: string,
+    tenantId: string | undefined,
+  ): Promise<Tenant | undefined> {
+    if (tenantId !== undefined && id !== tenantId) return undefined;
+    return out.tenants.get(id);
+  }
+
   function csvParam(url: URL, key: string): string[] {
     return url.searchParams
       .getAll(key)
@@ -329,13 +340,55 @@ export function adminRouter(
     }
 
     const tenantById = /\/tenants\/([^/]+)$/.exec(path);
-    if (tenantById && method === "DELETE") {
+    if (tenantById) {
       const id = tenantById[1] as string;
-      if (tenantId !== undefined && id !== tenantId) {
-        return json(403, { errorCode: "FORBIDDEN", error: "cross-tenant access denied" });
+      if (method === "GET") {
+        const tenant = await tenantForTenant(id, tenantId);
+        if (!tenant) {
+          return json(404, { errorCode: "TENANT_NOT_FOUND", error: `tenant not found: ${id}` });
+        }
+        return json(200, tenant);
       }
-      await out.tenants.delete(id);
-      return new Response(null, { status: 204 });
+      if (method === "DELETE") {
+        if (tenantId !== undefined && id !== tenantId) {
+          return json(403, { errorCode: "FORBIDDEN", error: "cross-tenant access denied" });
+        }
+        await out.tenants.delete(id);
+        return new Response(null, { status: 204 });
+      }
+    }
+
+    if (/\/tenants$/.test(path) && method === "GET") {
+      const limitParam = url.searchParams.get("limit");
+      let limit: number | undefined;
+      if (limitParam) {
+        const n = Number(limitParam);
+        if (!Number.isInteger(n) || n <= 0) {
+          return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'limit': ${limitParam}` });
+        }
+        limit = n;
+      }
+      const cursor = url.searchParams.get("cursor") ?? undefined;
+      // A tenant-bound caller can only ever see its own tenant — there is
+      // nothing for `storage.tenants.list` to filter by, since a tenant IS the
+      // scope key (unlike messages, which carry a separate `tenantId` column).
+      if (tenantId !== undefined) {
+        const tenant = await tenantForTenant(tenantId, tenantId);
+        return json(200, { tenants: tenant ? [tenant] : [], nextCursor: null });
+      }
+      let page: { items: ReadonlyArray<Tenant>; nextCursor: string | null };
+      try {
+        page = await out.tenants.list({
+          ...(limit !== undefined ? { limit } : {}),
+          ...(cursor !== undefined ? { cursor } : {}),
+        });
+      } catch (err) {
+        if (err instanceof TypeError) {
+          return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'cursor': ${cursor}` });
+        }
+        throw err;
+      }
+      return json(200, { tenants: page.items, nextCursor: page.nextCursor });
     }
 
     if (/\/keys\/symmetric$/.test(path) && method === "POST") {

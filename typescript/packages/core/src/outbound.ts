@@ -2,6 +2,7 @@ import { type Clock, systemClock } from "./clock.js";
 import { NotImplementedError } from "./errors.js";
 import { assertHttpWired } from "./internal/config-guards.js";
 import { ed25519Jwk, ed25519Kid } from "./internal/jwk.js";
+import type { CursorOptions, Page } from "./pagination.js";
 import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
 import { buildEndpointApi } from "./sender/endpoint/crud.js";
 import { PostelEventEmitter } from "./sender/events.js";
@@ -17,8 +18,12 @@ import type {
   MessageStatus,
   Storage,
   StoredMessage,
+  TenantListFilter,
+  TenantRecord,
 } from "./storage/types.js";
 import type { KmsStrategy } from "./strategies/kms.js";
+import { FixedRate } from "./strategies/rate-limit.js";
+import type { RateLimitStrategy } from "./strategies/rate-limit.js";
 import type { RetryStrategy } from "./strategies/retry.js";
 import type { SigningStrategy } from "./strategies/signing.js";
 import type { WorkerStrategy } from "./strategies/workers.js";
@@ -217,6 +222,20 @@ export interface MessageListOptions {
   readonly limit?: number;
 }
 
+// Read-shaped tenant for the tenant-read surface. `rateLimit` is decoded from
+// the storage-level `TenantRecord.metadata.rateLimit` into a typed strategy;
+// `metadata` is still exposed raw for anything else a host stashed there.
+export interface Tenant {
+  readonly id: string;
+  readonly rateLimit: RateLimitStrategy | null;
+  readonly metadata: Readonly<Record<string, unknown>> | null;
+  readonly createdAt: Date;
+}
+
+export interface TenantListOptions extends CursorOptions {}
+
+export type TenantPage = Page<Tenant>;
+
 export interface OutboundApi<TTx = unknown> {
   send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<MessageId>;
   endpoints: {
@@ -236,6 +255,8 @@ export interface OutboundApi<TTx = unknown> {
   tenants: {
     setRateLimit(tenantId: string, opts: SetRateLimitOptions<TTx>): Promise<void>;
     delete(tenantId: string, opts?: { tx?: TTx }): Promise<void>;
+    get(id: string, opts?: { tx?: TTx }): Promise<Tenant | undefined>;
+    list(opts?: TenantListOptions): Promise<TenantPage>;
   };
   replay(opts: ReplayOptions<TTx>): Promise<ReplayResult>;
   reconcile(opts: ReconcileOptions<TTx>): Promise<ReadonlyArray<MessageId>>;
@@ -268,6 +289,27 @@ function toDate(value: Date | string): Date {
 
 function toMessage<TData = unknown>(m: StoredMessage): Message<TData> {
   return { ...m, data: m.data as TData };
+}
+
+function toRateLimitStrategy(raw: unknown): RateLimitStrategy | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const obj = raw as { kind?: unknown; perSecond?: unknown };
+  if (typeof obj.perSecond !== "number") return null;
+  // "fixed" is the only kind today; a bare legacy `{ perSecond }` (written
+  // before this strategy type existed) or an unrecognized `kind` also decodes
+  // as fixed rather than being dropped, since perSecond is the only field that
+  // ever mattered for dispatch throttling.
+  return FixedRate({ perSecond: obj.perSecond });
+}
+
+function toTenant(rec: TenantRecord): Tenant {
+  const { rateLimit } = rec.metadata ?? {};
+  return {
+    id: rec.id,
+    rateLimit: toRateLimitStrategy(rateLimit),
+    metadata: rec.metadata,
+    createdAt: rec.createdAt,
+  };
 }
 
 export function buildOutboundRuntime<TTx = unknown>(
@@ -389,7 +431,7 @@ export function buildOutboundRuntime<TTx = unknown>(
         const existing = await config.storage.tenants.get(tenantId);
         const metadata = {
           ...(existing?.metadata ?? {}),
-          rateLimit: { perSecond: opts.perSecond },
+          rateLimit: FixedRate({ perSecond: opts.perSecond }),
         } as Readonly<Record<string, unknown>>;
         await config.storage.tenants.upsert(
           tenantId,
@@ -402,6 +444,25 @@ export function buildOutboundRuntime<TTx = unknown>(
           tenantId,
           opts?.tx !== undefined ? { tx: opts.tx } : undefined,
         );
+      },
+      async get(id, opts) {
+        const rec = await config.storage.tenants.get(
+          id,
+          opts?.tx !== undefined ? { tx: opts.tx } : undefined,
+        );
+        return rec ? toTenant(rec) : undefined;
+      },
+      async list(opts) {
+        // A non-positive or non-integer limit is a caller error, not a silent
+        // default — same guard as `messages.list`.
+        if (opts?.limit !== undefined && (!Number.isInteger(opts.limit) || opts.limit <= 0)) {
+          throw new RangeError(`limit must be a positive integer, received ${String(opts.limit)}`);
+        }
+        const filter: { -readonly [K in keyof TenantListFilter]?: TenantListFilter[K] } = {};
+        if (opts?.limit !== undefined) filter.limit = opts.limit;
+        if (opts?.cursor !== undefined) filter.cursor = opts.cursor;
+        const page = await config.storage.tenants.list(filter);
+        return { items: page.items.map(toTenant), nextCursor: page.nextCursor };
       },
     },
     async replay(opts) {

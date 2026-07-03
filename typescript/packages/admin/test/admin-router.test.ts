@@ -183,4 +183,81 @@ describe("Admin HTTP handlers", () => {
     const ok = await router(req("GET", "/admin/messages?since=2026-06-01T00:00:00Z&limit=10"));
     expect(ok.status).toBe(200);
   });
+
+  it("Read a tenant via admin router: GET /tenants/:id", async () => {
+    const { postel, router } = build(ALLOW);
+    await postel.outbound.tenants.setRateLimit("t_1", { perSecond: 50 });
+
+    const res = await router(req("GET", "/admin/tenants/t_1"));
+    expect(res.status).toBe(200);
+    const tenant = (await res.json()) as { id: string; rateLimit: { perSecond: number } };
+    expect(tenant.id).toBe("t_1");
+    expect(tenant.rateLimit).toEqual({ kind: "fixed", perSecond: 50 });
+  });
+
+  it("Read of an unknown tenant maps to 404 (TENANT_NOT_FOUND)", async () => {
+    const { router } = build(ALLOW);
+    const res = await router(req("GET", "/admin/tenants/t_nope"));
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { errorCode: string }).errorCode).toBe("TENANT_NOT_FOUND");
+  });
+
+  it("Tenant-scoped admin: a tenant-bound caller cannot read another tenant (404, no leak)", async () => {
+    const { postel, router } = build(ALLOW);
+    await postel.outbound.tenants.setRateLimit("t_2", { perSecond: 10 });
+    const asT1 = adminRouter(postel, { authorize: () => ({ allow: true, tenantId: "t_1" }) });
+    const res = await asT1(req("GET", "/admin/tenants/t_2"));
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { errorCode: string }).errorCode).toBe("TENANT_NOT_FOUND");
+  });
+
+  it("List tenants via admin router: GET /tenants paginates newest-first", async () => {
+    const { postel, router } = build(ALLOW);
+    await postel.outbound.tenants.setRateLimit("t_1", { perSecond: 1 });
+    await postel.outbound.tenants.setRateLimit("t_2", { perSecond: 2 });
+    await postel.outbound.tenants.setRateLimit("t_3", { perSecond: 3 });
+
+    const res = await router(req("GET", "/admin/tenants?limit=2"));
+    expect(res.status).toBe(200);
+    const { tenants, nextCursor } = (await res.json()) as {
+      tenants: Array<{ id: string }>;
+      nextCursor: string | null;
+    };
+    expect(tenants).toHaveLength(2);
+    expect(nextCursor).not.toBeNull();
+
+    const second = await router(req("GET", `/admin/tenants?limit=2&cursor=${nextCursor}`));
+    const body2 = (await second.json()) as { tenants: Array<{ id: string }>; nextCursor: null };
+    expect(body2.tenants).toHaveLength(1);
+    expect(body2.nextCursor).toBeNull();
+  });
+
+  it("A tenant-bound caller listing tenants sees only its own tenant", async () => {
+    const { postel, router } = build(ALLOW);
+    await postel.outbound.tenants.setRateLimit("t_1", { perSecond: 1 });
+    await postel.outbound.tenants.setRateLimit("t_2", { perSecond: 2 });
+    const asT1 = adminRouter(postel, { authorize: () => ({ allow: true, tenantId: "t_1" }) });
+
+    const res = await asT1(req("GET", "/admin/tenants"));
+    expect(res.status).toBe(200);
+    const { tenants, nextCursor } = (await res.json()) as {
+      tenants: Array<{ id: string }>;
+      nextCursor: string | null;
+    };
+    expect(tenants.map((t) => t.id)).toEqual(["t_1"]);
+    expect(nextCursor).toBeNull();
+  });
+
+  it("List tenants rejects a malformed limit or cursor with 400 (not 500)", async () => {
+    const { router } = build(ALLOW);
+    for (const bad of ["-1", "0", "1.5", "abc"]) {
+      const res = await router(req("GET", `/admin/tenants?limit=${bad}`));
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+    }
+
+    const badCursor = await router(req("GET", "/admin/tenants?cursor=not-a-valid-cursor"));
+    expect(badCursor.status).toBe(400);
+    expect(((await badCursor.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+  });
 });

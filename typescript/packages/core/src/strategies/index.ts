@@ -25,3 +25,6 @@ export type {
   VaultOptions,
   PlaintextKmsOptions,
 } from "./kms.js";
+
+export { FixedRate } from "./rate-limit.js";
+export type { RateLimitStrategy, FixedRateOptions } from "./rate-limit.js";

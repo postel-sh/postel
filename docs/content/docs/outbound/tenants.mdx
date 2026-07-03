@@ -1,0 +1,60 @@
+---
+title: Tenants
+description: Read a tenant back — its rate limit, metadata, and creation time — and list tenants with cursor pagination.
+---
+
+Postel scopes rows to a tenant and lets you cap dispatch throughput per tenant (`setRateLimit`), but until now there was no way to read a tenant back. The `tenants` read surface fixes that: `get` and `list` mirror the [message introspection](/docs/outbound/messages) reads, for tenants.
+
+`postel.outbound.tenants` has two reads, alongside the existing `setRateLimit` / `delete` writes. All reads are read-only; none mutate.
+
+## Read one tenant
+
+```ts
+const tenant = await postel.outbound.tenants.get("t_42");
+// => undefined when no tenant matches the id (no throw)
+
+tenant?.id;         // "t_42"
+tenant?.rateLimit;  // { kind: "fixed", perSecond: 50 } | null
+tenant?.metadata;   // the raw metadata blob, or null
+tenant?.createdAt;  // Date
+```
+
+`get` returns the tenant or `undefined` when the id is unknown — never a throw.
+
+### `rateLimit` is a strategy, not a bare number
+
+`rateLimit` is a `RateLimitStrategy` — the same `kind`-discriminated shape as `RetryStrategy` / `KmsStrategy` / `WorkerStrategy` elsewhere in the library — rather than a bare `{ perSecond }` object. Today `FixedRate({ perSecond })` (`kind: "fixed"`) is the only variant, matching what `setRateLimit` already configures:
+
+```ts
+await postel.outbound.tenants.setRateLimit("t_42", { perSecond: 50 });
+
+const tenant = await postel.outbound.tenants.get("t_42");
+tenant?.rateLimit; // { kind: "fixed", perSecond: 50 }
+```
+
+`rateLimit` is `null` when the tenant has no rate limit configured. `setRateLimit`'s call signature is unchanged — this only affects what reads hand back, leaving room for additional strategies later without another breaking change.
+
+## List tenants (paginated)
+
+```ts
+const page = await postel.outbound.tenants.list({ limit: 50 });
+
+page.items;       // ReadonlyArray<Tenant>, newest-first
+page.nextCursor;  // an opaque string, or null on the last page
+```
+
+`list` returns tenants newest-first, bounded by `limit` (default 100), using an opaque keyset cursor rather than an offset — the tenants table isn't assumed to be low-cardinality. Walk every page by feeding `nextCursor` back in as `cursor`:
+
+```ts
+let cursor: string | undefined;
+const allTenants = [];
+do {
+  const page = await postel.outbound.tenants.list({ limit: 100, ...(cursor ? { cursor } : {}) });
+  allTenants.push(...page.items);
+  cursor = page.nextCursor ?? undefined;
+} while (cursor);
+```
+
+## Over HTTP
+
+The same two reads are exposed by the [admin API](/docs/outbound/admin) as `GET /tenants` (`?limit=`, `?cursor=`) and `GET /tenants/:id`. Those routes are tenant-scoped from the `authorize` decision — a tenant-bound caller listing tenants sees only its own tenant record — and an unknown or cross-tenant id responds `404 TENANT_NOT_FOUND`.

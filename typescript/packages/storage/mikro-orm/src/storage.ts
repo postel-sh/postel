@@ -20,11 +20,13 @@ import type {
   ReservedMessage,
   Storage,
   TenantId,
+  TenantListFilter,
   TenantRecord,
 } from "@postel/core";
 import {
   type ColumnCodec,
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_TENANT_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
   MYSQL_MIGRATIONS,
@@ -40,11 +42,14 @@ import {
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
+  decodeTenant,
+  decodeTenantCursor,
   decodeTimestamp,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
   encodeSecretInsert,
+  encodeTenantCursor,
 } from "@postel/storage-helpers";
 
 export type MikroOrmDialect = "postgres" | "mysql" | "sqlite";
@@ -705,25 +710,36 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
           return rec;
         });
       },
-      async get(tenantId) {
-        const res = await rows<{
-          id: string;
-          metadata: unknown;
-          created_at: number | string | Date;
-        }>(`select * from tenants where id = ${isPg ? "$1" : "?"}`, [tenantId]);
+      async get(tenantId, opts) {
+        const res = await rows<Record<string, unknown>>(
+          `select * from tenants where id = ${isPg ? "$1" : "?"}`,
+          [tenantId],
+          opts?.tx,
+        );
         const row = res[0];
-        if (!row) return undefined;
-        const metadata =
-          row.metadata === null || row.metadata === undefined
-            ? null
-            : typeof row.metadata === "string"
-              ? (JSON.parse(row.metadata) as Record<string, unknown>)
-              : (row.metadata as Record<string, unknown>);
-        return {
-          id: row.id,
-          metadata,
-          createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
-        };
+        return row ? decodeTenant(row, codec) : undefined;
+      },
+      async list(filter: TenantListFilter) {
+        const p = new Params();
+        const conds = ["1 = 1"];
+        if (filter.cursor !== undefined) {
+          const { createdAt, id } = decodeTenantCursor(filter.cursor);
+          const c1 = p.add(tsParam(createdAt));
+          const c2 = p.add(tsParam(createdAt));
+          const idP = p.add(id);
+          conds.push(`(created_at < ${c1} or (created_at = ${c2} and id < ${idP}))`);
+        }
+        const limit = filter.limit ?? DEFAULT_TENANT_LIST_LIMIT;
+        const limitPlaceholder = p.add(limit + 1);
+        const res = await rows<Record<string, unknown>>(
+          `select * from tenants where ${conds.join(" and ")} order by created_at desc, id desc limit ${limitPlaceholder}`,
+          p.values,
+        );
+        const decoded = res.map((row) => decodeTenant(row, codec));
+        const items = decoded.slice(0, limit);
+        const last = items[items.length - 1];
+        const nextCursor = decoded.length > limit && last ? encodeTenantCursor(last) : null;
+        return { items, nextCursor };
       },
       async delete(tenantId, opts) {
         await atomic(opts?.tx, async (ctx) => {

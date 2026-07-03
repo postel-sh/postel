@@ -1,3 +1,5 @@
+import type { CursorOptions, Page } from "../pagination.js";
+
 export type MessageId = string;
 export type EndpointId = string;
 export type AttemptId = string;
@@ -191,6 +193,10 @@ export interface MessageListFilter {
   readonly limit?: number;
 }
 
+// Filter for the tenant-read list. Results are newest-first and keyset-cursor
+// paginated (not offset-based) — the tenants table is not assumed low-cardinality.
+export interface TenantListFilter extends CursorOptions {}
+
 export interface EndpointStateTransition {
   readonly id: string;
   readonly endpointId: EndpointId;
@@ -334,7 +340,8 @@ export interface Storage<TTx = unknown> {
       metadata: Readonly<Record<string, unknown>> | null,
       opts?: HostTxOption<TTx>,
     ): Promise<TenantRecord>;
-    get(tenantId: TenantId): Promise<TenantRecord | undefined>;
+    get(tenantId: TenantId, opts?: HostTxOption<TTx>): Promise<TenantRecord | undefined>;
+    list(filter: TenantListFilter): Promise<Page<TenantRecord>>;
     delete(tenantId: TenantId, opts?: HostTxOption<TTx>): Promise<void>;
   };
 

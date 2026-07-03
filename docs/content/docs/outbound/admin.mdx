@@ -64,7 +64,7 @@ app.all("/admin/*", fetchToFastify(admin));
 
 `authorize` is effectively required: with none configured, **every request is 403** (and logs once). It receives the raw `Request`, so read whatever you authenticate with — bearer token, mTLS header, cookie. Return `true`/`false`, or `{ allow, status?, tenantId? }` to choose `401` vs `403` and bind the caller to a tenant.
 
-When `authorize` returns a `tenantId`, every route is scoped to it: lists and creates are constrained, and by-id routes return **404** (not 403) for another tenant's resources — so the API never leaks which ids exist in other tenants. Prefer transport auth in front? Run it and pass `authorize: () => true`.
+When `authorize` returns a `tenantId`, every route is scoped to it: lists and creates are constrained, and by-id **read** routes return **404** (not 403) for another tenant's resources — so the API never leaks which ids exist in other tenants. The tenant *write* routes (`POST /tenants/:id/rate-limit`, `DELETE /tenants/:id`) are the one exception: they respond `403` on cross-tenant access rather than `404`. Prefer transport auth in front? Run it and pass `authorize: () => true`.
 
 ## Routes
 
@@ -76,11 +76,13 @@ When `authorize` returns a `tenantId`, every route is scoped to it: lists and cr
 | `POST /endpoints/:id/rotate-secret` | rotate signing secret |
 | `POST /replay` · `POST /reconcile` | replay · reconcile |
 | `POST /tenants/:id/rate-limit` · `DELETE /tenants/:id` | tenant rate limit · delete |
+| `GET /tenants` | list tenants, paginated (`?limit=`, `?cursor=`) |
+| `GET /tenants/:id` | fetch one tenant, including its decoded `rateLimit` |
 | `POST /keys/symmetric` · `POST /keys/asymmetric` | generate signing keys |
 | `GET /messages` | list messages (`?type=`, `?status=`, `?since=`, `?until=`, `?limit=`) |
 | `GET /messages/:id` | fetch one message, including its payload |
 | `GET /messages/:id/attempts` | the message's delivery-attempt history |
 
-Failures map to status by `PostelError.code` — `ENDPOINT_NOT_FOUND` → 404, `ENDPOINT_VALIDATION` → 422, `ENDPOINT_DISABLED` → 409, `MIGRATION_REQUIRED` → 503 — with a `{ errorCode, error }` JSON body. A read for a message id that doesn't exist (or is outside the caller's tenant) responds `404` with `errorCode: "MESSAGE_NOT_FOUND"`. Code-only endpoint options (`filter`, `transform`, callable `headers`) aren't configurable over HTTP; set them in your `Postel` config.
+Failures map to status by `PostelError.code` — `ENDPOINT_NOT_FOUND` → 404, `ENDPOINT_VALIDATION` → 422, `ENDPOINT_DISABLED` → 409, `MIGRATION_REQUIRED` → 503 — with a `{ errorCode, error }` JSON body. A read for a message id that doesn't exist (or is outside the caller's tenant) responds `404` with `errorCode: "MESSAGE_NOT_FOUND"`; the same goes for a tenant id, with `errorCode: "TENANT_NOT_FOUND"`. A malformed `GET /tenants?cursor=` responds `400` with `errorCode: "INVALID_QUERY"`. Code-only endpoint options (`filter`, `transform`, callable `headers`) aren't configurable over HTTP; set them in your `Postel` config.
 
-The read routes (`GET /messages…`) are the HTTP projection of the [message introspection API](/docs/outbound/messages) and are tenant-scoped exactly like the control-plane routes: a tenant-bound caller sees only its own tenant's messages and attempts.
+The read routes (`GET /messages…`, `GET /tenants…`) are the HTTP projection of the [message introspection](/docs/outbound/messages) and [tenant read](/docs/outbound/tenants) APIs, and are tenant-scoped exactly like the control-plane routes: a tenant-bound caller sees only its own tenant's messages, attempts, and tenant record — listing tenants as a bound caller returns at most that one tenant.

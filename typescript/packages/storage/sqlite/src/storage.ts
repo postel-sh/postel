@@ -20,10 +20,12 @@ import type {
   ReservedMessage,
   Storage,
   TenantId,
+  TenantListFilter,
   TenantRecord,
 } from "@postel/core";
 import {
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_TENANT_LIST_LIMIT,
   SQLITE_CAPABILITIES,
   SQLITE_CODEC,
   SQLITE_MIGRATIONS,
@@ -34,10 +36,13 @@ import {
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
+  decodeTenant,
+  decodeTenantCursor,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
   encodeSecretInsert,
+  encodeTenantCursor,
 } from "@postel/storage-helpers";
 import DatabaseConstructor, { type Database } from "better-sqlite3";
 
@@ -648,17 +653,31 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
           return rec;
         });
       },
-      async get(tenantId) {
+      async get(tenantId, _opts) {
         const row = db.prepare("SELECT * FROM tenants WHERE id = ?").get(tenantId) as
-          | { id: string; metadata: string | null; created_at: string }
+          | Record<string, unknown>
           | undefined;
-        if (!row) return undefined;
-        return {
-          id: row.id,
-          metadata:
-            row.metadata === null ? null : (JSON.parse(row.metadata) as Record<string, unknown>),
-          createdAt: new Date(row.created_at),
-        };
+        return row ? decodeTenant(row, codec) : undefined;
+      },
+      async list(filter: TenantListFilter) {
+        const clauses: string[] = [];
+        const values: unknown[] = [];
+        if (filter.cursor !== undefined) {
+          const { createdAt, id } = decodeTenantCursor(filter.cursor);
+          clauses.push("(created_at < ? OR (created_at = ? AND id < ?))");
+          values.push(iso(createdAt), iso(createdAt), id);
+        }
+        const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+        const limit = filter.limit ?? DEFAULT_TENANT_LIST_LIMIT;
+        values.push(limit + 1);
+        const rows = db
+          .prepare(`SELECT * FROM tenants ${where} ORDER BY created_at DESC, id DESC LIMIT ?`)
+          .all(...values) as Record<string, unknown>[];
+        const decoded = rows.map((row) => decodeTenant(row, codec));
+        const items = decoded.slice(0, limit);
+        const last = items[items.length - 1];
+        const nextCursor = decoded.length > limit && last ? encodeTenantCursor(last) : null;
+        return { items, nextCursor };
       },
       async delete(tenantId, opts) {
         atomic(opts?.tx, () => {

@@ -19,11 +19,13 @@ import type {
   ReservedMessage,
   Storage,
   TenantId,
+  TenantListFilter,
   TenantRecord,
 } from "@postel/core";
 import {
   type ColumnCodec,
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_TENANT_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
   MYSQL_MIGRATIONS,
@@ -39,10 +41,13 @@ import {
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
+  decodeTenant,
+  decodeTenantCursor,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
   encodeSecretInsert,
+  encodeTenantCursor,
 } from "@postel/storage-helpers";
 import { type Kysely, type Transaction, sql } from "kysely";
 
@@ -601,21 +606,29 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
           return rec;
         });
       },
-      async get(tenantId) {
-        const res = await sql<{
-          id: string;
-          metadata: unknown;
-          created_at: string | Date;
-        }>`select * from tenants where id = ${tenantId}`.execute(db);
+      async get(tenantId, opts) {
+        const res = await sql<Record<string, unknown>>`select * from tenants
+          where id = ${tenantId}`.execute(exec(opts));
         const row = res.rows[0];
-        if (!row) return undefined;
-        const metadata =
-          row.metadata === null || row.metadata === undefined
-            ? null
-            : typeof row.metadata === "string"
-              ? (JSON.parse(row.metadata) as Record<string, unknown>)
-              : (row.metadata as Record<string, unknown>);
-        return { id: row.id, metadata, createdAt: new Date(row.created_at) };
+        return row ? decodeTenant(row, codec) : undefined;
+      },
+      async list(filter: TenantListFilter) {
+        const conds = [sql`1 = 1`];
+        if (filter.cursor !== undefined) {
+          const { createdAt, id } = decodeTenantCursor(filter.cursor);
+          conds.push(
+            sql`(created_at < ${tsParam(createdAt)} or (created_at = ${tsParam(createdAt)} and id < ${id}))`,
+          );
+        }
+        const where = sql.join(conds, sql` and `);
+        const limit = filter.limit ?? DEFAULT_TENANT_LIST_LIMIT;
+        const res = await sql<Record<string, unknown>>`select * from tenants where ${where}
+          order by created_at desc, id desc limit ${limit + 1}`.execute(db);
+        const decoded = res.rows.map((row) => decodeTenant(row, codec));
+        const items = decoded.slice(0, limit);
+        const last = items[items.length - 1];
+        const nextCursor = decoded.length > limit && last ? encodeTenantCursor(last) : null;
+        return { items, nextCursor };
       },
       async delete(tenantId, opts) {
         await atomic(opts?.tx, async (q) => {
