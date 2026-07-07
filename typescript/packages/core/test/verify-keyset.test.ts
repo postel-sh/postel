@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { UnknownKeyId, createKeyset, verify } from "../src/index.js";
+import { UnknownKeyId, createJwksKeyset, verify } from "../src/index.js";
+
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
 
 const NOW = new Date("2026-05-14T14:30:00Z");
 
@@ -61,36 +63,38 @@ function jwksFetcher(jwks: { keys: Array<Record<string, unknown>> }): typeof glo
 describe("JWKS consumer", () => {
   it("verify with a Keyset resolves the kid and verifies the v1a signature", async () => {
     const fixture = await buildEd25519Fixture("k-alpha");
-    const keyset = createKeyset({
+    const keyset = createJwksKeyset({
       jwksUri: "https://example/jwks",
       fetch: jwksFetcher({ keys: [fixture.publicJwk] }),
     });
 
-    const result = await verify(fixture.body, fixture.headers, keyset, { now: () => NOW });
+    const result = await verify(fixture.body, fixture.headers, keyset, { clock: fixedClock(NOW) });
     expect(result.event.type).toBe("order.shipped");
   });
 
   it("verify with a Keyset throws UnknownKeyId when the kid is not in the JWKS", async () => {
     const fixture = await buildEd25519Fixture("k-alpha");
     const other = await buildEd25519Fixture("k-other");
-    const keyset = createKeyset({
+    const keyset = createJwksKeyset({
       jwksUri: "https://example/jwks",
       fetch: jwksFetcher({ keys: [other.publicJwk] }),
     });
 
     await expect(
-      verify(fixture.body, fixture.headers, keyset, { now: () => NOW }),
+      verify(fixture.body, fixture.headers, keyset, { clock: fixedClock(NOW) }),
     ).rejects.toBeInstanceOf(UnknownKeyId);
   });
 
   it("verify with a Keyset throws when the webhook-key-id header is missing", async () => {
     const fixture = await buildEd25519Fixture("k-alpha");
     const { "webhook-key-id": _kid, ...headers } = fixture.headers;
-    const keyset = createKeyset({
+    const keyset = createJwksKeyset({
       jwksUri: "https://example/jwks",
       fetch: jwksFetcher({ keys: [fixture.publicJwk] }),
     });
-    await expect(verify(fixture.body, headers, keyset, { now: () => NOW })).rejects.toMatchObject({
+    await expect(
+      verify(fixture.body, headers, keyset, { clock: fixedClock(NOW) }),
+    ).rejects.toMatchObject({
       code: "MALFORMED_HEADER",
     });
   });

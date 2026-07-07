@@ -1,5 +1,5 @@
 import { bodyToText, parseEvent } from "../internal/event.js";
-import { createKeyset } from "../keyset.js";
+import { createJwksKeyset } from "../keyset.js";
 import type { KeysetOptions, VerifyOptions, VerifyResult, WebhookHeaders } from "../types.js";
 import { verify } from "../verify.js";
 
@@ -24,7 +24,7 @@ export function PublicKey(value: string): Verifier {
 }
 
 export function Keyset(opts: KeysetOptions): Verifier {
-  const keyset = createKeyset(opts);
+  const keyset = createJwksKeyset(opts);
   return {
     verify: (rawBody, headers, options) => verify(rawBody, headers, keyset, options),
   };

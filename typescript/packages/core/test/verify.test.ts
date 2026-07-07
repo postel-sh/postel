@@ -8,6 +8,8 @@ import {
   verify,
 } from "../src/index.js";
 
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
+
 const TEST_SECRET_A = "whsec_ZGVtby1zZWNyZXQtYS1mb3ItcG9zdGVsLXRlc3Q=";
 const TEST_SECRET_B = "whsec_ZGVtby1zZWNyZXQtYi1mb3ItcG9zdGVsLXRlc3Q=";
 
@@ -28,7 +30,7 @@ describe("Verify returns parsed event or structured error", () => {
         timestamp: FIXED_NOW,
       });
 
-      const result = await verify(body, headers, TEST_SECRET_A, { now: () => FIXED_NOW });
+      const result = await verify(body, headers, TEST_SECRET_A, { clock: fixedClock(FIXED_NOW) });
 
       expect(result.event.type).toBe("order.created");
       expect(result.event.timestamp).toBe("2026-05-14T10:00:00Z");
@@ -45,7 +47,7 @@ describe("Verify returns parsed event or structured error", () => {
       const malformedHeaders = { ...headers, "webhook-signature": "garbage-no-comma" };
 
       await expect(
-        verify(body, malformedHeaders, TEST_SECRET_A, { now: () => FIXED_NOW }),
+        verify(body, malformedHeaders, TEST_SECRET_A, { clock: fixedClock(FIXED_NOW) }),
       ).rejects.toBeInstanceOf(MalformedHeader);
     });
 
@@ -58,7 +60,7 @@ describe("Verify returns parsed event or structured error", () => {
       const malformedHeaders = { ...headers, "webhook-signature": "" };
 
       await expect(
-        verify(body, malformedHeaders, TEST_SECRET_A, { now: () => FIXED_NOW }),
+        verify(body, malformedHeaders, TEST_SECRET_A, { clock: fixedClock(FIXED_NOW) }),
       ).rejects.toMatchObject({ code: "MALFORMED_HEADER" });
     });
 
@@ -71,7 +73,7 @@ describe("Verify returns parsed event or structured error", () => {
       const { "webhook-id": _omit, ...rest } = headers;
 
       await expect(
-        verify(body, rest, TEST_SECRET_A, { now: () => FIXED_NOW }),
+        verify(body, rest, TEST_SECRET_A, { clock: fixedClock(FIXED_NOW) }),
       ).rejects.toMatchObject({ code: "MALFORMED_HEADER" });
     });
 
@@ -84,7 +86,7 @@ describe("Verify returns parsed event or structured error", () => {
       const tampered = body.replace("order_42", "order_43");
 
       await expect(
-        verify(tampered, headers, TEST_SECRET_A, { now: () => FIXED_NOW }),
+        verify(tampered, headers, TEST_SECRET_A, { clock: fixedClock(FIXED_NOW) }),
       ).rejects.toBeInstanceOf(SignatureInvalid);
     });
 
@@ -96,7 +98,7 @@ describe("Verify returns parsed event or structured error", () => {
       });
       try {
         await verify(body.replace("order_42", "order_43"), headers, TEST_SECRET_A, {
-          now: () => FIXED_NOW,
+          clock: fixedClock(FIXED_NOW),
         });
         throw new Error("verify should have thrown");
       } catch (err) {
@@ -116,7 +118,7 @@ describe("Multi-secret window", () => {
     });
 
     const result = await verify(signed.body, signed.headers, [TEST_SECRET_A, TEST_SECRET_B], {
-      now: () => FIXED_NOW,
+      clock: fixedClock(FIXED_NOW),
     });
 
     expect(result.matchedSecretIndex).toBe(1);
@@ -129,7 +131,7 @@ describe("Multi-secret window", () => {
       timestamp: FIXED_NOW,
     });
     const result = await verify(signed.body, signed.headers, [TEST_SECRET_A, TEST_SECRET_B], {
-      now: () => FIXED_NOW,
+      clock: fixedClock(FIXED_NOW),
     });
     expect(result.matchedSecretIndex).toBe(0);
   });
@@ -141,7 +143,7 @@ describe("Multi-secret window", () => {
       timestamp: FIXED_NOW,
     });
     await expect(
-      verify(signed.body, signed.headers, [TEST_SECRET_B], { now: () => FIXED_NOW }),
+      verify(signed.body, signed.headers, [TEST_SECRET_B], { clock: fixedClock(FIXED_NOW) }),
     ).rejects.toBeInstanceOf(SignatureInvalid);
   });
 });
@@ -155,7 +157,7 @@ describe("Timestamp window enforcement", () => {
     });
     await expect(
       verify(signed.body, signed.headers, TEST_SECRET_A, {
-        now: () => new Date("2026-05-14T10:10:00Z"),
+        clock: fixedClock(new Date("2026-05-14T10:10:00Z")),
       }),
     ).rejects.toBeInstanceOf(TimestampTooOld);
   });
@@ -168,7 +170,7 @@ describe("Timestamp window enforcement", () => {
     });
     await expect(
       verify(signed.body, signed.headers, TEST_SECRET_A, {
-        now: () => new Date("2026-05-14T10:00:00Z"),
+        clock: fixedClock(new Date("2026-05-14T10:00:00Z")),
       }),
     ).rejects.toBeInstanceOf(TimestampTooOld);
   });
@@ -180,7 +182,7 @@ describe("Timestamp window enforcement", () => {
       timestamp: new Date("2026-05-14T10:00:00Z"),
     });
     const result = await verify(signed.body, signed.headers, TEST_SECRET_A, {
-      now: () => new Date("2026-05-14T10:04:00Z"),
+      clock: fixedClock(new Date("2026-05-14T10:04:00Z")),
     });
     expect(result.matchedSecretIndex).toBe(0);
   });
@@ -194,7 +196,7 @@ describe("Timestamp window enforcement", () => {
     await expect(
       verify(signed.body, signed.headers, TEST_SECRET_A, {
         toleranceSeconds: 30,
-        now: () => new Date("2026-05-14T10:01:00Z"),
+        clock: fixedClock(new Date("2026-05-14T10:01:00Z")),
       }),
     ).rejects.toBeInstanceOf(TimestampTooOld);
   });
@@ -210,7 +212,7 @@ describe("Replay-attack window enforcement", () => {
 
     await expect(
       verify(signed.body, signed.headers, TEST_SECRET_A, {
-        now: () => new Date("2026-05-14T10:10:01Z"),
+        clock: fixedClock(new Date("2026-05-14T10:10:01Z")),
       }),
     ).rejects.toBeInstanceOf(TimestampTooOld);
   });

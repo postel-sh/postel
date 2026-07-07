@@ -1,3 +1,5 @@
+import type { Clock } from "./clock.js";
+
 export type WebhookHeaders = Readonly<Record<string, string>>;
 
 export interface WebhookEvent<TData = unknown> {
@@ -6,11 +8,11 @@ export interface WebhookEvent<TData = unknown> {
   readonly data?: TData;
 }
 
-export type Secret = string;
+export type SecretValue = string;
 
 export interface VerifyOptions {
   readonly toleranceSeconds?: number;
-  readonly now?: () => Date;
+  readonly clock?: Clock;
 }
 
 export interface VerifyResult<TData = unknown> {
@@ -39,12 +41,12 @@ export interface KeysetOptions {
   readonly fetch?: typeof globalThis.fetch;
 }
 
-export interface Keyset {
+export interface JwksKeyset {
   readonly findByKid: (kid: string) => Promise<Jwk | undefined>;
   readonly refresh: () => Promise<void>;
 }
 
-export type SecretOrKeyset = Secret | ReadonlyArray<Secret> | Keyset;
+export type SecretOrJwksKeyset = SecretValue | ReadonlyArray<SecretValue> | JwksKeyset;
 
 export interface JwksHandlerOptions {
   readonly keys: ReadonlyArray<Jwk>;
@@ -73,7 +75,7 @@ export interface DedupAdapter {
 }
 
 export interface SignFixtureOptions<TData = unknown> {
-  readonly secret: Secret;
+  readonly secret: SecretValue;
   readonly payload: WebhookEvent<TData>;
   readonly messageId?: string;
   readonly timestamp?: Date;

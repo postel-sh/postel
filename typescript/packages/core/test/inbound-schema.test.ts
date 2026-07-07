@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { EventValidation, Postel, Secret, signFixture } from "../src/index.js";
 
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
+
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
 
@@ -21,7 +23,7 @@ describe("Per-source event schema validation", () => {
         orders: {
           verify: Secret(SECRET),
           schema: z.object({ id: z.string(), total: z.number() }),
-          now: () => NOW,
+          clock: fixedClock(NOW),
         },
       },
     });
@@ -38,7 +40,11 @@ describe("Per-source event schema validation", () => {
   it("a payload that fails the schema throws EventValidation after the signature check", async () => {
     const postel = Postel({
       inbound: {
-        orders: { verify: Secret(SECRET), schema: z.object({ id: z.string() }), now: () => NOW },
+        orders: {
+          verify: Secret(SECRET),
+          schema: z.object({ id: z.string() }),
+          clock: fixedClock(NOW),
+        },
       },
     });
     const sig = await signed({ id: 123 });
@@ -50,7 +56,11 @@ describe("Per-source event schema validation", () => {
   it("EventValidation carries the schema issues and the EVENT_VALIDATION code", async () => {
     const postel = Postel({
       inbound: {
-        orders: { verify: Secret(SECRET), schema: z.object({ id: z.string() }), now: () => NOW },
+        orders: {
+          verify: Secret(SECRET),
+          schema: z.object({ id: z.string() }),
+          clock: fixedClock(NOW),
+        },
       },
     });
     const sig = await signed({ id: 123 });
@@ -66,7 +76,7 @@ describe("Per-source event schema validation", () => {
   });
 
   it("a source without a schema verifies unchanged", async () => {
-    const postel = Postel({ inbound: { raw: { verify: Secret(SECRET), now: () => NOW } } });
+    const postel = Postel({ inbound: { raw: { verify: Secret(SECRET), clock: fixedClock(NOW) } } });
     const sig = await signed({ anything: true });
     const result = await postel.inbound.raw.verify(sig.body, { ...sig.headers });
     expect(result.event.type).toBe("order.created");

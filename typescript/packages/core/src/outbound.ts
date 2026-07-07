@@ -14,6 +14,7 @@ import { sendImpl } from "./sender/send.js";
 import { WorkerPool } from "./sender/worker/pool.js";
 import type {
   AttemptStatus,
+  MessageId,
   MessageListFilter,
   MessageStatus,
   Storage,
@@ -82,7 +83,7 @@ export interface EphemeralKeysDefaults {
   readonly rotateEvery: number | string;
 }
 
-export type MessageId = string;
+export type { MessageId };
 
 export interface SendResult {
   readonly id: MessageId;
@@ -270,8 +271,8 @@ export type TenantPage = Page<Tenant>;
 export interface OutboundApi<TTx = unknown> {
   send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<SendResult>;
   endpoints: {
-    create(opts: EndpointCreateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
-    update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
+    create(opts: EndpointCreateOptions & { tx?: TTx }): Promise<Endpoint>;
+    update(id: string, opts: EndpointUpdateOptions & { tx?: TTx }): Promise<Endpoint>;
     delete(id: string, opts?: { purgeAttempts?: boolean; tx?: TTx }): Promise<void>;
     list(opts?: EndpointListOptions<TTx>): Promise<Page<Endpoint>>;
     get(id: string, opts?: { tx?: TTx }): Promise<Endpoint>;

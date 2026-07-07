@@ -5,11 +5,13 @@ import { describe, expect, it } from "vitest";
 
 import { HonoWebAdapter, getVerified, verifyWebhook, withWebhook } from "../src/index.js";
 
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
+
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
 
 function vendor() {
-  return Postel({ inbound: { vendor: { verify: Secret(SECRET), now: () => NOW } } });
+  return Postel({ inbound: { vendor: { verify: Secret(SECRET), clock: fixedClock(NOW) } } });
 }
 
 function signed(type: string, id: string) {
@@ -114,7 +116,7 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
       },
     };
     const postel = Postel({
-      inbound: { orders: { verify: Secret(SECRET), schema, now: () => NOW } },
+      inbound: { orders: { verify: Secret(SECRET), schema, clock: fixedClock(NOW) } },
     });
     const app = new Hono();
     HonoWebAdapter(postel, app).inbound.orders.post("/webhooks/orders", (c) => {

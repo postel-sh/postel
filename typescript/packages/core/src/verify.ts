@@ -1,3 +1,4 @@
+import { systemClock } from "./clock.js";
 import {
   ConfigurationError,
   MalformedHeader,
@@ -21,9 +22,9 @@ import { isExpired } from "./internal/jwk.js";
 import { ED_PRIVATE_PREFIX, ED_PUBLIC_PREFIX, decodeSecret } from "./internal/secret.js";
 import { type ParsedSignature, parseSignatureHeader } from "./internal/signature.js";
 import type {
-  Keyset,
-  Secret,
-  SecretOrKeyset,
+  JwksKeyset,
+  SecretOrJwksKeyset,
+  SecretValue,
   VerifyOptions,
   VerifyResult,
   WebhookHeaders,
@@ -31,15 +32,15 @@ import type {
 
 const DEFAULT_TOLERANCE_SECONDS = 5 * 60;
 
-function isKeyset(value: SecretOrKeyset): value is Keyset {
+function isKeyset(value: SecretOrJwksKeyset): value is JwksKeyset {
   return typeof value === "object" && value !== null && "findByKid" in value;
 }
 
-function isSecret(value: unknown): value is Secret {
+function isSecret(value: unknown): value is SecretValue {
   return typeof value === "string";
 }
 
-function normalizeSecrets(input: SecretOrKeyset): ReadonlyArray<Secret> {
+function normalizeSecrets(input: SecretOrJwksKeyset): ReadonlyArray<SecretValue> {
   if (isSecret(input)) return [input];
   if (Array.isArray(input) && input.every(isSecret)) {
     if (input.length === 0) {
@@ -47,7 +48,7 @@ function normalizeSecrets(input: SecretOrKeyset): ReadonlyArray<Secret> {
     }
     return input;
   }
-  throw new ConfigurationError("verify: secretOrKeyset is not a string, string[], or Keyset");
+  throw new ConfigurationError("verify: secretOrKeyset is not a string, string[], or JwksKeyset");
 }
 
 function enforceTimestampWindow(tsHeader: string, toleranceSeconds: number, now: () => Date): void {
@@ -64,17 +65,17 @@ function enforceTimestampWindow(tsHeader: string, toleranceSeconds: number, now:
 }
 
 async function verifyWithSecrets<TData>(
-  secrets: ReadonlyArray<Secret>,
+  secrets: ReadonlyArray<SecretValue>,
   tuples: ReadonlyArray<ParsedSignature>,
   canonical: Uint8Array,
   bodyText: string,
 ): Promise<VerifyResult<TData> | undefined> {
   for (let secretIndex = 0; secretIndex < secrets.length; secretIndex++) {
-    const secret = secrets[secretIndex] as Secret;
+    const secret = secrets[secretIndex] as SecretValue;
     const decoded = decodeSecret(secret);
     if (decoded.kind === "ed25519-private") {
       throw new ConfigurationError(
-        `verify: receiver-side secrets must not carry the ${ED_PRIVATE_PREFIX} prefix (use ${ED_PUBLIC_PREFIX} or a Keyset)`,
+        `verify: receiver-side secrets must not carry the ${ED_PRIVATE_PREFIX} prefix (use ${ED_PUBLIC_PREFIX} or a JwksKeyset)`,
       );
     }
     for (const tuple of tuples) {
@@ -95,7 +96,7 @@ async function verifyWithSecrets<TData>(
 }
 
 async function verifyWithKeyset<TData>(
-  keyset: Keyset,
+  keyset: JwksKeyset,
   kid: string,
   tuples: ReadonlyArray<ParsedSignature>,
   canonical: Uint8Array,
@@ -119,7 +120,7 @@ async function verifyWithKeyset<TData>(
 export async function verify<TData = unknown>(
   rawBody: ArrayBuffer | Uint8Array | string,
   headers: WebhookHeaders,
-  secretOrKeyset: SecretOrKeyset,
+  secretOrKeyset: SecretOrJwksKeyset,
   options?: VerifyOptions,
 ): Promise<VerifyResult<TData>> {
   const messageId = requireHeader(headers, ID_HEADER);
@@ -127,7 +128,8 @@ export async function verify<TData = unknown>(
   const signatureHeader = requireHeader(headers, SIGNATURE_HEADER);
 
   const tolerance = options?.toleranceSeconds ?? DEFAULT_TOLERANCE_SECONDS;
-  const now = options?.now ?? (() => new Date());
+  const clock = options?.clock ?? systemClock;
+  const now = () => clock.now();
   enforceTimestampWindow(timestamp, tolerance, now);
 
   const tuples = parseSignatureHeader(signatureHeader);
@@ -138,7 +140,7 @@ export async function verify<TData = unknown>(
     const kid = readHeader(headers, KEY_ID_HEADER);
     if (!kid) {
       throw new MalformedHeader(
-        `verify with a Keyset requires the ${KEY_ID_HEADER} header to identify which key to use`,
+        `verify with a JwksKeyset requires the ${KEY_ID_HEADER} header to identify which key to use`,
       );
     }
     return verifyWithKeyset<TData>(secretOrKeyset, kid, tuples, canonical, bodyText, now());

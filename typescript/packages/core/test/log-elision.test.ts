@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { signFixture, verify } from "../src/index.js";
 
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
+
 const SECRET = "whsec_dGVzdC1zZWNyZXQtZWxpZGUtYm9keS1mb3ItbG9ncw==";
 const NOW = new Date("2026-05-14T12:00:00Z");
 
@@ -35,7 +37,7 @@ describe("No payload contents in logs by default", () => {
       timestamp: NOW,
     });
 
-    const result = await verify(signed.body, signed.headers, SECRET, { now: () => NOW });
+    const result = await verify(signed.body, signed.headers, SECRET, { clock: fixedClock(NOW) });
 
     const allCalls = [
       ...infoSpy.mock.calls,
@@ -62,7 +64,7 @@ describe("No payload contents in logs by default", () => {
 
     await expect(
       verify(signed.body.replace("secret.event", "tampered"), signed.headers, SECRET, {
-        now: () => NOW,
+        clock: fixedClock(NOW),
       }),
     ).rejects.toBeDefined();
 
