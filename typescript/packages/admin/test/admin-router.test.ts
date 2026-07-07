@@ -364,6 +364,38 @@ describe("Admin HTTP handlers", () => {
     expect(((await badCursor.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
   });
 
+  it("A malformed date maps to 400 on the replay and reconcile routes", async () => {
+    const { router } = build(ALLOW);
+    const badReconcile = await router(
+      req("POST", "/admin/reconcile", { endpointId: "ep_recon", since: "not-a-date" }),
+    );
+    expect(badReconcile.status).toBe(400);
+    expect(((await badReconcile.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+
+    const badReplay = await router(
+      req("POST", "/admin/replay", {
+        endpointId: "ep_recon",
+        since: "not-a-date",
+        freshWebhookId: false,
+      }),
+    );
+    expect(badReplay.status).toBe(400);
+    expect(((await badReplay.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+  });
+
+  it("An explicitly empty cursor param is rejected with 400, not silently ignored", async () => {
+    const { router } = build(ALLOW);
+    for (const route of [
+      "/admin/tenants?cursor=",
+      "/admin/endpoints?cursor=",
+      "/admin/messages?cursor=",
+    ]) {
+      const res = await router(req("GET", route));
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+    }
+  });
+
   it("Tenant-scoped admin: a tenant-bound caller cannot read another tenant's message (404, no leak)", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage, ...SSRF, defaultTenantId: "t_2" } });

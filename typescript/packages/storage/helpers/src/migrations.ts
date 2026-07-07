@@ -161,7 +161,11 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
   },
 ];
 
-// Postgres dialect (>= 14). jsonb / timestamptz / bytea native. Column ALTERs
+// Postgres dialect (>= 14). jsonb / timestamptz / bytea native. The
+// keyset-ordered created_at columns (tenants / endpoints / messages) are
+// timestamptz(3): the opaque pagination cursors encode millisecond ISO-8601,
+// so sub-ms stored values would silently drop rows from paginated walks
+// (ADR 0015). Column ALTERs
 // use IF NOT EXISTS so the migration set is idempotent even without the version
 // gate. Mirrors specs/db-schema/ — except the canonical FOREIGN KEY constraints
 // are intentionally not declared: the library maintains referential integrity
@@ -180,7 +184,7 @@ CREATE TABLE IF NOT EXISTS _postel_meta (
 CREATE TABLE IF NOT EXISTS tenants (
   id         text PRIMARY KEY,
   metadata   jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz(3) NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS endpoints (
@@ -194,7 +198,7 @@ CREATE TABLE IF NOT EXISTS endpoints (
   headers      jsonb,
   signing      jsonb,
   metadata     jsonb,
-  created_at   timestamptz NOT NULL DEFAULT now(),
+  created_at   timestamptz(3) NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS endpoints_tenant_idx ON endpoints (tenant_id);
@@ -221,7 +225,7 @@ CREATE TABLE IF NOT EXISTS messages (
   idempotency_key  text,
   version          text,
   ttl_seconds      integer,
-  created_at       timestamptz NOT NULL DEFAULT now(),
+  created_at       timestamptz(3) NOT NULL DEFAULT now(),
   expires_at       timestamptz,
   reserved_by      text,
   reserved_at      timestamptz,
@@ -324,6 +328,13 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
 // quoted; adapters split this SQL on `;` and run each statement (mysql2 does
 // not allow multiple statements per query by default). Like the other dialects
 // the canonical FOREIGN KEY constraints are intentionally not declared.
+// Every table pins DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin: ids are
+// mixed-case opaque tokens compared and keyset-ordered byte-wise (ADR 0015);
+// the utf8mb4_0900_ai_ci server default is case-insensitive, which makes
+// distinct ids compare equal and breaks the pagination id tie-break. One
+// collation across all tables also keeps id joins/subqueries mix-free.
+// Timestamps are BIGINT epoch-milliseconds, which is already exactly the
+// millisecond precision the keyset cursors require.
 export const MYSQL_MIGRATIONS: ReadonlyArray<Migration> = [
   {
     version: 1,
@@ -332,13 +343,13 @@ export const MYSQL_MIGRATIONS: ReadonlyArray<Migration> = [
 CREATE TABLE IF NOT EXISTS _postel_meta (
   \`key\` VARCHAR(191) PRIMARY KEY,
   value  TEXT NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS tenants (
   id         VARCHAR(191) PRIMARY KEY,
   metadata   JSON,
   created_at BIGINT NOT NULL
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS endpoints (
   id           VARCHAR(191) PRIMARY KEY,
@@ -355,7 +366,7 @@ CREATE TABLE IF NOT EXISTS endpoints (
   updated_at   BIGINT NOT NULL,
   INDEX endpoints_tenant_idx (tenant_id),
   INDEX endpoints_state_idx (state)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS endpoint_secrets (
   id              VARCHAR(191) PRIMARY KEY,
@@ -367,7 +378,7 @@ CREATE TABLE IF NOT EXISTS endpoint_secrets (
   not_after       BIGINT,
   created_at      BIGINT NOT NULL,
   INDEX endpoint_secrets_endpoint_idx (endpoint_id, priority)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS messages (
   id               VARCHAR(191) PRIMARY KEY,
@@ -386,7 +397,7 @@ CREATE TABLE IF NOT EXISTS messages (
   status           VARCHAR(191) NOT NULL DEFAULT 'pending',
   UNIQUE KEY messages_tenant_idem_idx (tenant_id, idempotency_key),
   INDEX messages_pending_idx (status, created_at)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS attempts (
   id               VARCHAR(191) PRIMARY KEY,
@@ -408,7 +419,7 @@ CREATE TABLE IF NOT EXISTS attempts (
   INDEX attempts_endpoint_idx (endpoint_id, scheduled_for),
   INDEX attempts_tenant_idx (tenant_id),
   INDEX attempts_status_idx (status)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE TABLE IF NOT EXISTS endpoint_state_transitions (
   id          VARCHAR(191) PRIMARY KEY,
@@ -420,7 +431,7 @@ CREATE TABLE IF NOT EXISTS endpoint_state_transitions (
   metadata    JSON,
   occurred_at BIGINT NOT NULL,
   INDEX endpoint_state_transitions_endpoint_idx (endpoint_id, occurred_at)
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 CREATE OR REPLACE VIEW dead_letter AS SELECT a.* FROM attempts a WHERE a.status = 'dead-letter';
 

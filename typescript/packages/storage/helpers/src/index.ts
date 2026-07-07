@@ -275,22 +275,21 @@ export function decodeTenant(row: Row, codec: ColumnCodec): TenantRecord {
 
 // Opaque keyset cursor over `(createdAt, id)` — the one pagination convention
 // every list-returning read shares (endpoints, messages, tenants, reconcile;
-// see ADR 0015): base64url of "${createdAtISO} ${id}". Decoding splits on the
-// FIRST space only (not `.split(" ")`) because an id may itself contain a
-// space; the ISO timestamp never does, so the first occurrence unambiguously
-// separates them.
+// see ADR 0015): base64url of "${createdAtISO} ${id}". Millisecond ISO-8601 is
+// the pinned cursor precision — the keyset-ordered created_at columns are
+// stored at ms precision (timestamptz(3) / epoch-ms / ms ISO text) so stored
+// values round-trip the cursor exactly. Decoding splits on the FIRST space
+// only (not `.split(" ")`) because an id may itself contain a space; the ISO
+// timestamp never does, so the first occurrence unambiguously separates them.
 export function encodeKeysetCursor(rec: { readonly id: string; readonly createdAt: Date }): string {
   const raw = `${rec.createdAt.toISOString()} ${rec.id}`;
   return Buffer.from(raw, "utf8").toString("base64url");
 }
 
 export function decodeKeysetCursor(str: string): { createdAt: Date; id: string } {
-  let raw: string;
-  try {
-    raw = Buffer.from(str, "base64url").toString("utf8");
-  } catch {
-    throw new TypeError(`storage-helpers: cannot decode keyset cursor from ${JSON.stringify(str)}`);
-  }
+  // Buffer.from(str, "base64url") never throws — it skips invalid characters —
+  // so malformed input is caught by the shape checks below, not a try/catch.
+  const raw = Buffer.from(str, "base64url").toString("utf8");
   const sep = raw.indexOf(" ");
   if (sep < 0) {
     throw new TypeError(`storage-helpers: cannot decode keyset cursor from ${JSON.stringify(str)}`);

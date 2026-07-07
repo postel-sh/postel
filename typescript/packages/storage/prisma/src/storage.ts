@@ -444,38 +444,41 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
       }
     },
 
+    // One bounded query: candidates are messages with no delivered-latest
+    // attempt for the endpoint, keyset-continued and LIMITed in SQL — a
+    // recurring reconcile job never scans the whole since-range.
     async reconcile(filter: ReconcileFilter) {
       await ready();
       const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
       const p = new Params();
-      const conds = [`created_at >= ${p.add(tsParam(filter.since))}`];
-      if (filter.tenantId !== undefined) conds.push(`tenant_id = ${p.add(filter.tenantId)}`);
+      const conds = [`m.created_at >= ${p.add(tsParam(filter.since))}`];
+      if (filter.tenantId !== undefined) conds.push(`m.tenant_id = ${p.add(filter.tenantId)}`);
       if (filter.cursor !== undefined) {
         const { createdAt, id } = decodeKeysetCursor(filter.cursor);
         const ts1 = p.add(tsParam(createdAt));
         const ts2 = p.add(tsParam(createdAt));
-        conds.push(`(created_at > ${ts1} or (created_at = ${ts2} and id > ${p.add(id)}))`);
+        conds.push(`(m.created_at > ${ts1} or (m.created_at = ${ts2} and m.id > ${p.add(id)}))`);
       }
+      const ep = p.add(filter.endpointId);
+      const limitPlaceholder = p.add(limit + 1);
       const rows = await prisma.$queryRawUnsafe<{ id: string; created_at: unknown }>(
-        `select id, created_at from messages where ${conds.join(" and ")} order by created_at, id`,
+        `select m.id, m.created_at from messages m
+         where ${conds.join(" and ")}
+           and not exists (
+             select 1 from attempts a
+             where a.message_id = m.id and a.endpoint_id = ${ep} and a.status = 'success'
+               and a.attempt_number = (
+                 select max(a2.attempt_number) from attempts a2
+                 where a2.message_id = m.id and a2.endpoint_id = a.endpoint_id
+               )
+           )
+         order by m.created_at, m.id limit ${limitPlaceholder}`,
         ...p.values,
       );
-      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
-      for (const row of rows) {
-        // Overfetch by one so the page slice can prove another page exists.
-        if (candidates.length > limit) break;
-        const lp = new Params();
-        const last = await prisma.$queryRawUnsafe<{ status: string }>(
-          `select status from attempts where message_id = ${lp.add(row.id)} and endpoint_id = ${lp.add(filter.endpointId)} order by attempt_number desc limit 1`,
-          ...lp.values,
-        );
-        if (last.length === 0 || last[0]?.status !== "success") {
-          candidates.push({
-            id: row.id,
-            createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
-          });
-        }
-      }
+      const candidates = rows.map((row) => ({
+        id: row.id as MessageId,
+        createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
+      }));
       const page = pageFromRows(candidates, limit);
       return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },

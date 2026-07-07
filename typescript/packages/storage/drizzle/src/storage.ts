@@ -497,38 +497,39 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
       }
     },
 
+    // One bounded query: candidates are messages with no delivered-latest
+    // attempt for the endpoint, keyset-continued and LIMITed in SQL — a
+    // recurring reconcile job never scans the whole since-range.
     async reconcile(filter: ReconcileFilter) {
       await ready();
       const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
-      const conds = [sql`created_at >= ${tsParam(filter.since)}`];
-      if (filter.tenantId !== undefined) conds.push(sql`tenant_id = ${filter.tenantId}`);
+      const conds = [sql`m.created_at >= ${tsParam(filter.since)}`];
+      if (filter.tenantId !== undefined) conds.push(sql`m.tenant_id = ${filter.tenantId}`);
       if (filter.cursor !== undefined) {
         const { createdAt, id } = decodeKeysetCursor(filter.cursor);
         conds.push(
-          sql`(created_at > ${tsParam(createdAt)} or (created_at = ${tsParam(createdAt)} and id > ${id}))`,
+          sql`(m.created_at > ${tsParam(createdAt)} or (m.created_at = ${tsParam(createdAt)} and m.id > ${id}))`,
         );
       }
       const where = sql.join(conds, sql` and `);
       const res = await rows<{ id: string; created_at: unknown }>(
         db,
-        sql`select id, created_at from messages where ${where} order by created_at, id`,
+        sql`select m.id, m.created_at from messages m
+          where ${where}
+            and not exists (
+              select 1 from attempts a
+              where a.message_id = m.id and a.endpoint_id = ${filter.endpointId} and a.status = 'success'
+                and a.attempt_number = (
+                  select max(a2.attempt_number) from attempts a2
+                  where a2.message_id = m.id and a2.endpoint_id = a.endpoint_id
+                )
+            )
+          order by m.created_at, m.id limit ${limit + 1}`,
       );
-      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
-      for (const row of res) {
-        // Overfetch by one so the page slice can prove another page exists.
-        if (candidates.length > limit) break;
-        const last = await rows<{ status: string }>(
-          db,
-          sql`select status from attempts where message_id = ${row.id} and endpoint_id = ${filter.endpointId}
-            order by attempt_number desc limit 1`,
-        );
-        if (last.length === 0 || last[0]?.status !== "success") {
-          candidates.push({
-            id: row.id,
-            createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
-          });
-        }
-      }
+      const candidates = res.map((row) => ({
+        id: row.id as MessageId,
+        createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
+      }));
       const page = pageFromRows(candidates, limit);
       return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },

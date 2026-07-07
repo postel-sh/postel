@@ -481,39 +481,44 @@ export function MysqlStorage(options: MysqlStorageOptions = {}): Storage<MysqlQu
       }
     },
 
+    // One bounded query: candidates are messages with no delivered-latest
+    // attempt for the endpoint, keyset-continued and LIMITed in SQL — a
+    // recurring reconcile job never scans the whole since-range.
     async reconcile(filter: ReconcileFilter) {
       await ready();
       const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
       const values: unknown[] = [filter.since.getTime()];
-      let where = "created_at >= ?";
+      let where = "m.created_at >= ?";
       if (filter.tenantId !== undefined) {
         values.push(filter.tenantId);
-        where += " AND tenant_id = ?";
+        where += " AND m.tenant_id = ?";
       }
       if (filter.cursor !== undefined) {
         const { createdAt, id } = decodeKeysetCursor(filter.cursor);
         values.push(createdAt.getTime(), createdAt.getTime(), id);
-        where += " AND (created_at > ? OR (created_at = ? AND id > ?))";
+        where += " AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))";
       }
+      values.push(filter.endpointId, limit + 1);
       const res = await rows<{ id: string; created_at: number | string | bigint }>(
         pool(),
-        `SELECT id, created_at FROM messages WHERE ${where} ORDER BY created_at, id`,
+        `SELECT m.id, m.created_at FROM messages m
+         WHERE ${where}
+           AND NOT EXISTS (
+             SELECT 1 FROM attempts a
+             WHERE a.message_id = m.id AND a.endpoint_id = ? AND a.status = 'success'
+               AND a.attempt_number = (
+                 SELECT max(a2.attempt_number) FROM attempts a2
+                 WHERE a2.message_id = m.id AND a2.endpoint_id = a.endpoint_id
+               )
+           )
+         ORDER BY m.created_at, m.id
+         LIMIT ?`,
         values,
       );
-      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
-      for (const row of res) {
-        // Overfetch by one so the page slice can prove another page exists.
-        if (candidates.length > limit) break;
-        const last = await rows<{ status: string }>(
-          pool(),
-          `SELECT status FROM attempts WHERE message_id = ? AND endpoint_id = ?
-           ORDER BY attempt_number DESC LIMIT 1`,
-          [row.id, filter.endpointId],
-        );
-        if (last.length === 0 || last[0]?.status !== "success") {
-          candidates.push({ id: row.id, createdAt: new Date(Number(row.created_at)) });
-        }
-      }
+      const candidates = res.map((row) => ({
+        id: row.id as MessageId,
+        createdAt: new Date(Number(row.created_at)),
+      }));
       const page = pageFromRows(candidates, limit);
       return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },

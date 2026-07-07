@@ -421,37 +421,45 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
       }
     },
 
+    // One bounded query: candidates are messages with no delivered-latest
+    // attempt for the endpoint, keyset-continued and LIMITed in SQL — a
+    // recurring reconcile job never scans (or buffers) the whole since-range.
     async reconcile(filter: ReconcileFilter) {
       await ready();
       const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
       const values: unknown[] = [iso(filter.since)];
-      let where = "created_at >= $1";
+      let where = "m.created_at >= $1";
       if (filter.tenantId !== undefined) {
         values.push(filter.tenantId);
-        where += ` AND tenant_id = $${values.length}`;
+        where += ` AND m.tenant_id = $${values.length}`;
       }
       if (filter.cursor !== undefined) {
         const { createdAt, id } = decodeKeysetCursor(filter.cursor);
         values.push(createdAt, id);
-        where += ` AND (created_at > $${values.length - 1} OR (created_at = $${values.length - 1} AND id > $${values.length}))`;
+        where += ` AND (m.created_at > $${values.length - 1} OR (m.created_at = $${values.length - 1} AND m.id > $${values.length}))`;
       }
+      values.push(filter.endpointId);
+      const ep = `$${values.length}`;
+      values.push(limit + 1);
       const res = await pool().query<{ id: string; created_at: Date }>(
-        `SELECT id, created_at FROM messages WHERE ${where} ORDER BY created_at, id`,
+        `SELECT m.id, m.created_at FROM messages m
+         WHERE ${where}
+           AND NOT EXISTS (
+             SELECT 1 FROM attempts a
+             WHERE a.message_id = m.id AND a.endpoint_id = ${ep} AND a.status = 'success'
+               AND a.attempt_number = (
+                 SELECT max(a2.attempt_number) FROM attempts a2
+                 WHERE a2.message_id = m.id AND a2.endpoint_id = a.endpoint_id
+               )
+           )
+         ORDER BY m.created_at, m.id
+         LIMIT $${values.length}`,
         values,
       );
-      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
-      for (const row of res.rows) {
-        // Overfetch by one so the page slice can prove another page exists.
-        if (candidates.length > limit) break;
-        const last = await pool().query<{ status: string }>(
-          `SELECT status FROM attempts WHERE message_id = $1 AND endpoint_id = $2
-           ORDER BY attempt_number DESC LIMIT 1`,
-          [row.id, filter.endpointId],
-        );
-        if (last.rows.length === 0 || last.rows[0]?.status !== "success") {
-          candidates.push({ id: row.id, createdAt: new Date(row.created_at) });
-        }
-      }
+      const candidates = res.rows.map((row) => ({
+        id: row.id as MessageId,
+        createdAt: new Date(row.created_at),
+      }));
       const page = pageFromRows(candidates, limit);
       return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },

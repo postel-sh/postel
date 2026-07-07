@@ -7,6 +7,16 @@ import { newMessageId } from "../internal/id.js";
 
 const DEFAULT_REPLAY_THROUGHPUT = 100;
 
+// An unparseable date is a caller error, not a silent unbounded (or empty)
+// time filter — same posture as `messages.list`.
+function toValidDate(value: Date | string): Date {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new TypeError(`invalid date: ${String(value)}`);
+  }
+  return date;
+}
+
 export interface ReplayContext {
   readonly storage: Storage;
   readonly clock: Clock;
@@ -132,9 +142,9 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
     types?: ReadonlyArray<string>;
   } = {};
   filter.endpointId = opts.endpointId;
-  filter.since = opts.since instanceof Date ? opts.since : new Date(opts.since);
+  filter.since = toValidDate(opts.since);
   if (opts.until !== undefined) {
-    filter.until = opts.until instanceof Date ? opts.until : new Date(opts.until);
+    filter.until = toValidDate(opts.until);
   }
   if (opts.types !== undefined) filter.types = opts.types;
   for await (const m of ctx.storage.rangeQuery(filter)) {
@@ -158,7 +168,7 @@ export async function reconcileImpl(
   if (opts.limit !== undefined && (!Number.isInteger(opts.limit) || opts.limit <= 0)) {
     throw new RangeError(`limit must be a positive integer, received ${String(opts.limit)}`);
   }
-  const sinceDate = opts.since instanceof Date ? opts.since : new Date(opts.since);
+  const sinceDate = toValidDate(opts.since);
   return ctx.storage.reconcile({
     endpointId: opts.endpointId,
     since: sinceDate,

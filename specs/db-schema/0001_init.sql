@@ -8,6 +8,17 @@
 --   - All persistent rows are tenant-scoped via tenant_id (NULL for
 --     single-tenant deployments).
 --   - Idempotent: safe to run on every boot.
+--   - Keyset pagination invariants (ADR 0015): the cursor-ordered
+--     `created_at` columns (tenants, endpoints, messages) are pinned to
+--     millisecond precision — `timestamptz(3)` — so stored values round-trip
+--     the opaque `(createdAt, id)` cursors exactly. Sub-ms precision would
+--     silently drop rows from paginated walks. The `id` tie-break assumes a
+--     deterministic total order; byte order (binary collation) is the
+--     canonical cross-port ordering. Postgres locale collations are
+--     deterministic and therefore safe (ordering may differ cosmetically);
+--     MySQL MUST pin a binary collation (see the MySQL dialect in
+--     @postel/storage-helpers), because its case-insensitive server default
+--     makes distinct ids compare equal and breaks the tie-break.
 
 CREATE TABLE IF NOT EXISTS _postel_meta (
   key         text PRIMARY KEY,
@@ -22,7 +33,7 @@ ON CONFLICT (key) DO NOTHING;
 CREATE TABLE IF NOT EXISTS tenants (
   id           text PRIMARY KEY,
   metadata     jsonb,                     -- SQLite: TEXT (JSON)
-  created_at   timestamptz NOT NULL DEFAULT now()  -- SQLite: TEXT (ISO-8601), DEFAULT (datetime('now'))
+  created_at   timestamptz(3) NOT NULL DEFAULT now()  -- SQLite: TEXT (ISO-8601), DEFAULT (datetime('now'))
 );
 
 -- Endpoints: one row per receiver URL the host has registered.
@@ -37,7 +48,7 @@ CREATE TABLE IF NOT EXISTS endpoints (
   headers         jsonb,                           -- static custom headers (functions are code-side)
   signing         jsonb,                           -- { algorithm: 'v1' | 'v1a', ... }
   metadata        jsonb,                           -- host-defined opaque blob
-  created_at      timestamptz NOT NULL DEFAULT now(),
+  created_at      timestamptz(3) NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
@@ -74,7 +85,7 @@ CREATE TABLE IF NOT EXISTS messages (
   idempotency_key    text,
   version            text,
   ttl_seconds        integer,
-  created_at         timestamptz NOT NULL DEFAULT now(),
+  created_at         timestamptz(3) NOT NULL DEFAULT now(),
   expires_at         timestamptz,
   -- For SKIP LOCKED-style worker reservation:
   reserved_by        text,                  -- worker id (NULL = unreserved)

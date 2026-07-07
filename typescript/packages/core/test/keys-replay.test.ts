@@ -401,6 +401,22 @@ describe("Reconciliation API", () => {
       postel.outbound.reconcile({ endpointId: "ep_recon", since: new Date(), limit: 0 }),
     ).rejects.toThrow(/positive integer/);
   });
+
+  it("Malformed since is rejected: reconcile and replay never treat garbage as a time filter", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage } });
+    await postel.outbound.send({ type: "evt.x" });
+    await expect(
+      postel.outbound.reconcile({ endpointId: "ep_recon", since: "not-a-date" }),
+    ).rejects.toThrow(/invalid date/);
+    await expect(
+      postel.outbound.replay({
+        endpointId: "ep_recon",
+        since: "not-a-date",
+        freshWebhookId: false,
+      }),
+    ).rejects.toThrow(/invalid date/);
+  });
 });
 
 describe("Tenancy field", () => {

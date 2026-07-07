@@ -211,16 +211,31 @@ export function adminRouter(
       }
       out.limit = n;
     }
+    // An explicitly-supplied empty `?cursor=` flows through (and is rejected
+    // by the decoder as malformed) rather than being silently ignored.
     const cursor = url.searchParams.get("cursor");
-    if (cursor) out.cursor = cursor;
+    if (cursor !== null) out.cursor = cursor;
     return out;
   }
 
   // An undecodable cursor surfaces from storage as a TypeError; every
-  // cursor-accepting route maps it to 400 INVALID_QUERY.
+  // cursor-accepting route maps it to 400 INVALID_QUERY — but only when a
+  // cursor was actually supplied, so an unrelated TypeError isn't masked.
   function invalidCursor(err: unknown, cursor: string | undefined): Response | undefined {
-    if (err instanceof TypeError) {
+    if (cursor !== undefined && err instanceof TypeError) {
       return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'cursor': ${cursor}` });
+    }
+    return undefined;
+  }
+
+  // A date param that does not parse is a caller error (400), matching the
+  // GET /messages since/until posture.
+  function invalidDate(field: string, value: unknown): Response | undefined {
+    if (Number.isNaN(new Date(String(value)).getTime())) {
+      return json(400, {
+        errorCode: "INVALID_QUERY",
+        error: `invalid '${field}' date: ${String(value)}`,
+      });
     }
     return undefined;
   }
@@ -360,6 +375,14 @@ export function adminRouter(
 
     if (/\/replay$/.test(path) && method === "POST") {
       const body = await readJson(req);
+      if (typeof body.endpointId === "string" && body.since !== undefined) {
+        const badSince = invalidDate("since", body.since);
+        if (badSince) return badSince;
+        if (body.until !== undefined) {
+          const badUntil = invalidDate("until", body.until);
+          if (badUntil) return badUntil;
+        }
+      }
       return json(200, await out.replay(replayOptionsFromBody(body)));
     }
 
@@ -371,6 +394,8 @@ export function adminRouter(
           error: "reconcile requires { endpointId, since }",
         });
       }
+      const badSince = invalidDate("since", body.since);
+      if (badSince) return badSince;
       if (
         body.limit !== undefined &&
         (!Number.isInteger(body.limit) || (body.limit as number) <= 0)

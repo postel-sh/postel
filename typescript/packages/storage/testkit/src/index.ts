@@ -312,6 +312,49 @@ export function runStorageTests(factory: StorageTestFactory): void {
         // this multi-round-trip case well past vitest's 5s default under CI load.
       }, 30_000);
 
+      it("Keyset tie-break survives identical createdAt values: mixed-case ids page exactly once", async () => {
+        const { storage, clock } = await factory.create();
+        // Same createdAt for every row, ids differing only by case — the page
+        // boundary must fall on the id tie-break, which requires a
+        // deterministic total order (byte order; case-insensitive collations
+        // make distinct ids compare equal and lose rows here).
+        const msgIds = ["msg_tie_A", "msg_tie_a", "msg_tie_B", "msg_tie_b"];
+        for (const id of msgIds) {
+          await storage.insertMessage(buildMessage(clock, { id }));
+        }
+        const seenMsgs: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await storage.listMessages({
+            limit: 3,
+            ...(cursor !== undefined ? { cursor } : {}),
+          });
+          seenMsgs.push(...page.items.map((m) => m.id));
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor !== undefined);
+        expect(seenMsgs.length).toBe(msgIds.length);
+        expect(new Set(seenMsgs)).toEqual(new Set(msgIds));
+
+        const epIds = ["ep_tie_A", "ep_tie_a", "ep_tie_B", "ep_tie_b"];
+        for (const id of epIds) {
+          await storage.endpoints.create(buildEndpoint({ id }));
+        }
+        const seenEps: string[] = [];
+        cursor = undefined;
+        do {
+          const page = await storage.endpoints.list({
+            limit: 3,
+            ...(cursor !== undefined ? { cursor } : {}),
+          });
+          seenEps.push(...page.items.map((e) => e.id));
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor !== undefined);
+        expect(seenEps.length).toBe(epIds.length);
+        expect(new Set(seenEps)).toEqual(new Set(epIds));
+        // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
+        // this multi-round-trip case well past vitest's 5s default under CI load.
+      }, 30_000);
+
       it("Worker reservation can't be expressed as CRUD: reserveBatch combines lock + lease + return atomically", async () => {
         const { storage, clock } = await factory.create();
         await storage.insertMessage(buildMessage(clock, { id: "msg_a" }));

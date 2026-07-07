@@ -397,37 +397,43 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
       }
     },
 
+    // One bounded query: candidates are messages with no delivered-latest
+    // attempt for the endpoint, keyset-continued and LIMITed in SQL — a
+    // recurring reconcile job never scans the whole since-range.
     async reconcile(filter: ReconcileFilter) {
       const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
-      const clauses = ["created_at >= ?"];
+      const clauses = ["m.created_at >= ?"];
       const values: unknown[] = [iso(filter.since)];
       if (filter.tenantId !== undefined) {
-        clauses.push("tenant_id = ?");
+        clauses.push("m.tenant_id = ?");
         values.push(filter.tenantId);
       }
       if (filter.cursor !== undefined) {
         const { createdAt, id } = decodeKeysetCursor(filter.cursor);
-        clauses.push("(created_at > ? OR (created_at = ? AND id > ?))");
+        clauses.push("(m.created_at > ? OR (m.created_at = ? AND m.id > ?))");
         values.push(iso(createdAt), iso(createdAt), id);
       }
-      const iterator = db
+      values.push(filter.endpointId, limit + 1);
+      const rows = db
         .prepare(
-          `SELECT id, created_at FROM messages WHERE ${clauses.join(" AND ")} ORDER BY created_at, id`,
+          `SELECT m.id, m.created_at FROM messages m
+           WHERE ${clauses.join(" AND ")}
+             AND NOT EXISTS (
+               SELECT 1 FROM attempts a
+               WHERE a.message_id = m.id AND a.endpoint_id = ? AND a.status = 'success'
+                 AND a.attempt_number = (
+                   SELECT max(a2.attempt_number) FROM attempts a2
+                   WHERE a2.message_id = m.id AND a2.endpoint_id = a.endpoint_id
+                 )
+             )
+           ORDER BY m.created_at, m.id
+           LIMIT ?`,
         )
-        .iterate(...values) as IterableIterator<{ id: string; created_at: string }>;
-      const lastAttempt = db.prepare(
-        `SELECT status FROM attempts WHERE message_id = ? AND endpoint_id = ?
-         ORDER BY attempt_number DESC LIMIT 1`,
-      );
-      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
-      for (const row of iterator) {
-        // Overfetch by one so the page slice can prove another page exists.
-        if (candidates.length > limit) break;
-        const last = lastAttempt.get(row.id, filter.endpointId) as { status: string } | undefined;
-        if (last === undefined || last.status !== "success") {
-          candidates.push({ id: row.id, createdAt: new Date(row.created_at) });
-        }
-      }
+        .all(...values) as Array<{ id: string; created_at: string }>;
+      const candidates = rows.map((row) => ({
+        id: row.id as MessageId,
+        createdAt: new Date(row.created_at),
+      }));
       const page = pageFromRows(candidates, limit);
       return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },
