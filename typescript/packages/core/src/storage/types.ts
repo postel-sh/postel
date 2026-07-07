@@ -176,26 +176,35 @@ export interface RangeQueryFilter {
   readonly predicate?: (msg: ReservedMessage) => boolean;
 }
 
-export interface ReconcileFilter {
+// Filter for the reconciliation read. Results are oldest-first (backlogs drain
+// forward) and keyset-cursor paginated per ADR 0015; adapters apply
+// DEFAULT_RECONCILE_LIMIT when `limit` is omitted.
+export interface ReconcileFilter extends CursorOptions {
   readonly endpointId: EndpointId;
   readonly since: Date;
   readonly tenantId?: TenantId;
 }
 
-// Filter for the message-introspection list read. Results are newest-first and
-// bounded by `limit` (adapters apply DEFAULT_MESSAGE_LIST_LIMIT when omitted).
-export interface MessageListFilter {
+// Filter for the message-introspection list read. Results are newest-first,
+// bounded by `limit` (adapters apply DEFAULT_MESSAGE_LIST_LIMIT when omitted),
+// and keyset-cursor paginated per ADR 0015.
+export interface MessageListFilter extends CursorOptions {
   readonly tenantId?: TenantId;
   readonly types?: ReadonlyArray<string>;
   readonly status?: ReadonlyArray<MessageStatus>;
   readonly since?: Date;
   readonly until?: Date;
-  readonly limit?: number;
 }
 
 // Filter for the tenant-read list. Results are newest-first and keyset-cursor
 // paginated (not offset-based) — the tenants table is not assumed low-cardinality.
 export interface TenantListFilter extends CursorOptions {}
+
+// Filter for the endpoint list read. Results are newest-first and keyset-cursor
+// paginated, matching the tenant list convention (ADR 0015).
+export interface EndpointListFilter extends CursorOptions {
+  readonly tenantId?: TenantId;
+}
 
 export interface EndpointStateTransition {
   readonly id: string;
@@ -270,10 +279,13 @@ export interface Storage<TTx = unknown> {
   // `txIsolation: false`). Hosts needing strict isolation on such adapters
   // must not interleave non-tx reads with an open host transaction.
   getMessage(id: MessageId, opts?: HostTxOption<TTx>): Promise<StoredMessage | undefined>;
-  listMessages(filter: MessageListFilter): Promise<ReadonlyArray<StoredMessage>>;
+  listMessages(filter: MessageListFilter): Promise<Page<StoredMessage>>;
 
   rangeQuery(filter: RangeQueryFilter): AsyncIterable<ReservedMessage>;
-  reconcile(filter: ReconcileFilter): AsyncIterable<MessageId>;
+  // A bounded paged read (not a streaming iterable): each call returns at most
+  // one page of undelivered ids plus a resume cursor, so an arbitrarily large
+  // backlog is never materialized in one result (ADR 0015).
+  reconcile(filter: ReconcileFilter): Promise<Page<MessageId>>;
 
   countPendingByTenant(): Promise<ReadonlyMap<TenantId | "_null", number>>;
   outboxDepth(opts?: {
@@ -303,10 +315,7 @@ export interface Storage<TTx = unknown> {
       id: EndpointId,
       opts?: { readonly purgeAttempts?: boolean; readonly tx?: TTx },
     ): Promise<void>;
-    list(opts?: {
-      readonly tenantId?: TenantId;
-      readonly tx?: TTx;
-    }): Promise<ReadonlyArray<EndpointRecord>>;
+    list(opts?: EndpointListFilter & { readonly tx?: TTx }): Promise<Page<EndpointRecord>>;
     get(id: EndpointId, opts?: HostTxOption<TTx>): Promise<EndpointRecord | undefined>;
     transitionState(
       id: EndpointId,

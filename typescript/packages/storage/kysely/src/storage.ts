@@ -24,7 +24,9 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  DEFAULT_ENDPOINT_LIST_LIMIT,
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_RECONCILE_LIMIT,
   DEFAULT_TENANT_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
@@ -38,16 +40,19 @@ import {
   createCallbackRegistry,
   decodeAttempt,
   decodeEndpoint,
+  decodeKeysetCursor,
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
   decodeTenant,
   decodeTenantCursor,
+  decodeTimestamp,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
   encodeSecretInsert,
   encodeTenantCursor,
+  pageFromRows,
 } from "@postel/storage-helpers";
 import { type Kysely, type Transaction, sql } from "kysely";
 
@@ -347,11 +352,20 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
       if (filter.status !== undefined && filter.status.length > 0) {
         conds.push(sql`status in (${sql.join(filter.status.map((s) => sql`${s}`))})`);
       }
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        conds.push(
+          sql`(created_at < ${tsParam(createdAt)} or (created_at = ${tsParam(createdAt)} and id < ${id}))`,
+        );
+      }
       const where = sql.join(conds, sql` and `);
       const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
       const res = await sql<Record<string, unknown>>`select * from messages where ${where}
-        order by created_at desc, id desc limit ${limit}`.execute(db);
-      return res.rows.map((row) => decodeStoredMessage(row, codec));
+        order by created_at desc, id desc limit ${limit + 1}`.execute(db);
+      return pageFromRows(
+        res.rows.map((row) => decodeStoredMessage(row, codec)),
+        limit,
+      );
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {
@@ -372,20 +386,41 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
       }
     },
 
-    async *reconcile(filter: ReconcileFilter) {
+    // One bounded query: candidates are messages with no delivered-latest
+    // attempt for the endpoint, keyset-continued and LIMITed in SQL — a
+    // recurring reconcile job never scans the whole since-range.
+    async reconcile(filter: ReconcileFilter) {
       await ready();
-      const conds = [sql`created_at >= ${tsParam(filter.since)}`];
-      if (filter.tenantId !== undefined) conds.push(sql`tenant_id = ${filter.tenantId}`);
+      const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
+      const conds = [sql`m.created_at >= ${tsParam(filter.since)}`];
+      if (filter.tenantId !== undefined) conds.push(sql`m.tenant_id = ${filter.tenantId}`);
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        conds.push(
+          sql`(m.created_at > ${tsParam(createdAt)} or (m.created_at = ${tsParam(createdAt)} and m.id > ${id}))`,
+        );
+      }
       const where = sql.join(conds, sql` and `);
       const res = await sql<{
         id: string;
-      }>`select id, created_at from messages where ${where} order by created_at, id`.execute(db);
-      for (const row of res.rows) {
-        const last = await sql<{ status: string }>`select status from attempts
-          where message_id = ${row.id} and endpoint_id = ${filter.endpointId}
-          order by attempt_number desc limit 1`.execute(db);
-        if (last.rows.length === 0 || last.rows[0]?.status !== "success") yield row.id as MessageId;
-      }
+        created_at: unknown;
+      }>`select m.id, m.created_at from messages m
+        where ${where}
+          and not exists (
+            select 1 from attempts a
+            where a.message_id = m.id and a.endpoint_id = ${filter.endpointId} and a.status = 'success'
+              and a.attempt_number = (
+                select max(a2.attempt_number) from attempts a2
+                where a2.message_id = m.id and a2.endpoint_id = a.endpoint_id
+              )
+          )
+        order by m.created_at, m.id limit ${limit + 1}`.execute(db);
+      const candidates = res.rows.map((row) => ({
+        id: row.id as MessageId,
+        createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
+      }));
+      const page = pageFromRows(candidates, limit);
+      return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },
 
     async countPendingByTenant() {
@@ -484,12 +519,22 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
       },
       async list(opts) {
         await ready();
-        const where =
-          opts?.tenantId !== undefined ? sql`where tenant_id = ${opts.tenantId}` : sql``;
-        const res = await sql<
-          Record<string, unknown>
-        >`select * from endpoints ${where} order by created_at, id`.execute(db);
-        return res.rows.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry));
+        const conds = [sql`1 = 1`];
+        if (opts?.tenantId !== undefined) conds.push(sql`tenant_id = ${opts.tenantId}`);
+        if (opts?.cursor !== undefined) {
+          const { createdAt, id } = decodeKeysetCursor(opts.cursor);
+          conds.push(
+            sql`(created_at < ${tsParam(createdAt)} or (created_at = ${tsParam(createdAt)} and id < ${id}))`,
+          );
+        }
+        const where = sql.join(conds, sql` and `);
+        const limit = opts?.limit ?? DEFAULT_ENDPOINT_LIST_LIMIT;
+        const res = await sql<Record<string, unknown>>`select * from endpoints where ${where}
+          order by created_at desc, id desc limit ${limit + 1}`.execute(db);
+        return pageFromRows(
+          res.rows.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry)),
+          limit,
+        );
       },
       async get(id) {
         await ready();

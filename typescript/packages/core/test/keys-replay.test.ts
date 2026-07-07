@@ -358,7 +358,65 @@ describe("Reconciliation API", () => {
     // No attempts recorded yet for ep_recon → reconcile lists the message.
     const since = new Date(Date.now() - 60 * 60 * 1000);
     const result = await postel.outbound.reconcile({ endpointId: "ep_recon", since });
-    expect(result.includes(id)).toBe(true);
+    expect(result.items.includes(id)).toBe(true);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it("Reconcile pages through a large backlog: limit bounds each page and the cursor resumes oldest-first", async () => {
+    const clock = {
+      current: new Date("2026-07-01T10:00:00.000Z"),
+      now() {
+        return this.current;
+      },
+      sleep: async () => {},
+    };
+    const storage = InMemoryStorage({ clock });
+    const postel = Postel({ outbound: { storage, clock } });
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const { id } = await postel.outbound.send({ type: "evt.x", data: { i } });
+      ids.push(id);
+      clock.current = new Date(clock.current.getTime() + 1000);
+    }
+    const since = new Date("2026-07-01T09:00:00.000Z");
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await postel.outbound.reconcile({
+        endpointId: "ep_recon",
+        since,
+        limit: 2,
+        ...(cursor !== undefined ? { cursor } : {}),
+      });
+      expect(page.items.length).toBeLessThanOrEqual(2);
+      seen.push(...page.items);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    expect(seen).toEqual(ids);
+  });
+
+  it("Reconcile rejects a non-positive or non-integer limit", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage } });
+    await expect(
+      postel.outbound.reconcile({ endpointId: "ep_recon", since: new Date(), limit: 0 }),
+    ).rejects.toThrow(/positive integer/);
+  });
+
+  it("Malformed since is rejected: reconcile and replay never treat garbage as a time filter", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage } });
+    await postel.outbound.send({ type: "evt.x" });
+    await expect(
+      postel.outbound.reconcile({ endpointId: "ep_recon", since: "not-a-date" }),
+    ).rejects.toThrow(/invalid date/);
+    await expect(
+      postel.outbound.replay({
+        endpointId: "ep_recon",
+        since: "not-a-date",
+        freshWebhookId: false,
+      }),
+    ).rejects.toThrow(/invalid date/);
   });
 });
 
@@ -379,8 +437,73 @@ describe("Tenancy field", () => {
       tenantId: "t_99",
     });
     const list = await postel.outbound.endpoints.list({ tenantId: "t_42" });
-    expect(list.length).toBe(1);
-    expect(list[0]?.tenantId).toBe("t_42");
+    expect(list.items.length).toBe(1);
+    expect(list.items[0]?.tenantId).toBe("t_42");
+  });
+});
+
+describe("List endpoints (paginated)", () => {
+  function pagingSetup() {
+    const clock = {
+      current: new Date("2026-07-01T10:00:00.000Z"),
+      now() {
+        return this.current;
+      },
+      sleep: async () => {},
+    };
+    const storage = InMemoryStorage({ clock });
+    const postel = Postel({
+      outbound: { storage, clock, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    return { clock, postel };
+  }
+
+  it("Limit bounds the page size and cursor pagination walks the full set without gaps or duplicates", async () => {
+    const { clock, postel } = pagingSetup();
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const ep = await postel.outbound.endpoints.create({
+        url: "http://127.0.0.1:65535/h",
+        allowHttp: true,
+        types: ["order.*"],
+      });
+      ids.push(ep.id);
+      clock.current = new Date(clock.current.getTime() + 1000);
+    }
+    const first = await postel.outbound.endpoints.list({ limit: 2 });
+    expect(first.items.length).toBe(2);
+    expect(first.nextCursor).not.toBeNull();
+    // Paged items carry the full serializable read shape, not a slimmed one.
+    expect(first.items[0]?.types).toEqual(["order.*"]);
+    expect(first.items[0]?.allowHttp).toBe(true);
+    expect(first.items[0]?.createdAt).toBeInstanceOf(Date);
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await postel.outbound.endpoints.list({
+        limit: 2,
+        ...(cursor !== undefined ? { cursor } : {}),
+      });
+      seen.push(...page.items.map((e) => e.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    expect(seen).toEqual([...ids].reverse());
+  });
+
+  it("Empty store returns an empty page", async () => {
+    const { postel } = pagingSetup();
+    const page = await postel.outbound.endpoints.list();
+    expect(page.items).toEqual([]);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it("Rejects a non-positive or non-integer limit and a malformed cursor", async () => {
+    const { postel } = pagingSetup();
+    await expect(postel.outbound.endpoints.list({ limit: 0 })).rejects.toThrow(/positive integer/);
+    await expect(postel.outbound.endpoints.list({ cursor: "not-a-cursor" })).rejects.toThrow(
+      TypeError,
+    );
   });
 });
 
@@ -465,7 +588,7 @@ describe("Tenant deletion cascades", () => {
     await postel.outbound.send({ type: "evt.x", tenantId: "t_doomed" });
     await postel.outbound.tenants.delete("t_doomed");
     const after = await postel.outbound.endpoints.list({ tenantId: "t_doomed" });
-    expect(after.length).toBe(0);
+    expect(after.items.length).toBe(0);
     let count = 0;
     for await (const m of storage.rangeQuery({ tenantId: "t_doomed" })) {
       count += 1;

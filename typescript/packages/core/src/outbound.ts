@@ -194,7 +194,7 @@ export interface ReplayResult {
   readonly enqueued: number;
 }
 
-export interface ReconcileOptions<TTx = unknown> {
+export interface ReconcileOptions<TTx = unknown> extends CursorOptions {
   readonly endpointId: string;
   readonly since: Date | string;
   readonly tx?: TTx;
@@ -240,13 +240,17 @@ export interface DeliveryAttempt {
   readonly replayOf: MessageId | null;
 }
 
-export interface MessageListOptions {
+export interface MessageListOptions extends CursorOptions {
   readonly tenantId?: string;
   readonly types?: ReadonlyArray<string>;
   readonly status?: MessageStatus | ReadonlyArray<MessageStatus>;
   readonly since?: Date | string;
   readonly until?: Date | string;
-  readonly limit?: number;
+}
+
+export interface EndpointListOptions<TTx = unknown> extends CursorOptions {
+  readonly tenantId?: string;
+  readonly tx?: TTx;
 }
 
 // Read-shaped tenant for the tenant-read surface. `rateLimit` is decoded from
@@ -269,7 +273,7 @@ export interface OutboundApi<TTx = unknown> {
     create(opts: EndpointCreateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
     update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
     delete(id: string, opts?: { purgeAttempts?: boolean; tx?: TTx }): Promise<void>;
-    list(opts?: { tenantId?: string; tx?: TTx }): Promise<ReadonlyArray<Endpoint>>;
+    list(opts?: EndpointListOptions<TTx>): Promise<Page<Endpoint>>;
     get(id: string, opts?: { tx?: TTx }): Promise<Endpoint>;
     disable(id: string, opts?: { tx?: TTx }): Promise<void>;
     rotateSecret(id: string, opts: RotateSecretOptions<TTx>): Promise<void>;
@@ -286,11 +290,11 @@ export interface OutboundApi<TTx = unknown> {
     list(opts?: TenantListOptions): Promise<TenantPage>;
   };
   replay(opts: ReplayOptions<TTx>): Promise<ReplayResult>;
-  reconcile(opts: ReconcileOptions<TTx>): Promise<ReadonlyArray<MessageId>>;
+  reconcile(opts: ReconcileOptions<TTx>): Promise<Page<MessageId>>;
   messages: {
     get<TData = unknown>(id: string, opts?: { tx?: TTx }): Promise<Message<TData> | undefined>;
     attempts(id: string): Promise<ReadonlyArray<DeliveryAttempt>>;
-    list(opts?: MessageListOptions): Promise<ReadonlyArray<Message>>;
+    list(opts?: MessageListOptions): Promise<Page<Message>>;
   };
 }
 
@@ -431,25 +435,32 @@ export function buildOutboundRuntime<TTx = unknown>(
         return generateAsymmetric();
       },
       async publicJwks(opts) {
-        const listArgs: { tenantId?: string; tx?: TTx } = {};
-        if (opts?.tenantId !== undefined) listArgs.tenantId = opts.tenantId;
-        if (opts?.tx !== undefined) listArgs.tx = opts.tx;
-        const endpoints = await config.storage.endpoints.list(listArgs);
         const now = clock.now();
         const seen = new Set<string>();
         const keys: Jwk[] = [];
-        for (const ep of endpoints) {
-          const secrets = await config.storage.secrets.listForEndpoint(ep.id);
-          for (const s of secrets) {
-            if (s.algorithm !== "v1a" || !s.publicKey) continue;
-            if (s.status !== "primary" && s.status !== "verifying") continue;
-            if (s.notAfter && s.notAfter.getTime() <= now.getTime()) continue;
-            const kid = await ed25519Kid(s.publicKey);
-            if (seen.has(kid)) continue;
-            seen.add(kid);
-            keys.push(ed25519Jwk(s.publicKey, kid));
+        // The JWKS document must cover every endpoint, so page through the
+        // (bounded) endpoint list rather than assuming one unbounded read.
+        let cursor: string | undefined;
+        do {
+          const listArgs: { tenantId?: string; cursor?: string; tx?: TTx } = {};
+          if (opts?.tenantId !== undefined) listArgs.tenantId = opts.tenantId;
+          if (opts?.tx !== undefined) listArgs.tx = opts.tx;
+          if (cursor !== undefined) listArgs.cursor = cursor;
+          const page = await config.storage.endpoints.list(listArgs);
+          for (const ep of page.items) {
+            const secrets = await config.storage.secrets.listForEndpoint(ep.id);
+            for (const s of secrets) {
+              if (s.algorithm !== "v1a" || !s.publicKey) continue;
+              if (s.status !== "primary" && s.status !== "verifying") continue;
+              if (s.notAfter && s.notAfter.getTime() <= now.getTime()) continue;
+              const kid = await ed25519Kid(s.publicKey);
+              if (seen.has(kid)) continue;
+              seen.add(kid);
+              keys.push(ed25519Jwk(s.publicKey, kid));
+            }
           }
-        }
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor !== undefined);
         return { keys };
       },
     },
@@ -503,7 +514,15 @@ export function buildOutboundRuntime<TTx = unknown>(
       return replayImpl(replayCtx, opts);
     },
     async reconcile(opts) {
-      return reconcileImpl({ storage: config.storage, clock }, opts.endpointId, opts.since);
+      return reconcileImpl(
+        { storage: config.storage, clock },
+        {
+          endpointId: opts.endpointId,
+          since: opts.since,
+          ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+          ...(opts.cursor !== undefined ? { cursor: opts.cursor } : {}),
+        },
+      );
     },
     messages: {
       async get<TData = unknown>(id: string, opts?: { tx?: TTx }) {
@@ -537,8 +556,9 @@ export function buildOutboundRuntime<TTx = unknown>(
           }
           filter.limit = opts.limit;
         }
-        const rows = await config.storage.listMessages(filter);
-        return rows.map((m) => toMessage(m));
+        if (opts?.cursor !== undefined) filter.cursor = opts.cursor;
+        const page = await config.storage.listMessages(filter);
+        return { items: page.items.map((m) => toMessage(m)), nextCursor: page.nextCursor };
       },
     },
   };

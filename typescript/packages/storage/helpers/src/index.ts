@@ -6,6 +6,7 @@ import type {
   MessageStatus,
   NewAttempt,
   NewMessage,
+  Page,
   ReservedMessage,
   StorageCapabilities,
   StoredMessage,
@@ -272,33 +273,60 @@ export function decodeTenant(row: Row, codec: ColumnCodec): TenantRecord {
   };
 }
 
-// Opaque keyset cursor for tenant pagination: base64url of
-// "${createdAtISO} ${id}". Decoding splits on the FIRST space only (not
-// `.split(" ")`) because a tenant id may itself contain a space; the ISO
+// Opaque keyset cursor over `(createdAt, id)` — the one pagination convention
+// every list-returning read shares (endpoints, messages, tenants, reconcile;
+// see ADR 0015): base64url of "${createdAtISO} ${id}". Millisecond ISO-8601 is
+// the pinned cursor precision — the keyset-ordered created_at columns are
+// stored at ms precision (timestamptz(3) / epoch-ms / ms ISO text) so stored
+// values round-trip the cursor exactly. Decoding splits on the FIRST space
+// only (not `.split(" ")`) because an id may itself contain a space; the ISO
 // timestamp never does, so the first occurrence unambiguously separates them.
-export function encodeTenantCursor(rec: Pick<TenantRecord, "id" | "createdAt">): string {
+export function encodeKeysetCursor(rec: { readonly id: string; readonly createdAt: Date }): string {
   const raw = `${rec.createdAt.toISOString()} ${rec.id}`;
   return Buffer.from(raw, "utf8").toString("base64url");
 }
 
-export function decodeTenantCursor(str: string): { createdAt: Date; id: string } {
-  let raw: string;
-  try {
-    raw = Buffer.from(str, "base64url").toString("utf8");
-  } catch {
-    throw new TypeError(`storage-helpers: cannot decode tenant cursor from ${JSON.stringify(str)}`);
-  }
+export function decodeKeysetCursor(str: string): { createdAt: Date; id: string } {
+  // Buffer.from(str, "base64url") never throws — it skips invalid characters —
+  // so malformed input is caught by the shape checks below, not a try/catch.
+  const raw = Buffer.from(str, "base64url").toString("utf8");
   const sep = raw.indexOf(" ");
   if (sep < 0) {
-    throw new TypeError(`storage-helpers: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+    throw new TypeError(`storage-helpers: cannot decode keyset cursor from ${JSON.stringify(str)}`);
   }
   const createdAtIso = raw.slice(0, sep);
   const id = raw.slice(sep + 1);
   const createdAt = new Date(createdAtIso);
   if (id.length === 0 || Number.isNaN(createdAt.getTime())) {
-    throw new TypeError(`storage-helpers: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+    throw new TypeError(`storage-helpers: cannot decode keyset cursor from ${JSON.stringify(str)}`);
   }
   return { createdAt, id };
+}
+
+export function encodeTenantCursor(rec: Pick<TenantRecord, "id" | "createdAt">): string {
+  return encodeKeysetCursor(rec);
+}
+
+export function decodeTenantCursor(str: string): { createdAt: Date; id: string } {
+  return decodeKeysetCursor(str);
+}
+
+// Conservative default page sizes for the endpoint list and reconcile reads.
+// Adapters apply these when the corresponding filter's `limit` is omitted.
+export const DEFAULT_ENDPOINT_LIST_LIMIT = 100;
+export const DEFAULT_RECONCILE_LIMIT = 100;
+
+// Slice a limit+1 overfetch into a `Page`: the extra row (if any) only proves
+// another page exists — it is dropped, and the cursor points at the last row
+// actually returned.
+export function pageFromRows<T extends { readonly id: string; readonly createdAt: Date }>(
+  rows: ReadonlyArray<T>,
+  limit: number,
+): Page<T> {
+  const items = rows.slice(0, limit);
+  const last = items[items.length - 1];
+  const nextCursor = rows.length > limit && last ? encodeKeysetCursor(last) : null;
+  return { items, nextCursor };
 }
 
 export function encodeAttemptInsert(attempt: NewAttempt, codec: ColumnCodec): Row {

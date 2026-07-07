@@ -202,9 +202,9 @@ export function runStorageTests(factory: StorageTestFactory): void {
         expect(attempts[0]?.latencyMs).toBe(12);
 
         const listed = await storage.listMessages({ tenantId: "t_intro" });
-        expect(listed.map((m) => m.id)).toContain("msg_intro_1");
+        expect(listed.items.map((m) => m.id)).toContain("msg_intro_1");
         const filtered = await storage.listMessages({ tenantId: "t_intro", types: ["nope"] });
-        expect(filtered.map((m) => m.id)).not.toContain("msg_intro_1");
+        expect(filtered.items.map((m) => m.id)).not.toContain("msg_intro_1");
         // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
         // this multi-round-trip case well past vitest's 5s default under CI load.
       }, 30_000);
@@ -228,6 +228,129 @@ export function runStorageTests(factory: StorageTestFactory): void {
         const page2 = await storage.tenants.list({ limit: 2, cursor: page1.nextCursor as string });
         expect(page2.items.map((t) => t.id)).toEqual(["t_page_1"]);
         expect(page2.nextCursor).toBeNull();
+        // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
+        // this multi-round-trip case well past vitest's 5s default under CI load.
+      }, 30_000);
+
+      it("Endpoint and message lists return paginated pages: endpoints.list / listMessages walk with keyset cursors", async () => {
+        const { storage, clock } = await factory.create();
+        await storage.endpoints.create(buildEndpoint({ id: "ep_page_1" }));
+        clock.advance(1000);
+        await storage.endpoints.create(buildEndpoint({ id: "ep_page_2" }));
+        clock.advance(1000);
+        await storage.endpoints.create(buildEndpoint({ id: "ep_page_3" }));
+
+        const epPage1 = await storage.endpoints.list({ limit: 2 });
+        expect(epPage1.items.map((e) => e.id)).toEqual(["ep_page_3", "ep_page_2"]);
+        expect(epPage1.nextCursor).not.toBeNull();
+        const epPage2 = await storage.endpoints.list({
+          limit: 2,
+          cursor: epPage1.nextCursor as string,
+        });
+        expect(epPage2.items.map((e) => e.id)).toEqual(["ep_page_1"]);
+        expect(epPage2.nextCursor).toBeNull();
+
+        await storage.insertMessage(buildMessage(clock, { id: "msg_page_1", tenantId: "t_page" }));
+        clock.advance(1000);
+        await storage.insertMessage(buildMessage(clock, { id: "msg_page_2", tenantId: "t_page" }));
+        clock.advance(1000);
+        await storage.insertMessage(buildMessage(clock, { id: "msg_page_3", tenantId: "t_page" }));
+
+        const msgPage1 = await storage.listMessages({ tenantId: "t_page", limit: 2 });
+        expect(msgPage1.items.map((m) => m.id)).toEqual(["msg_page_3", "msg_page_2"]);
+        expect(msgPage1.nextCursor).not.toBeNull();
+        const msgPage2 = await storage.listMessages({
+          tenantId: "t_page",
+          limit: 2,
+          cursor: msgPage1.nextCursor as string,
+        });
+        expect(msgPage2.items.map((m) => m.id)).toEqual(["msg_page_1"]);
+        expect(msgPage2.nextCursor).toBeNull();
+        // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
+        // this multi-round-trip case well past vitest's 5s default under CI load.
+      }, 30_000);
+
+      it("Reconcile returns a bounded page: undelivered ids page oldest-first with a resume cursor", async () => {
+        const { storage, clock } = await factory.create();
+        const since = clock.now();
+        await storage.insertMessage(buildMessage(clock, { id: "msg_rec_1" }));
+        clock.advance(1000);
+        await storage.insertMessage(buildMessage(clock, { id: "msg_rec_2" }));
+        clock.advance(1000);
+        await storage.insertMessage(buildMessage(clock, { id: "msg_rec_3" }));
+        // msg_rec_2 is confirmed delivered, so only 1 and 3 are backlog.
+        await storage.recordAttempt({
+          id: "att_rec_1",
+          messageId: "msg_rec_2",
+          endpointId: "ep_rec",
+          tenantId: null,
+          attemptNumber: 1,
+          status: "success",
+          scheduledFor: null,
+          startedAt: clock.now(),
+          completedAt: clock.now(),
+          responseCode: 200,
+          responseHeaders: null,
+          responseBody: null,
+          latencyMs: 5,
+          error: null,
+          replayOf: null,
+        });
+
+        const page1 = await storage.reconcile({ endpointId: "ep_rec", since, limit: 1 });
+        expect(page1.items).toEqual(["msg_rec_1"]);
+        expect(page1.nextCursor).not.toBeNull();
+        const page2 = await storage.reconcile({
+          endpointId: "ep_rec",
+          since,
+          limit: 5,
+          cursor: page1.nextCursor as string,
+        });
+        expect(page2.items).toEqual(["msg_rec_3"]);
+        expect(page2.nextCursor).toBeNull();
+        // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
+        // this multi-round-trip case well past vitest's 5s default under CI load.
+      }, 30_000);
+
+      it("Keyset tie-break survives identical createdAt values: mixed-case ids page exactly once", async () => {
+        const { storage, clock } = await factory.create();
+        // Same createdAt for every row, ids differing only by case — the page
+        // boundary must fall on the id tie-break, which requires a
+        // deterministic total order (byte order; case-insensitive collations
+        // make distinct ids compare equal and lose rows here).
+        const msgIds = ["msg_tie_A", "msg_tie_a", "msg_tie_B", "msg_tie_b"];
+        for (const id of msgIds) {
+          await storage.insertMessage(buildMessage(clock, { id }));
+        }
+        const seenMsgs: string[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await storage.listMessages({
+            limit: 3,
+            ...(cursor !== undefined ? { cursor } : {}),
+          });
+          seenMsgs.push(...page.items.map((m) => m.id));
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor !== undefined);
+        expect(seenMsgs.length).toBe(msgIds.length);
+        expect(new Set(seenMsgs)).toEqual(new Set(msgIds));
+
+        const epIds = ["ep_tie_A", "ep_tie_a", "ep_tie_B", "ep_tie_b"];
+        for (const id of epIds) {
+          await storage.endpoints.create(buildEndpoint({ id }));
+        }
+        const seenEps: string[] = [];
+        cursor = undefined;
+        do {
+          const page = await storage.endpoints.list({
+            limit: 3,
+            ...(cursor !== undefined ? { cursor } : {}),
+          });
+          seenEps.push(...page.items.map((e) => e.id));
+          cursor = page.nextCursor ?? undefined;
+        } while (cursor !== undefined);
+        expect(seenEps.length).toBe(epIds.length);
+        expect(new Set(seenEps)).toEqual(new Set(epIds));
         // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) run
         // this multi-round-trip case well past vitest's 5s default under CI load.
       }, 30_000);
@@ -461,7 +584,7 @@ export function runStorageTests(factory: StorageTestFactory): void {
               );
               expect(await storage.getMessage("msg_intro_dirty")).toBeUndefined();
               const listed = await storage.listMessages({ tenantId: "t_intro_dirty" });
-              expect(listed.map((m) => m.id)).not.toContain("msg_intro_dirty");
+              expect(listed.items.map((m) => m.id)).not.toContain("msg_intro_dirty");
               throw new Error("rollback");
             }),
           ).rejects.toThrow("rollback");

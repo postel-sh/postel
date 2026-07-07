@@ -80,42 +80,83 @@ const CAPABILITIES: StorageCapabilities = {
 // version a fully-migrated SQL adapter would.
 const SCHEMA_VERSION = 4;
 
-// Mirrors DEFAULT_MESSAGE_LIST_LIMIT in @postel/storage-helpers; kept local
+// Mirrors the DEFAULT_*_LIMIT constants in @postel/storage-helpers; kept local
 // because @postel/core takes no dependency on the helpers package.
 const DEFAULT_MESSAGE_LIST_LIMIT = 100;
-
-// Mirrors DEFAULT_TENANT_LIST_LIMIT / encodeTenantCursor / decodeTenantCursor
-// in @postel/storage-helpers; kept local for the same reason.
 const DEFAULT_TENANT_LIST_LIMIT = 100;
+const DEFAULT_ENDPOINT_LIST_LIMIT = 100;
+const DEFAULT_RECONCILE_LIMIT = 100;
 
-// Uses the package's web-standard base64url codec (btoa/atob-backed), not
-// Node's `Buffer` — @postel/core targets Node/Bun/Deno without a Node-only
-// runtime dependency, and this is the only tenant-cursor codec that runs
-// in-process rather than through a SQL adapter (see @postel/storage-helpers
-// for the adapter-side equivalent, which is fine to use `Buffer` since every
-// SQL adapter already requires a Node-hosted DB driver).
-function encodeTenantCursor(rec: Pick<TenantRecord, "id" | "createdAt">): string {
+// Mirrors encodeKeysetCursor / decodeKeysetCursor in @postel/storage-helpers —
+// the shared `(createdAt, id)` keyset cursor every paginated read uses (ADR
+// 0015) — kept local for the same no-dependency reason. Uses the package's
+// web-standard base64url codec (btoa/atob-backed), not Node's `Buffer` —
+// @postel/core targets Node/Bun/Deno without a Node-only runtime dependency,
+// and this is the only cursor codec that runs in-process rather than through
+// a SQL adapter (the adapter-side equivalent is fine to use `Buffer` since
+// every SQL adapter already requires a Node-hosted DB driver).
+function encodeKeysetCursor(rec: { readonly id: string; readonly createdAt: Date }): string {
   const bytes = new TextEncoder().encode(`${rec.createdAt.toISOString()} ${rec.id}`);
   return bytesToBase64Url(bytes);
 }
 
-function decodeTenantCursor(str: string): { createdAt: Date; id: string } {
+function decodeKeysetCursor(str: string): { createdAt: Date; id: string } {
   let raw: string;
   try {
     raw = new TextDecoder().decode(base64UrlToBytes(str));
   } catch {
-    throw new TypeError(`InMemoryStorage: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+    throw new TypeError(`InMemoryStorage: cannot decode keyset cursor from ${JSON.stringify(str)}`);
   }
   const sep = raw.indexOf(" ");
   if (sep < 0) {
-    throw new TypeError(`InMemoryStorage: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+    throw new TypeError(`InMemoryStorage: cannot decode keyset cursor from ${JSON.stringify(str)}`);
   }
   const createdAt = new Date(raw.slice(0, sep));
   const id = raw.slice(sep + 1);
   if (id.length === 0 || Number.isNaN(createdAt.getTime())) {
-    throw new TypeError(`InMemoryStorage: cannot decode tenant cursor from ${JSON.stringify(str)}`);
+    throw new TypeError(`InMemoryStorage: cannot decode keyset cursor from ${JSON.stringify(str)}`);
   }
   return { createdAt, id };
+}
+
+// Newest-first ordering, page slicing, and the strict-after cursor predicates
+// shared by the paginated reads (endpoints / messages / tenants descend;
+// reconcile ascends).
+function byCreatedAtDesc(
+  a: { readonly id: string; readonly createdAt: Date },
+  b: { readonly id: string; readonly createdAt: Date },
+): number {
+  const byTime = b.createdAt.getTime() - a.createdAt.getTime();
+  if (byTime !== 0) return byTime;
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+}
+
+function pageOf<T extends { readonly id: string; readonly createdAt: Date }>(
+  rows: ReadonlyArray<T>,
+  limit: number,
+): Page<T> {
+  const items = rows.slice(0, limit);
+  const last = items[items.length - 1];
+  const nextCursor = rows.length > limit && last ? encodeKeysetCursor(last) : null;
+  return { items, nextCursor };
+}
+
+function afterCursorDesc(
+  rec: { readonly id: string; readonly createdAt: Date },
+  cursor: { readonly createdAt: Date; readonly id: string },
+): boolean {
+  const t = rec.createdAt.getTime();
+  const ct = cursor.createdAt.getTime();
+  return t < ct || (t === ct && rec.id < cursor.id);
+}
+
+function afterCursorAsc(
+  rec: { readonly id: string; readonly createdAt: Date },
+  cursor: { readonly createdAt: Date; readonly id: string },
+): boolean {
+  const t = rec.createdAt.getTime();
+  const ct = cursor.createdAt.getTime();
+  return t > ct || (t === ct && rec.id > cursor.id);
 }
 
 function newId(prefix: string): string {
@@ -453,6 +494,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
 
     async listMessages(filter: MessageListFilter) {
       const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
+      const cursor = filter.cursor !== undefined ? decodeKeysetCursor(filter.cursor) : undefined;
       const out: StoredMessage[] = [];
       for (const row of messages.values()) {
         if (row.uncommitted) continue;
@@ -461,14 +503,11 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
         if (filter.status !== undefined && !filter.status.includes(row.status)) continue;
         if (filter.since !== undefined && row.createdAt < filter.since) continue;
         if (filter.until !== undefined && row.createdAt > filter.until) continue;
+        if (cursor !== undefined && !afterCursorDesc(row, cursor)) continue;
         out.push(asStored(row));
       }
-      out.sort((a, b) => {
-        const byTime = b.createdAt.getTime() - a.createdAt.getTime();
-        if (byTime !== 0) return byTime;
-        return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
-      });
-      return out.slice(0, limit);
+      out.sort(byCreatedAtDesc);
+      return pageOf(out, limit);
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {
@@ -486,11 +525,14 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
       for (const m of out) yield m;
     },
 
-    async *reconcile(filter: ReconcileFilter) {
-      const candidates: Array<{ messageId: MessageId; createdAt: Date }> = [];
+    async reconcile(filter: ReconcileFilter): Promise<Page<MessageId>> {
+      const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
+      const cursor = filter.cursor !== undefined ? decodeKeysetCursor(filter.cursor) : undefined;
+      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
       for (const row of messages.values()) {
         if (row.createdAt < filter.since) continue;
         if (filter.tenantId !== undefined && row.tenantId !== filter.tenantId) continue;
+        if (cursor !== undefined && !afterCursorAsc(row, cursor)) continue;
         const endpointAttempts: NewAttempt[] = [];
         for (const a of attempts.values()) {
           if (a.messageId === row.id && a.endpointId === filter.endpointId) {
@@ -498,17 +540,22 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
           }
         }
         if (endpointAttempts.length === 0) {
-          candidates.push({ messageId: row.id, createdAt: row.createdAt });
+          candidates.push({ id: row.id, createdAt: row.createdAt });
           continue;
         }
         endpointAttempts.sort((a, b) => a.attemptNumber - b.attemptNumber);
         const last = endpointAttempts[endpointAttempts.length - 1];
         if (last && last.status !== "success") {
-          candidates.push({ messageId: row.id, createdAt: row.createdAt });
+          candidates.push({ id: row.id, createdAt: row.createdAt });
         }
       }
-      candidates.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-      for (const c of candidates) yield c.messageId;
+      candidates.sort((a, b) => {
+        const byTime = a.createdAt.getTime() - b.createdAt.getTime();
+        if (byTime !== 0) return byTime;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+      const page = pageOf(candidates, limit);
+      return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },
 
     async countPendingByTenant() {
@@ -651,13 +698,16 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
         });
       },
       async list(opts) {
+        const limit = opts?.limit ?? DEFAULT_ENDPOINT_LIST_LIMIT;
+        const cursor = opts?.cursor !== undefined ? decodeKeysetCursor(opts.cursor) : undefined;
         const out: EndpointRecord[] = [];
         for (const e of endpoints.values()) {
           if (opts?.tenantId !== undefined && e.tenantId !== opts.tenantId) continue;
+          if (cursor !== undefined && !afterCursorDesc(e, cursor)) continue;
           out.push(e);
         }
-        out.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-        return out;
+        out.sort(byCreatedAtDesc);
+        return pageOf(out, limit);
       },
       async get(id) {
         return endpoints.get(id);
@@ -770,24 +820,12 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
       },
       async list(filter: TenantListFilter): Promise<Page<TenantRecord>> {
         const limit = filter.limit ?? DEFAULT_TENANT_LIST_LIMIT;
-        let rows = Array.from(tenants.values()).sort((a, b) => {
-          const byTime = b.createdAt.getTime() - a.createdAt.getTime();
-          if (byTime !== 0) return byTime;
-          return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
-        });
+        let rows = Array.from(tenants.values()).sort(byCreatedAtDesc);
         if (filter.cursor !== undefined) {
-          const { createdAt, id } = decodeTenantCursor(filter.cursor);
-          rows = rows.filter((r) => {
-            const t = r.createdAt.getTime();
-            const ct = createdAt.getTime();
-            return t < ct || (t === ct && r.id < id);
-          });
+          const cursor = decodeKeysetCursor(filter.cursor);
+          rows = rows.filter((r) => afterCursorDesc(r, cursor));
         }
-        const page = rows.slice(0, limit + 1);
-        const items = page.slice(0, limit);
-        const last = items[items.length - 1];
-        const nextCursor = page.length > limit && last ? encodeTenantCursor(last) : null;
-        return { items, nextCursor };
+        return pageOf(rows, limit);
       },
       async delete(tenantId, opts) {
         await writeLock.run(async () => {

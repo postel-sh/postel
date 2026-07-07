@@ -143,8 +143,8 @@ describe("List and filter messages", () => {
       types: ["order.created"],
       since: new Date("2026-07-01T10:30:00.000Z"),
     });
-    expect(listed.map((m) => m.type)).toEqual(["order.created"]);
-    expect(listed[0]?.id).toBe(second);
+    expect(listed.items.map((m) => m.type)).toEqual(["order.created"]);
+    expect(listed.items[0]?.id).toBe(second);
   });
 
   it("Filter by outbox status", async () => {
@@ -157,7 +157,7 @@ describe("List and filter messages", () => {
     await storage.markMessageFinal(dispatched, "dispatched");
 
     const listed = await postel.outbound.messages.list({ status: "dispatched" });
-    expect(listed.map((m) => m.id)).toEqual([dispatched]);
+    expect(listed.items.map((m) => m.id)).toEqual([dispatched]);
   });
 
   it("Tenant scoping restricts results", async () => {
@@ -168,8 +168,8 @@ describe("List and filter messages", () => {
     await t2.outbound.send({ type: "order.created", data: { n: 2 } });
 
     const scoped = await t1.outbound.messages.list({ tenantId: "t_1" });
-    expect(scoped).toHaveLength(1);
-    expect(scoped.every((m) => m.tenantId === "t_1")).toBe(true);
+    expect(scoped.items).toHaveLength(1);
+    expect(scoped.items.every((m) => m.tenantId === "t_1")).toBe(true);
   });
 
   it("Limit bounds the result count", async () => {
@@ -178,7 +178,37 @@ describe("List and filter messages", () => {
       await postel.outbound.send({ type: "order.created", data: { i } });
     }
     const listed = await postel.outbound.messages.list({ limit: 2 });
-    expect(listed).toHaveLength(2);
+    expect(listed.items).toHaveLength(2);
+    expect(listed.nextCursor).not.toBeNull();
+  });
+
+  it("Cursor pagination walks the full set without gaps or duplicates", async () => {
+    const clock = mutableClock();
+    const { postel } = setup(clock);
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      clock.set(new Date(Date.parse("2026-07-01T10:00:00.000Z") + i * 1000));
+      const { id } = await postel.outbound.send({ type: "order.created", data: { i } });
+      ids.push(id);
+    }
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await postel.outbound.messages.list({
+        limit: 2,
+        ...(cursor !== undefined ? { cursor } : {}),
+      });
+      seen.push(...page.items.map((m) => m.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    expect(seen).toEqual([...ids].reverse());
+  });
+
+  it("A malformed cursor is rejected with a structured error", async () => {
+    const { postel } = setup();
+    await expect(postel.outbound.messages.list({ cursor: "not-a-cursor" })).rejects.toThrow(
+      TypeError,
+    );
   });
 
   it("Rejects a malformed since/until date rather than passing an Invalid Date to storage", async () => {

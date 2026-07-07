@@ -54,6 +54,30 @@ describe("Current public signing keys are retrievable", () => {
     expect(hasPrivateMaterial(jwk)).toBe(false);
   });
 
+  it("publicJwks covers every endpoint across list pages (more endpoints than one default page)", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage } });
+    // 105 endpoints > the 100-row default endpoint-list page, so the JWKS
+    // build must follow nextCursor internally to cover them all.
+    const count = 105;
+    for (let i = 0; i < count; i += 1) {
+      const keypair = await generateAsymmetric();
+      const ep = await storage.endpoints.create(emptyEndpoint(`ep_page_${i}`));
+      await storage.secrets.insert({
+        id: `sec_page_${i}`,
+        endpointId: ep.id,
+        algorithm: "v1a",
+        status: "primary",
+        priority: 0,
+        encryptedValue: new TextEncoder().encode(keypair.private),
+        publicKey: decodeSecret(keypair.public).bytes,
+        notAfter: null,
+      });
+    }
+    const jwks = await postel.outbound.keys.publicJwks();
+    expect(jwks.keys).toHaveLength(count);
+  });
+
   it("publicJwks excludes symmetric (v1) secrets", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });

@@ -33,7 +33,11 @@ The library SHALL emit structured JSON logs. Each log line MUST include the acti
 
 ### Requirement: Admin HTTP handlers
 
-The library SHALL provide a framework-agnostic admin HTTP router builder, `adminRouter(postel, { authorize, resolveTenant? })`, returning a Web `(Request) => Promise<Response>`, plus mounts for Express, Hono, and Fastify (Hono mounts the Fetch handler natively; Express/Fastify via the `fetchToExpress` / `fetchToFastify` bridges). The route set covers the outbound control plane: list and create endpoints, get / update / delete an endpoint, disable (pause) an endpoint, rotate an endpoint secret, replay, reconcile, set a tenant rate limit, delete a tenant, and generate signing keys. It also covers the outbound read plane: `GET /messages` (list with tenant / type / status / time-window filters and a bounded `limit`), `GET /messages/:id` (fetch one message including its raw payload), `GET /messages/:id/attempts` (the message's delivery-attempt history, filterable by attempt delivery `?status=` — repeatable and/or comma-separated; when present, only attempts whose `status` matches are returned, still ordered by `attemptNumber`; unknown values match nothing, as on `GET /messages`) — backed by the `message-introspection` capability — and `GET /tenants` (paginated list, `?limit=` / `?cursor=`), `GET /tenants/:id` (fetch one tenant) — backed by the `multi-tenancy` capability's tenant-read requirements. Failures map to an HTTP status by `PostelError.code` (e.g. `ENDPOINT_NOT_FOUND` → 404, `ENDPOINT_VALIDATION` → 422, `ENDPOINT_DISABLED` → 409, `MIGRATION_REQUIRED` → 503), and the JSON error body carries the stable `code` as `errorCode`. A read for a message id that does not exist (or is outside the caller's tenant) responds `404` with `errorCode: "MESSAGE_NOT_FOUND"`; a read for a tenant id that does not exist (or is outside the caller's tenant) responds `404` with `errorCode: "TENANT_NOT_FOUND"`; a malformed `?cursor=` on `GET /tenants` responds `400` with `errorCode: "INVALID_QUERY"`. Function-shaped endpoint options (`filter` / `transform` / callable `headers`) are code-only and SHALL NOT be configurable over HTTP.
+The library SHALL provide a framework-agnostic admin HTTP router builder, `adminRouter(postel, { authorize, resolveTenant? })`, returning a Web `(Request) => Promise<Response>`, plus mounts for Express, Hono, and Fastify (Hono mounts the Fetch handler natively; Express/Fastify via the `fetchToExpress` / `fetchToFastify` bridges). The route set covers the outbound control plane: list and create endpoints, get / update / delete an endpoint, disable (pause) an endpoint, rotate an endpoint secret, replay, reconcile, set a tenant rate limit, delete a tenant, and generate signing keys. It also covers the outbound read plane: `GET /messages` (list with tenant / type / status / time-window filters), `GET /messages/:id` (fetch one message including its raw payload), `GET /messages/:id/attempts` (the message's delivery-attempt history, filterable by attempt delivery `?status=` — repeatable and/or comma-separated; when present, only attempts whose `status` matches are returned, still ordered by `attemptNumber`; unknown values match nothing, as on `GET /messages`) — backed by the `message-introspection` capability — and `GET /tenants`, `GET /tenants/:id` (fetch one tenant) — backed by the `multi-tenancy` capability's tenant-read requirements.
+
+Every list-returning route is paginated with one convention: `GET /endpoints`, `GET /messages`, and `GET /tenants` accept `?limit=` / `?cursor=`, and `POST /reconcile` accepts `limit` / `cursor` in its JSON body. Each responds with the matching plural key plus a `nextCursor` — `{ endpoints, nextCursor }`, `{ messages, nextCursor }`, `{ tenants, nextCursor }`, `{ messageIds, nextCursor }` — where `nextCursor` is `null` on the last page and otherwise the opaque token the caller passes back to fetch the next page. No list route returns an unbounded array: a conservative default limit applies when the caller gives none.
+
+Failures map to an HTTP status by `PostelError.code` (e.g. `ENDPOINT_NOT_FOUND` → 404, `ENDPOINT_VALIDATION` → 422, `ENDPOINT_DISABLED` → 409, `MIGRATION_REQUIRED` → 503), and the JSON error body carries the stable `code` as `errorCode`. A read for a message id that does not exist (or is outside the caller's tenant) responds `404` with `errorCode: "MESSAGE_NOT_FOUND"`; a read for a tenant id that does not exist (or is outside the caller's tenant) responds `404` with `errorCode: "TENANT_NOT_FOUND"`; a malformed `cursor` or non-positive / non-integer `limit` on any cursor-accepting route (`GET /endpoints`, `GET /messages`, `GET /tenants`, `POST /reconcile`) responds `400` with `errorCode: "INVALID_QUERY"`. A `since` / `until` value that does not parse to a valid date — on `GET /messages`, `POST /replay`, or `POST /reconcile` — likewise responds `400` with `errorCode: "INVALID_QUERY"`. Function-shaped endpoint options (`filter` / `transform` / callable `headers`) are code-only and SHALL NOT be configurable over HTTP.
 
 The read routes are tenant-scoped exactly like the control-plane routes: a tenant-bound caller sees only its own tenant's messages, attempts, and tenant record, and a cross-tenant read resolves as not-found rather than leaking existence. This is intentionally asymmetric with the existing tenant *write* routes (`POST /tenants/:id/rate-limit`, `DELETE /tenants/:id`), which respond `403` on cross-tenant access — the read-plane's no-leak `404` convention is scoped to reads.
 
@@ -79,6 +83,19 @@ The read routes are tenant-scoped exactly like the control-plane routes: a tenan
 
 - **WHEN** an authorized admin GETs `/admin/messages?type=order.created&limit=50`
 - **THEN** the response is `200` with a `messages` array containing only `order.created` messages, newest-first, capped at the limit
+- **AND** the body carries a `nextCursor` that is non-null when more matching messages remain and feeds a subsequent `?cursor=` request for the next page
+
+#### Scenario: List endpoints via admin router (paginated)
+
+- **WHEN** an authorized admin GETs `/admin/endpoints?limit=2` over a store holding more than two endpoints
+- **THEN** the response is `200` with an `endpoints` array of at most two endpoints, newest-first, and a non-null `nextCursor`
+- **AND** feeding that `nextCursor` back as `?cursor=` returns the next page, with `nextCursor` `null` once the set is exhausted
+
+#### Scenario: Reconcile via admin handler returns a bounded page
+
+- **WHEN** an authorized admin POSTs `/admin/reconcile` with `{ endpointId, since, limit }` over a backlog larger than `limit`
+- **THEN** the response is `200` with a `messageIds` array of at most `limit` ids and a non-null `nextCursor`
+- **AND** POSTing again with that `nextCursor` as `cursor` resumes the backlog where the previous page ended
 
 #### Scenario: Read a tenant via admin router
 
@@ -100,10 +117,15 @@ The read routes are tenant-scoped exactly like the control-plane routes: a tenan
 - **WHEN** an authorized admin bound to tenant `t_1` GETs `/admin/tenants`
 - **THEN** the response's `tenants` array contains only `t_1`'s own tenant record (or is empty if `t_1` has no tenant row), and `nextCursor` is `null`
 
-#### Scenario: A malformed tenant list cursor maps to 400
+#### Scenario: A malformed date maps to 400 on the replay and reconcile routes
 
-- **WHEN** an authorized admin GETs `/admin/tenants?cursor=not-a-valid-cursor`
-- **THEN** the response is `400` with `errorCode: "INVALID_QUERY"`
+- **WHEN** an authorized admin POSTs `/admin/reconcile` with `{ endpointId, since: "not-a-date" }`, or `/admin/replay` with `{ endpointId, since: "not-a-date", freshWebhookId: false }`
+- **THEN** each response is `400` with `errorCode: "INVALID_QUERY"`
+
+#### Scenario: A malformed list cursor maps to 400 on every cursor-accepting route
+
+- **WHEN** an authorized admin GETs `/admin/tenants?cursor=not-a-valid-cursor`, `/admin/endpoints?cursor=not-a-valid-cursor`, or `/admin/messages?cursor=not-a-valid-cursor`, or POSTs `/admin/reconcile` with `{ endpointId, since, cursor: "not-a-valid-cursor" }`
+- **THEN** each response is `400` with `errorCode: "INVALID_QUERY"`
 
 ### Requirement: Admin authorization predicate
 

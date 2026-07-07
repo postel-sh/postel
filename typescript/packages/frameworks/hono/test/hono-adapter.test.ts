@@ -187,7 +187,10 @@ describe("Admin router binding", () => {
     );
     const res = await app.request("/admin/endpoints");
     expect(res.status).toBe(200);
-    expect((await res.json()) as { endpoints: unknown[] }).toEqual({ endpoints: [] });
+    expect((await res.json()) as { endpoints: unknown[] }).toEqual({
+      endpoints: [],
+      nextCursor: null,
+    });
   });
 
   it("admin.bindAdminRoutes denies when authorize returns false", async () => {

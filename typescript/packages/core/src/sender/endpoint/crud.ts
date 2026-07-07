@@ -11,6 +11,7 @@ import type {
   SerializableHttpDefaults,
   SerializableRetryStrategy,
 } from "../../outbound.js";
+import type { Page } from "../../pagination.js";
 import type {
   EndpointRecord,
   EndpointState,
@@ -93,7 +94,12 @@ export function buildEndpointApi(
   create(opts: EndpointCreateOptions, runtime?: { tx?: unknown }): Promise<Endpoint>;
   update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: unknown }): Promise<Endpoint>;
   delete(id: string, opts?: { purgeAttempts?: boolean; tx?: unknown }): Promise<void>;
-  list(opts?: { tenantId?: string; tx?: unknown }): Promise<ReadonlyArray<Endpoint>>;
+  list(opts?: {
+    tenantId?: string;
+    limit?: number;
+    cursor?: string;
+    tx?: unknown;
+  }): Promise<Page<Endpoint>>;
   get(id: string, opts?: { tx?: unknown }): Promise<Endpoint>;
   disable(id: string, opts?: { tx?: unknown }): Promise<void>;
 } {
@@ -208,11 +214,18 @@ export function buildEndpointApi(
       await storage.endpoints.delete(id, deleteOpts);
     },
     async list(opts) {
-      const args: { tenantId?: string; tx?: unknown } = {};
+      // A non-positive or non-integer limit is a caller error, not a silent
+      // default — same guard as `messages.list` / `tenants.list`.
+      if (opts?.limit !== undefined && (!Number.isInteger(opts.limit) || opts.limit <= 0)) {
+        throw new RangeError(`limit must be a positive integer, received ${String(opts.limit)}`);
+      }
+      const args: { tenantId?: string; limit?: number; cursor?: string; tx?: unknown } = {};
       if (opts?.tenantId !== undefined) args.tenantId = opts.tenantId;
+      if (opts?.limit !== undefined) args.limit = opts.limit;
+      if (opts?.cursor !== undefined) args.cursor = opts.cursor;
       if (opts?.tx !== undefined) args.tx = opts.tx;
-      const recs = await storage.endpoints.list(args);
-      return recs.map(toPublicEndpoint);
+      const page = await storage.endpoints.list(args);
+      return { items: page.items.map(toPublicEndpoint), nextCursor: page.nextCursor };
     },
     async get(id, opts) {
       const rec = await storage.endpoints.get(id, opts);

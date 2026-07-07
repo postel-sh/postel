@@ -24,7 +24,9 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  DEFAULT_ENDPOINT_LIST_LIMIT,
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_RECONCILE_LIMIT,
   DEFAULT_TENANT_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
@@ -38,6 +40,7 @@ import {
   createCallbackRegistry,
   decodeAttempt,
   decodeEndpoint,
+  decodeKeysetCursor,
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
@@ -49,6 +52,7 @@ import {
   encodeMessageInsert,
   encodeSecretInsert,
   encodeTenantCursor,
+  pageFromRows,
 } from "@postel/storage-helpers";
 import type { DataSource } from "typeorm";
 
@@ -464,7 +468,14 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
       if (filter.status !== undefined && filter.status.length > 0) {
         conds.push(`status in (${filter.status.map((s) => p.add(s)).join(", ")})`);
       }
-      const limitPlaceholder = p.add(filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT);
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        const ts1 = p.add(tsParam(createdAt));
+        const ts2 = p.add(tsParam(createdAt));
+        conds.push(`(created_at < ${ts1} or (created_at = ${ts2} and id < ${p.add(id)}))`);
+      }
+      const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
+      const limitPlaceholder = p.add(limit + 1);
       const result = await withExec(undefined, (ex) =>
         rows<Record<string, unknown>>(
           ex,
@@ -472,7 +483,10 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
           p.values,
         ),
       );
-      return result.map((row) => decodeStoredMessage(row, codec));
+      return pageFromRows(
+        result.map((row) => decodeStoredMessage(row, codec)),
+        limit,
+      );
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {
@@ -497,32 +511,47 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
       }
     },
 
-    async *reconcile(filter: ReconcileFilter) {
+    // One bounded query (inside one QueryRunner): candidates are messages with
+    // no delivered-latest attempt for the endpoint, keyset-continued and
+    // LIMITed in SQL — a recurring reconcile job never scans the whole
+    // since-range.
+    async reconcile(filter: ReconcileFilter) {
       await ready();
-      // Buffer the unconfirmed ids inside one QueryRunner, then yield — so no
-      // runner is held open across suspension points.
-      const unconfirmed = await withExec(undefined, async (ex) => {
+      const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
+      const candidates = await withExec(undefined, async (ex) => {
         const p = new Params();
-        const conds = [`created_at >= ${p.add(tsParam(filter.since))}`];
-        if (filter.tenantId !== undefined) conds.push(`tenant_id = ${p.add(filter.tenantId)}`);
-        const msgRows = await rows<{ id: string }>(
+        const conds = [`m.created_at >= ${p.add(tsParam(filter.since))}`];
+        if (filter.tenantId !== undefined) conds.push(`m.tenant_id = ${p.add(filter.tenantId)}`);
+        if (filter.cursor !== undefined) {
+          const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+          const ts1 = p.add(tsParam(createdAt));
+          const ts2 = p.add(tsParam(createdAt));
+          conds.push(`(m.created_at > ${ts1} or (m.created_at = ${ts2} and m.id > ${p.add(id)}))`);
+        }
+        const ep = p.add(filter.endpointId);
+        const limitPlaceholder = p.add(limit + 1);
+        const msgRows = await rows<{ id: string; created_at: unknown }>(
           ex,
-          `select id, created_at from messages where ${conds.join(" and ")} order by created_at, id`,
+          `select m.id, m.created_at from messages m
+           where ${conds.join(" and ")}
+             and not exists (
+               select 1 from attempts a
+               where a.message_id = m.id and a.endpoint_id = ${ep} and a.status = 'success'
+                 and a.attempt_number = (
+                   select max(a2.attempt_number) from attempts a2
+                   where a2.message_id = m.id and a2.endpoint_id = a.endpoint_id
+                 )
+             )
+           order by m.created_at, m.id limit ${limitPlaceholder}`,
           p.values,
         );
-        const out: MessageId[] = [];
-        for (const row of msgRows) {
-          const lp = new Params();
-          const last = await rows<{ status: string }>(
-            ex,
-            `select status from attempts where message_id = ${lp.add(row.id)} and endpoint_id = ${lp.add(filter.endpointId)} order by attempt_number desc limit 1`,
-            lp.values,
-          );
-          if (last.length === 0 || last[0]?.status !== "success") out.push(row.id as MessageId);
-        }
-        return out;
+        return msgRows.map((row) => ({
+          id: row.id as MessageId,
+          createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
+        }));
       });
-      for (const id of unconfirmed) yield id;
+      const page = pageFromRows(candidates, limit);
+      return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },
 
     async countPendingByTenant() {
@@ -639,17 +668,28 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
       },
       async list(opts) {
         await ready();
-        const res = await withExec(undefined, (ex) => {
-          if (opts?.tenantId !== undefined) {
-            return rows(
-              ex,
-              `select * from endpoints where tenant_id = ${isPg ? "$1" : "?"} order by created_at, id`,
-              [opts.tenantId],
-            );
-          }
-          return rows(ex, "select * from endpoints order by created_at, id");
-        });
-        return res.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry));
+        const p = new Params();
+        const conds = ["1 = 1"];
+        if (opts?.tenantId !== undefined) conds.push(`tenant_id = ${p.add(opts.tenantId)}`);
+        if (opts?.cursor !== undefined) {
+          const { createdAt, id } = decodeKeysetCursor(opts.cursor);
+          const ts1 = p.add(tsParam(createdAt));
+          const ts2 = p.add(tsParam(createdAt));
+          conds.push(`(created_at < ${ts1} or (created_at = ${ts2} and id < ${p.add(id)}))`);
+        }
+        const limit = opts?.limit ?? DEFAULT_ENDPOINT_LIST_LIMIT;
+        const limitPlaceholder = p.add(limit + 1);
+        const res = await withExec(undefined, (ex) =>
+          rows<Record<string, unknown>>(
+            ex,
+            `select * from endpoints where ${conds.join(" and ")} order by created_at desc, id desc limit ${limitPlaceholder}`,
+            p.values,
+          ),
+        );
+        return pageFromRows(
+          res.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry)),
+          limit,
+        );
       },
       async get(id) {
         await ready();
