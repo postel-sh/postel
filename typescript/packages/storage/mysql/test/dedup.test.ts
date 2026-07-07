@@ -1,7 +1,15 @@
-import { dedup } from "@postel/core";
+import { ttlToSeconds } from "@postel/core";
+import type { DedupAdapter, DedupResult } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
 import { MysqlDedup, type MysqlDedupClient } from "../src/index.js";
+
+function dedup(
+  messageId: string,
+  options: { ttl: number | string; adapter: DedupAdapter },
+): Promise<DedupResult> {
+  return options.adapter.record(messageId, ttlToSeconds(options.ttl));
+}
 
 interface MockRow {
   message_id: string;

@@ -34,14 +34,7 @@
 
 import { createServer } from "node:http";
 
-import {
-  PostelError,
-  UnknownKeyId,
-  dedup,
-  inMemoryDedupAdapter,
-  jwksHandler,
-  verify,
-} from "@postel/core";
+import { InMemoryDedup, PostelError, UnknownKeyId, jwksHandler, verify } from "@postel/core";
 
 const port = Number(process.env.PORT ?? 8787);
 const secrets = (process.env.POSTEL_SECRETS ?? "")
@@ -60,7 +53,7 @@ const fixedNow = process.env.POSTEL_NOW ? new Date(process.env.POSTEL_NOW) : und
 const nowFn = fixedNow ? () => fixedNow : () => new Date();
 const clock = { now: nowFn, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
 
-const dedupAdapter = inMemoryDedupAdapter({ now: nowFn });
+const dedupAdapter = InMemoryDedup({ now: nowFn });
 const jwks = jwksKeys.length > 0 ? jwksHandler({ keys: jwksKeys }) : undefined;
 
 function staticKeyset(keys, now) {
@@ -169,10 +162,7 @@ async function handleWebhook(req, res) {
         );
         return;
       }
-      const dedupResult = await dedup(messageId, {
-        ttl: dedupTtlSeconds,
-        adapter: dedupAdapter,
-      });
+      const dedupResult = await dedupAdapter.record(messageId, dedupTtlSeconds);
       if (dedupResult.duplicate) {
         respond(
           res,

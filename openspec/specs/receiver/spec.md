@@ -65,22 +65,22 @@ The library SHALL provide middleware adapters for Express, Fastify, Koa, Hono, E
 
 ### Requirement: Idempotency dedup helper
 
-The library SHALL provide `postel.dedup(messageId, { ttl })` returning `{ duplicate: boolean }` atomically (a second call within the TTL MUST return `{ duplicate: true }` even when the two calls race). First-party adapters MUST exist for **Postgres, SQLite, and in-memory**. An optional **Redis** adapter MAY be shipped for hosts that already run Redis — consistent with [ADR 0001 — Library shape](../../../decisions/0001-library-shape.md): Postel does NOT require Redis as a runtime dependency, but accommodates hosts that already have one.
+The library SHALL provide a source-scoped dedup helper — `postel.inbound.<source>.dedup(messageId, { ttl })` in the TypeScript port — returning `{ duplicate: boolean }` atomically (a second call within the TTL MUST return `{ duplicate: true }` even when the two calls race). The helper exists on a source iff a dedup adapter is configured for that source; there is no top-level `postel.dedup`. First-party adapters MUST exist for **Postgres, SQLite, and in-memory**. An optional **Redis** adapter MAY be shipped for hosts that already run Redis — consistent with [ADR 0001 — Library shape](../../../decisions/0001-library-shape.md): Postel does NOT require Redis as a runtime dependency, but accommodates hosts that already have one.
 
 #### Scenario: First receipt
 
-- **WHEN** `dedup('msg_123', { ttl: '1h' })` is called for an unseen message id
+- **WHEN** `postel.inbound.<source>.dedup('msg_123', { ttl: '1h' })` is called for an unseen message id
 - **THEN** the result is `{ duplicate: false }`
 - **AND** the id is recorded for the TTL
 
 #### Scenario: Duplicate receipt
 
-- **WHEN** `dedup('msg_123', { ttl: '1h' })` is called twice within the TTL
+- **WHEN** `postel.inbound.<source>.dedup('msg_123', { ttl: '1h' })` is called twice within the TTL
 - **THEN** the second call returns `{ duplicate: true }`
 
 #### Scenario: Concurrent dedup calls
 
-- **WHEN** two concurrent `dedup('msg_X')` calls arrive (no prior recording)
+- **WHEN** two concurrent `dedup('msg_X')` calls arrive on the same source (no prior recording)
 - **THEN** exactly one call returns `{ duplicate: false }`
 - **AND** the other returns `{ duplicate: true }`
 

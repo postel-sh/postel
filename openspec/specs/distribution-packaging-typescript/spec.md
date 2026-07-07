@@ -9,7 +9,7 @@ The TypeScript port's distribution contract: published package set, bundle-size 
 The library SHALL be distributed as the following npm packages, grouped by purpose:
 
 **Core:**
-- `@postel/core` — sender + receiver + types + errors. The receiver-side verify / dedup / JWKS-consumer surface ships here directly; there is no separate edge-runtime carve-out package. The **in-memory `Storage` adapter** (`InMemoryStorage`) and the **in-memory dedup adapter** (`inMemoryDedupAdapter`) also ship from `@postel/core` — they are the reference implementations, the deterministic test backend, and the zero-config default. Both are leaf exports: a receiver-only bundle that imports `verify` does not pull them in (see `Tree-shakeability`).
+- `@postel/core` — sender + receiver + types + errors. The receiver-side verify / dedup / JWKS-consumer surface ships here directly; there is no separate edge-runtime carve-out package. The **in-memory `Storage` adapter** (`InMemoryStorage`) and the **in-memory dedup adapter** (`InMemoryDedup`) also ship from `@postel/core` — they are the reference implementations, the deterministic test backend, and the zero-config default. Both are leaf exports: a receiver-only bundle that imports `verify` does not pull them in (see `Tree-shakeability`).
 
 **Storage adapters (Tier 1 — must ship for 1.0, per [ADR 0007](../../../decisions/0007-storage-strategy.md)):**
 - `@postel/pg` — Postel owns the Postgres pool; zero-config drop-in.

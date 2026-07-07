@@ -1,8 +1,16 @@
-import { dedup } from "@postel/core";
+import { ttlToSeconds } from "@postel/core";
+import type { DedupAdapter, DedupResult } from "@postel/core";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SqliteDedup } from "../src/index.js";
+
+function dedup(
+  messageId: string,
+  options: { ttl: number | string; adapter: DedupAdapter },
+): Promise<DedupResult> {
+  return options.adapter.record(messageId, ttlToSeconds(options.ttl));
+}
 
 describe("Idempotency dedup helper", () => {
   let db: Database.Database;
