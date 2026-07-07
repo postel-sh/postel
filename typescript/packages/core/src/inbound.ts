@@ -82,7 +82,14 @@ async function verifySource<TData>(
     throw new ConfigurationError("inbound source has no verifiers configured");
   }
   const options: VerifyOptions = {
-    ...(source.tolerance !== undefined ? { toleranceSeconds: ttlToSeconds(source.tolerance) } : {}),
+    ...(source.tolerance !== undefined
+      ? {
+          toleranceSeconds:
+            typeof source.tolerance === "string"
+              ? ttlToSeconds(source.tolerance)
+              : source.tolerance,
+        }
+      : {}),
     ...(source.clock ? { clock: source.clock } : {}),
   };
 

@@ -84,7 +84,12 @@ describe("House API idioms [PORT-SPECIFIC]", () => {
       fileURLToPath(new URL("../src/index.ts", import.meta.url)),
       "utf8",
     );
-    expect(indexSource).not.toMatch(/^\s+\w+ as \w+,?$/m);
+    const exportClauses = indexSource.match(/export(?:\s+type)?\s*\{[^}]*\}/g) ?? [];
+    expect(exportClauses.length).toBeGreaterThan(0);
+    for (const clause of exportClauses) {
+      expect(clause).not.toMatch(/\bas\b/);
+    }
+    expect(indexSource).not.toMatch(/export\s*\*\s*as\b/);
 
     expect(typeof createJwksKeyset).toBe("function");
     const secret: SecretValue = SECRET;
@@ -114,6 +119,27 @@ describe("Timestamp window enforcement", () => {
     });
     const result = await postel.inbound.vendor.verify(fixture.body, fixture.headers);
     expect(result.matchedVerifierIndex).toBe(0);
+  });
+
+  it("tolerance: 0 is accepted and enforces the strictest window, not rejected as an invalid duration", async () => {
+    const fixture = await signFixture({ secret: SECRET, payload: PAYLOAD, timestamp: SIGNED_AT });
+    const exact = Postel({
+      inbound: {
+        vendor: { verify: Secret(SECRET), tolerance: 0, clock: fixedClock(SIGNED_AT) },
+      },
+    });
+    const result = await exact.inbound.vendor.verify(fixture.body, fixture.headers);
+    expect(result.event.type).toBe("order.created");
+
+    const oneSecondLater = new Date(SIGNED_AT.getTime() + 1000);
+    const drifted = Postel({
+      inbound: {
+        vendor: { verify: Secret(SECRET), tolerance: 0, clock: fixedClock(oneSecondLater) },
+      },
+    });
+    await expect(
+      drifted.inbound.vendor.verify(fixture.body, fixture.headers),
+    ).rejects.toBeInstanceOf(TimestampTooOld);
   });
 });
 
