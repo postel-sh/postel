@@ -126,6 +126,20 @@ describe("Structured error classes", () => {
     expect(() => ttlToSeconds(-5)).toThrowError(ConfigurationError);
     expect(() => ttlToSeconds(1.5)).toThrowError(ConfigurationError);
   });
+
+  it("Configuration mistakes are not misclassified as wire errors: an unprefixed receiver secret throws ConfigurationError", async () => {
+    const fixture = await signFixture({
+      secret: "whsec_ZXJyb3JzLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=",
+      payload: { type: "order.created" },
+    });
+    try {
+      await verify(fixture.body, fixture.headers, "not-a-prefixed-secret");
+      throw new Error("verify should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ConfigurationError);
+      expect(err).not.toBeInstanceOf(MalformedHeader);
+    }
+  });
 });
 
 describe("No string matching on errors", () => {

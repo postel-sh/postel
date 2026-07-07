@@ -1,4 +1,4 @@
-import { MalformedHeader } from "../errors.js";
+import { ConfigurationError } from "../errors.js";
 import type { Jwk } from "../types.js";
 import { bytesToBase64Url } from "./base64.js";
 
@@ -28,7 +28,7 @@ export function hasPrivateMaterial(jwk: unknown): boolean {
 
 export function assertPublicOnly(jwk: Jwk): void {
   if (hasPrivateMaterial(jwk)) {
-    throw new MalformedHeader(
+    throw new ConfigurationError(
       `JWK with kid "${jwk.kid}" carries private key material; refusing to publish via JWKS`,
     );
   }

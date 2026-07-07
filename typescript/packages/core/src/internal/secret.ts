@@ -1,4 +1,4 @@
-import { MalformedHeader } from "../errors.js";
+import { ConfigurationError } from "../errors.js";
 import { base64ToBytes } from "./base64.js";
 
 export const HMAC_PREFIX = "whsec_";
@@ -28,7 +28,7 @@ export function decodeSecret(secret: string): DecodedSecret {
       bytes: base64ToBytes(secret.slice(ED_PUBLIC_PREFIX.length)),
     };
   }
-  throw new MalformedHeader(
+  throw new ConfigurationError(
     `secret must start with "${HMAC_PREFIX}", "${ED_PRIVATE_PREFIX}", or "${ED_PUBLIC_PREFIX}"`,
   );
 }
