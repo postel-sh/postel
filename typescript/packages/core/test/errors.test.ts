@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ConfigurationError,
   EndpointDisabled,
   EndpointNotFound,
   EndpointValidation,
@@ -15,6 +16,9 @@ import {
   SsrfBlocked,
   TimestampTooOld,
   UnknownKeyId,
+  signFixture,
+  ttlToSeconds,
+  verify,
 } from "../src/index.js";
 
 const CANONICAL_TABLE: ReadonlyArray<{
@@ -81,6 +85,46 @@ describe("Structured error classes", () => {
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(PostelError);
     expect(err.code).toBe("NOT_IMPLEMENTED");
+  });
+
+  it("Configuration errors are not PostelError: ConfigurationError is outside the hierarchy", () => {
+    const err = new ConfigurationError("verify: empty secret array");
+    expect(err).toBeInstanceOf(ConfigurationError);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(PostelError);
+    expect(err.code).toBe("CONFIGURATION_ERROR");
+    expect(err.name).toBe("ConfigurationError");
+  });
+
+  it("Configuration mistakes are not misclassified as wire errors: empty secret array throws ConfigurationError", async () => {
+    const fixture = await signFixture({
+      secret: "whsec_ZXJyb3JzLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=",
+      payload: { type: "order.created" },
+    });
+    try {
+      await verify(fixture.body, fixture.headers, []);
+      throw new Error("verify should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ConfigurationError);
+      expect(err).not.toBeInstanceOf(MalformedHeader);
+      expect(err).not.toBeInstanceOf(PostelError);
+    }
+  });
+
+  it("Configuration mistakes are not misclassified as wire errors: an ed25519-private receiver secret throws ConfigurationError", async () => {
+    const fixture = await signFixture({
+      secret: "whsec_ZXJyb3JzLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=",
+      payload: { type: "order.created" },
+    });
+    await expect(
+      verify(fixture.body, fixture.headers, "whsk_ZXJyb3JzLXRlc3QtcHJpdmF0ZS1rZXk="),
+    ).rejects.toBeInstanceOf(ConfigurationError);
+  });
+
+  it("Configuration mistakes are not misclassified as wire errors: an unparsable ttl throws ConfigurationError", () => {
+    expect(() => ttlToSeconds("garbage")).toThrowError(ConfigurationError);
+    expect(() => ttlToSeconds(-5)).toThrowError(ConfigurationError);
+    expect(() => ttlToSeconds(1.5)).toThrowError(ConfigurationError);
   });
 });
 

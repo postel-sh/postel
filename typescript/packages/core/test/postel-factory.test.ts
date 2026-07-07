@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { DedupAdapter, DedupRecordOptions } from "../src/index.js";
+import type { DedupAdapter, DedupRecordOptions, Verifier } from "../src/index.js";
 import {
+  ConfigurationError,
   Ed25519V1a,
   ExponentialBackoff,
   HmacV1,
   InMemoryDedup,
   InProcess,
   Keyset,
-  MalformedHeader,
   NotImplementedError,
   Postel,
   PostelError,
@@ -16,6 +16,7 @@ import {
   Secret,
   SignatureInvalid,
   signFixture,
+  verify,
 } from "../src/index.js";
 import { InMemoryStorage } from "../src/index.js";
 
@@ -236,6 +237,55 @@ describe("Verifier strategy composition", () => {
     const v = PublicKey("whpk_demo");
     expect(typeof v.verify).toBe("function");
   });
+
+  it("ConfigurationError from a verifier is rethrown, not swallowed into SignatureInvalid", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_A,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const misconfiguredVerifier: Verifier = {
+      verify: (rawBody, headers, options) => verify(rawBody, headers, [], options),
+    };
+    let laterVerifierTried = false;
+    const trackingVerifier: Verifier = {
+      verify: async () => {
+        laterVerifierTried = true;
+        return { event: { type: "should.not.match" }, matchedSecretIndex: 0 };
+      },
+    };
+    const postel = Postel({
+      inbound: {
+        vendor: {
+          verify: [misconfiguredVerifier, trackingVerifier],
+          tolerance: 600,
+          now: () => FIXED_NOW,
+        },
+      },
+    });
+    try {
+      await postel.inbound.vendor.verify(fixture.body, fixture.headers);
+      throw new Error("verify should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ConfigurationError);
+      expect(err).not.toBeInstanceOf(SignatureInvalid);
+    }
+    expect(laterVerifierTried).toBe(false);
+  });
+
+  it("An inbound source configured with no verifiers throws ConfigurationError", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_A,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const postel = Postel({
+      inbound: { vendor: { verify: [], tolerance: 600, now: () => FIXED_NOW } },
+    });
+    await expect(
+      postel.inbound.vendor.verify(fixture.body, fixture.headers),
+    ).rejects.toBeInstanceOf(ConfigurationError);
+  });
 });
 
 describe("Conditional optionality of outbound and inbound", () => {
@@ -365,7 +415,7 @@ describe("Inbound dedup wiring", () => {
     expect(captured.options).toBeUndefined();
   });
 
-  it("dedup throws MalformedHeader for an invalid ttl string", async () => {
+  it("dedup throws ConfigurationError for an invalid ttl string", async () => {
     const postel = Postel({
       inbound: {
         github: { verify: Secret(TEST_SECRET_A), dedup: InMemoryDedup() },
@@ -373,16 +423,18 @@ describe("Inbound dedup wiring", () => {
     });
     await expect(
       postel.inbound.github.dedup("msg_bad_ttl", { ttl: "garbage" }),
-    ).rejects.toBeInstanceOf(MalformedHeader);
+    ).rejects.toBeInstanceOf(ConfigurationError);
   });
 
-  it("dedup throws MalformedHeader when ttl is missing entirely", async () => {
+  it("dedup throws ConfigurationError when ttl is missing entirely", async () => {
     const postel = Postel({
       inbound: {
         github: { verify: Secret(TEST_SECRET_A), dedup: InMemoryDedup() },
       },
     });
-    await expect(postel.inbound.github.dedup("msg_no_ttl")).rejects.toBeInstanceOf(MalformedHeader);
+    await expect(postel.inbound.github.dedup("msg_no_ttl")).rejects.toBeInstanceOf(
+      ConfigurationError,
+    );
   });
 
   it("dedup() is absent from the type when dedup is explicitly set to undefined", () => {

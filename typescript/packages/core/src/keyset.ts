@@ -1,4 +1,4 @@
-import { MalformedHeader } from "./errors.js";
+import { ConfigurationError, MalformedHeader } from "./errors.js";
 import { isExpired } from "./internal/jwk.js";
 import type { Jwk, Jwks, Keyset, KeysetOptions } from "./types.js";
 
@@ -19,7 +19,7 @@ function isJwks(value: unknown): value is Jwks {
 export function createKeyset(options: KeysetOptions): Keyset {
   const fetcher = options.fetch ?? globalThis.fetch;
   if (typeof fetcher !== "function") {
-    throw new MalformedHeader("createKeyset: fetch is not available in this runtime");
+    throw new ConfigurationError("createKeyset: fetch is not available in this runtime");
   }
   const cacheTtlMs = (options.cacheTtl ?? DEFAULT_CACHE_TTL_SECONDS) * 1000;
   const refreshEveryMs = (options.refreshEvery ?? DEFAULT_REFRESH_EVERY_SECONDS) * 1000;

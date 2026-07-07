@@ -1,4 +1,4 @@
-import { Postel, Secret, signFixture } from "@postel/core";
+import { ConfigurationError, Postel, Secret, signFixture } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
 import { handleInbound } from "../src/index.js";
@@ -65,6 +65,14 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
       expect(outcome.status).toBe(400);
       expect(outcome.error.code).toBe("SIGNATURE_INVALID");
     }
+  });
+
+  it("propagates a ConfigurationError from a misconfigured source instead of mapping it to a 4xx", async () => {
+    const sig = await signed("order.created", "o_3");
+    const broken = Postel({ inbound: { vendor: { verify: [], now: () => NOW } } }).inbound.vendor;
+    await expect(
+      handleInbound(broken, { rawBody: sig.body, headers: sig.headers, method: "POST" }),
+    ).rejects.toBeInstanceOf(ConfigurationError);
   });
 
   it("propagates a non-PostelError thrown from onVerified so the framework yields 5xx", async () => {

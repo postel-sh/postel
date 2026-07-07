@@ -1,4 +1,10 @@
-import { MalformedHeader, SignatureInvalid, TimestampTooOld, UnknownKeyId } from "./errors.js";
+import {
+  ConfigurationError,
+  MalformedHeader,
+  SignatureInvalid,
+  TimestampTooOld,
+  UnknownKeyId,
+} from "./errors.js";
 import { importEd25519PublicKey, verifyEd25519V1a } from "./internal/ed25519.js";
 import { bodyToText, parseEvent } from "./internal/event.js";
 import {
@@ -37,11 +43,11 @@ function normalizeSecrets(input: SecretOrKeyset): ReadonlyArray<Secret> {
   if (isSecret(input)) return [input];
   if (Array.isArray(input) && input.every(isSecret)) {
     if (input.length === 0) {
-      throw new MalformedHeader("verify: empty secret array");
+      throw new ConfigurationError("verify: empty secret array");
     }
     return input;
   }
-  throw new MalformedHeader("verify: secretOrKeyset is not a string, string[], or Keyset");
+  throw new ConfigurationError("verify: secretOrKeyset is not a string, string[], or Keyset");
 }
 
 function enforceTimestampWindow(tsHeader: string, toleranceSeconds: number, now: () => Date): void {
@@ -67,7 +73,7 @@ async function verifyWithSecrets<TData>(
     const secret = secrets[secretIndex] as Secret;
     const decoded = decodeSecret(secret);
     if (decoded.kind === "ed25519-private") {
-      throw new MalformedHeader(
+      throw new ConfigurationError(
         `verify: receiver-side secrets must not carry the ${ED_PRIVATE_PREFIX} prefix (use ${ED_PUBLIC_PREFIX} or a Keyset)`,
       );
     }
