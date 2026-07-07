@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest";
 
 import { handleInbound } from "../src/index.js";
 
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
+
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
 
 function source() {
-  return Postel({ inbound: { vendor: { verify: Secret(SECRET), now: () => NOW } } }).inbound.vendor;
+  return Postel({ inbound: { vendor: { verify: Secret(SECRET), clock: fixedClock(NOW) } } }).inbound
+    .vendor;
 }
 
 function signed(type: string, id: string) {
@@ -69,7 +72,8 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
 
   it("propagates a ConfigurationError from a misconfigured source instead of mapping it to a 4xx", async () => {
     const sig = await signed("order.created", "o_3");
-    const broken = Postel({ inbound: { vendor: { verify: [], now: () => NOW } } }).inbound.vendor;
+    const broken = Postel({ inbound: { vendor: { verify: [], clock: fixedClock(NOW) } } }).inbound
+      .vendor;
     await expect(
       handleInbound(broken, { rawBody: sig.body, headers: sig.headers, method: "POST" }),
     ).rejects.toBeInstanceOf(ConfigurationError);

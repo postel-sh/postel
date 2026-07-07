@@ -1,3 +1,4 @@
+import type { Clock } from "./clock.js";
 import {
   ConfigurationError,
   EventValidation,
@@ -27,8 +28,8 @@ export interface InboundSource<TData = unknown> {
   readonly schema?: StandardSchemaV1<unknown, TData>;
   readonly dedup?: DedupAdapter | undefined;
   readonly dedupTtl?: number | string;
-  readonly tolerance?: number;
-  readonly now?: () => Date;
+  readonly tolerance?: number | string;
+  readonly clock?: Clock;
   readonly onSuccess?: (event: WebhookEvent, result: ComposedVerifyResult) => void;
   readonly onFailure?: (error: Error, headers: WebhookHeaders) => void;
 }
@@ -81,8 +82,15 @@ async function verifySource<TData>(
     throw new ConfigurationError("inbound source has no verifiers configured");
   }
   const options: VerifyOptions = {
-    ...(source.tolerance !== undefined ? { toleranceSeconds: source.tolerance } : {}),
-    ...(source.now ? { now: source.now } : {}),
+    ...(source.tolerance !== undefined
+      ? {
+          toleranceSeconds:
+            typeof source.tolerance === "string"
+              ? ttlToSeconds(source.tolerance)
+              : source.tolerance,
+        }
+      : {}),
+    ...(source.clock ? { clock: source.clock } : {}),
   };
 
   let matched: ComposedVerifyResult<TData> | undefined;

@@ -91,8 +91,8 @@ export function buildEndpointApi(
   storage: Storage,
   defaults: EndpointDefaults = {},
 ): {
-  create(opts: EndpointCreateOptions, runtime?: { tx?: unknown }): Promise<Endpoint>;
-  update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: unknown }): Promise<Endpoint>;
+  create(opts: EndpointCreateOptions & { tx?: unknown }): Promise<Endpoint>;
+  update(id: string, opts: EndpointUpdateOptions & { tx?: unknown }): Promise<Endpoint>;
   delete(id: string, opts?: { purgeAttempts?: boolean; tx?: unknown }): Promise<void>;
   list(opts?: {
     tenantId?: string;
@@ -112,8 +112,9 @@ export function buildEndpointApi(
     };
   };
   return {
-    async create(opts, runtime) {
+    async create(opts) {
       assertHttpWired(opts.http, "endpoint");
+      const txOption = opts.tx !== undefined ? { tx: opts.tx } : undefined;
       const allowHttp = opts.allowHttp === true;
       const ssrfPolicy = resolveSsrfPolicy(opts.http?.ssrf);
       await validateEndpointUrl({ url: opts.url, allowHttp, ssrfPolicy });
@@ -137,7 +138,7 @@ export function buildEndpointApi(
         transform: opts.transform ?? null,
       };
       if (opts.provisionSecret === false) {
-        return toPublicEndpoint(await storage.endpoints.create(newRecord, runtime));
+        return toPublicEndpoint(await storage.endpoints.create(newRecord, txOption));
       }
       // Mint the endpoint's initial primary signing secret from the resolved
       // strategy (per-endpoint signing, else the outbound default, else HMAC v1),
@@ -165,18 +166,17 @@ export function buildEndpointApi(
         return created;
       };
       const rec =
-        runtime?.tx !== undefined
-          ? await provision(runtime.tx)
-          : await storage.transaction(provision);
+        opts.tx !== undefined ? await provision(opts.tx) : await storage.transaction(provision);
       return toPublicEndpoint(rec);
     },
-    async update(id, opts, runtime) {
+    async update(id, opts) {
       assertHttpWired(opts.http, "endpoint");
+      const txOption = opts.tx !== undefined ? { tx: opts.tx } : undefined;
       // URL-affecting fields must re-run create-time validation against the
       // effective (post-patch) values, otherwise a safe HTTPS endpoint could be
       // downgraded to a cleartext or SSRF-eligible URL.
       if (opts.url !== undefined || opts.allowHttp !== undefined || opts.http !== undefined) {
-        const current = await storage.endpoints.get(id, runtime);
+        const current = await storage.endpoints.get(id, txOption);
         if (!current) throw new EndpointNotFound(`endpoint not found: ${id}`);
         const effectiveUrl = opts.url ?? current.url;
         const effectiveAllowHttp = opts.allowHttp ?? current.allowHttp;
@@ -203,7 +203,7 @@ export function buildEndpointApi(
       if (opts.tenantId !== undefined) patch.tenantId = opts.tenantId;
       if (opts.filter !== undefined) patch.filter = opts.filter;
       if (opts.transform !== undefined) patch.transform = opts.transform;
-      const rec = await storage.endpoints.update(id, patch, runtime);
+      const rec = await storage.endpoints.update(id, patch, txOption);
       return toPublicEndpoint(rec);
     },
     async delete(id, opts) {

@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest";
 
 import { fetchWebhook } from "../src/index.js";
 
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
+
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
 
 function source() {
-  return Postel({ inbound: { vendor: { verify: Secret(SECRET), now: () => NOW } } }).inbound.vendor;
+  return Postel({ inbound: { vendor: { verify: Secret(SECRET), clock: fixedClock(NOW) } } }).inbound
+    .vendor;
 }
 
 describe("Framework adapters preserve raw bytes", () => {

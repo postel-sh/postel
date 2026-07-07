@@ -110,8 +110,8 @@ Postel({
       schema?: StandardSchemaV1,                     // zod / valibot / … — validates & types event.data
       dedup?: DedupAdapter,                          // see /docs/inbound/deduplication
       dedupTtl?: number | string,                    // "24h", "1d", or seconds
-      tolerance?: number,                            // seconds; default 300
-      now?: () => Date,                              // for tests / deterministic builds
+      tolerance?: number | string,                   // "5m" or seconds; default 300
+      clock?: Clock,                                 // { now(), sleep() } — for tests / deterministic builds
       onSuccess?: (event, result) => void,           // observability hook
       onFailure?: (error, headers) => void,          // observability hook
     },

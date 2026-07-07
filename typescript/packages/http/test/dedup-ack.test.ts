@@ -3,17 +3,22 @@ import { describe, expect, it } from "vitest";
 
 import { handleInbound } from "../src/index.js";
 
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
+
 const SECRET = "whsec_aG9uby1hZGFwdGVyLXRlc3Qtc2VjcmV0LWZvci1wb3N0ZWw=";
 const NOW = new Date("2026-05-14T13:00:00Z");
 
 function dedupSource() {
   return Postel({
-    inbound: { vendor: { verify: Secret(SECRET), now: () => NOW, dedup: inMemoryDedupAdapter() } },
+    inbound: {
+      vendor: { verify: Secret(SECRET), clock: fixedClock(NOW), dedup: inMemoryDedupAdapter() },
+    },
   }).inbound.vendor;
 }
 
 function plainSource() {
-  return Postel({ inbound: { vendor: { verify: Secret(SECRET), now: () => NOW } } }).inbound.vendor;
+  return Postel({ inbound: { vendor: { verify: Secret(SECRET), clock: fixedClock(NOW) } } }).inbound
+    .vendor;
 }
 
 function signed(id: string) {

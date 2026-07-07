@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { signFixture, verify } from "../src/index.js";
 
+const fixedClock = (at: Date) => ({ now: () => at, sleep: () => Promise.resolve() });
+
 const SECRET = "whsec_dGVzdC1maXh0dXJlLXNlY3JldC1mb3ItcG9zdGVs";
 
 describe("Test fixtures for signed payloads", () => {
@@ -23,7 +25,9 @@ describe("Test fixtures for signed payloads", () => {
     );
     expect(signed.headers["webhook-signature"]).toMatch(/^v1,[A-Za-z0-9+/=]+$/u);
 
-    const result = await verify(signed.body, signed.headers, SECRET, { now: () => timestamp });
+    const result = await verify(signed.body, signed.headers, SECRET, {
+      clock: fixedClock(timestamp),
+    });
     expect(result.event.type).toBe("user.profile.updated");
     expect(result.matchedSecretIndex).toBe(0);
   });

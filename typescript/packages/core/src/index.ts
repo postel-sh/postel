@@ -99,7 +99,6 @@ export type {
   EndpointWithSecrets,
   HostTxOption,
   InsertOrReuseResult,
-  MessageId as StorageMessageId,
   MessageListFilter,
   MessageStatus,
   NewAttempt,
@@ -116,11 +115,11 @@ export type {
   TenantId,
   TenantListFilter,
   TenantRecord,
-  Unsubscribe as StorageUnsubscribe,
+  Unsubscribe,
   WorkerId,
 } from "./storage/types.js";
 export { jwksHandler } from "./jwks-handler.js";
-export { createKeyset } from "./keyset.js";
+export { createJwksKeyset } from "./keyset.js";
 export { signFixture } from "./sign-fixture.js";
 export { verify } from "./verify.js";
 
@@ -132,10 +131,10 @@ export type {
   Jwk,
   Jwks,
   JwksHandlerOptions,
-  Keyset as JwksKeyset,
+  JwksKeyset,
   KeysetOptions,
-  Secret as RawSecret,
-  SecretOrKeyset,
+  SecretOrJwksKeyset,
+  SecretValue,
   SignFixtureOptions,
   SignedFixture,
   VerifyOptions,

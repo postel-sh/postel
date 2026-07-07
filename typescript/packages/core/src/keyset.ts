@@ -1,6 +1,6 @@
 import { ConfigurationError, MalformedHeader } from "./errors.js";
 import { isExpired } from "./internal/jwk.js";
-import type { Jwk, Jwks, Keyset, KeysetOptions } from "./types.js";
+import type { Jwk, Jwks, JwksKeyset, KeysetOptions } from "./types.js";
 
 const DEFAULT_CACHE_TTL_SECONDS = 5 * 60;
 const DEFAULT_REFRESH_EVERY_SECONDS = 30 * 60;
@@ -16,10 +16,10 @@ function isJwks(value: unknown): value is Jwks {
   return Array.isArray(keys);
 }
 
-export function createKeyset(options: KeysetOptions): Keyset {
+export function createJwksKeyset(options: KeysetOptions): JwksKeyset {
   const fetcher = options.fetch ?? globalThis.fetch;
   if (typeof fetcher !== "function") {
-    throw new ConfigurationError("createKeyset: fetch is not available in this runtime");
+    throw new ConfigurationError("createJwksKeyset: fetch is not available in this runtime");
   }
   const cacheTtlMs = (options.cacheTtl ?? DEFAULT_CACHE_TTL_SECONDS) * 1000;
   const refreshEveryMs = (options.refreshEvery ?? DEFAULT_REFRESH_EVERY_SECONDS) * 1000;
@@ -32,12 +32,12 @@ export function createKeyset(options: KeysetOptions): Keyset {
     const res = await fetcher(options.jwksUri);
     if (!res.ok) {
       throw new MalformedHeader(
-        `createKeyset: JWKS fetch returned ${res.status} for ${options.jwksUri}`,
+        `createJwksKeyset: JWKS fetch returned ${res.status} for ${options.jwksUri}`,
       );
     }
     const body = await res.json();
     if (!isJwks(body)) {
-      throw new MalformedHeader(`createKeyset: JWKS at ${options.jwksUri} has no "keys" array`);
+      throw new MalformedHeader(`createJwksKeyset: JWKS at ${options.jwksUri} has no "keys" array`);
     }
     return { fetchedAt: Date.now(), keys: body.keys };
   }
