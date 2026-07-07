@@ -4,7 +4,7 @@
 
 - [x] 1.1 MODIFY `api-surface-typescript` *All writes accept an optional transaction parameter* — tx rides in the options bag; ADD *House API idioms*.
 - [x] 1.2 MODIFY `receiver` *Timestamp window enforcement* (duration strings, injectable clock) and *JWKS consumer* (`createJwksKeyset`).
-- [x] 1.3 Write `decisions/0015-house-api-idioms.md` capturing the four locked idioms.
+- [x] 1.3 Write `decisions/0016-house-api-idioms.md` capturing the four locked idioms.
 
 ## 2. Core renames (at source, no `as` re-exports)
 

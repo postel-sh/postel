@@ -72,7 +72,8 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
 
   it("propagates a ConfigurationError from a misconfigured source instead of mapping it to a 4xx", async () => {
     const sig = await signed("order.created", "o_3");
-    const broken = Postel({ inbound: { vendor: { verify: [], now: () => NOW } } }).inbound.vendor;
+    const broken = Postel({ inbound: { vendor: { verify: [], clock: fixedClock(NOW) } } }).inbound
+      .vendor;
     await expect(
       handleInbound(broken, { rawBody: sig.body, headers: sig.headers, method: "POST" }),
     ).rejects.toBeInstanceOf(ConfigurationError);

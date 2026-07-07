@@ -21,7 +21,7 @@ Every TS write API (e.g., `outbound.send`, `outbound.endpoints.create`, `outboun
 
 ### Requirement: House API idioms [PORT-SPECIFIC]
 
-The TypeScript surface SHALL use exactly one idiom for each recurring API concern, per [ADR 0015 — House API idioms](../../../decisions/0015-house-api-idioms.md):
+The TypeScript surface SHALL use exactly one idiom for each recurring API concern, per [ADR 0016 — House API idioms](../../../decisions/0016-house-api-idioms.md):
 
 - **Durations** are `number | string` everywhere a duration is configured: an integer number of seconds, or a duration string in the `"<integer><s|m|h|d>"` grammar shared with `dedupTtl` (e.g. `"5m"`). `InboundSource.tolerance` SHALL accept both forms.
 - **Time injection** is `clock?: Clock` (`{ now(): Date; sleep(ms): Promise<void> }`), the shape already used by `OutboundConfig.clock`. `InboundSource` and `VerifyOptions` SHALL accept `clock`; no public option SHALL take a bare `now?: () => Date` function.

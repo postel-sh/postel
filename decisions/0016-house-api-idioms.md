@@ -1,4 +1,4 @@
-# 0015 — House API idioms
+# 0016 — House API idioms
 
 - **Status**: Accepted
 - **Date**: 2026-07-07

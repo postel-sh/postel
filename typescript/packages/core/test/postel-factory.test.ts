@@ -263,7 +263,7 @@ describe("Verifier strategy composition", () => {
         vendor: {
           verify: [misconfiguredVerifier, trackingVerifier],
           tolerance: 600,
-          now: () => FIXED_NOW,
+          clock: fixedClock(FIXED_NOW),
         },
       },
     });
@@ -284,7 +284,7 @@ describe("Verifier strategy composition", () => {
       timestamp: FIXED_NOW,
     });
     const postel = Postel({
-      inbound: { vendor: { verify: [], tolerance: 600, now: () => FIXED_NOW } },
+      inbound: { vendor: { verify: [], tolerance: 600, clock: fixedClock(FIXED_NOW) } },
     });
     await expect(
       postel.inbound.vendor.verify(fixture.body, fixture.headers),
