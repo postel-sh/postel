@@ -58,10 +58,13 @@ const recent = await postel.outbound.messages.list({
   until:    "2026-07-01T00:00:00Z",
   limit:    50,                    // default 100
 });
+
+recent.items;       // Message[] — newest-first
+recent.nextCursor;  // an opaque string, or null on the last page
 ```
 
-`list` returns messages newest-first, bounded by `limit`. Every filter is optional; omit them all to get the most recent messages across the store.
+`list` returns a bounded page of messages, newest-first — the same `{ items, nextCursor }` envelope every list read uses. Every filter is optional; omit them all to get the most recent messages across the store. Walk further back by feeding `nextCursor` back in as `cursor` alongside the same filters — the same loop shown for [tenants](/docs/outbound/tenants#list-tenants-paginated).
 
 ## Over HTTP
 
-The same three reads are exposed by the [admin API](/docs/outbound/admin) as `GET /messages`, `GET /messages/:id`, and `GET /messages/:id/attempts` (the list takes `?type=`, `?status=`, `?since=`, `?until=`, `?limit=` query filters; the attempts route takes `?status=` to narrow by delivery status). Those routes are tenant-scoped from the `authorize` decision, and an unknown or cross-tenant id responds `404 MESSAGE_NOT_FOUND`.
+The same three reads are exposed by the [admin API](/docs/outbound/admin) as `GET /messages`, `GET /messages/:id`, and `GET /messages/:id/attempts` (the list takes `?type=`, `?status=`, `?since=`, `?until=`, `?limit=`, `?cursor=` query filters and its body carries `nextCursor`; the attempts route takes `?status=` to narrow by delivery status). Those routes are tenant-scoped from the `authorize` decision, and an unknown or cross-tenant id responds `404 MESSAGE_NOT_FOUND`.

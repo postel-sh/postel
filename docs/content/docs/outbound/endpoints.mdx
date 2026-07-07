@@ -27,10 +27,14 @@ await postel.outbound.endpoints.disable(ep.id);
 // Delete (delivery stops; row removed unless purgeAttempts: false)
 await postel.outbound.endpoints.delete(ep.id, { purgeAttempts: true });
 
-// List / get
-const all = await postel.outbound.endpoints.list({ tenantId: "cust_42" });
+// List / get — list returns a bounded page, newest-first
+const page = await postel.outbound.endpoints.list({ tenantId: "cust_42", limit: 50 });
+page.items;       // Endpoint[]
+page.nextCursor;  // an opaque string, or null on the last page
 const one = await postel.outbound.endpoints.get(ep.id);
 ```
+
+`list` is paginated with the same envelope as every other list read (`{ limit?, cursor? }` in, `{ items, nextCursor }` out; default limit 100). Walk every page by feeding `nextCursor` back in as `cursor` — the same loop shown for [tenants](/docs/outbound/tenants#list-tenants-paginated).
 
 Every endpoint operation accepts an optional `tx` so endpoint state changes can join the same DB transaction as your business write.
 

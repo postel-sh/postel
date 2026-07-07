@@ -1,6 +1,7 @@
 import type { Clock } from "../../clock.js";
 import { EndpointValidation } from "../../errors.js";
 import type { ReplayOptions, ReplayResult } from "../../outbound.js";
+import type { Page } from "../../pagination.js";
 import type { MessageId, Storage } from "../../storage/types.js";
 import { newMessageId } from "../internal/id.js";
 
@@ -145,13 +146,23 @@ export async function replayImpl(ctx: ReplayContext, opts: ReplayOptions): Promi
 
 export async function reconcileImpl(
   ctx: ReplayContext,
-  endpointId: string,
-  since: Date | string,
-): Promise<ReadonlyArray<MessageId>> {
-  const sinceDate = since instanceof Date ? since : new Date(since);
-  const out: MessageId[] = [];
-  for await (const id of ctx.storage.reconcile({ endpointId, since: sinceDate })) {
-    out.push(id);
+  opts: {
+    readonly endpointId: string;
+    readonly since: Date | string;
+    readonly limit?: number;
+    readonly cursor?: string;
+  },
+): Promise<Page<MessageId>> {
+  // A non-positive or non-integer limit is a caller error, not a silent
+  // default — same guard as the list reads.
+  if (opts.limit !== undefined && (!Number.isInteger(opts.limit) || opts.limit <= 0)) {
+    throw new RangeError(`limit must be a positive integer, received ${String(opts.limit)}`);
   }
-  return out;
+  const sinceDate = opts.since instanceof Date ? opts.since : new Date(opts.since);
+  return ctx.storage.reconcile({
+    endpointId: opts.endpointId,
+    since: sinceDate,
+    ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+    ...(opts.cursor !== undefined ? { cursor: opts.cursor } : {}),
+  });
 }

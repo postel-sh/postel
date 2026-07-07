@@ -59,15 +59,20 @@ A count of outbox rows created. Each row goes through the normal delivery pipeli
 
 ## `reconcile`
 
-Distinct from replay: `reconcile({ endpointId, since })` re-attempts only messages that **previously failed permanently** for the given endpoint. Equivalent to `replay` with an additional filter on `lastAttempt.state === 'failed'`. Useful as a recurring background job: a healthy endpoint will return zero reconciled rows; an unhealthy one surfaces the backlog.
+Distinct from replay: `reconcile({ endpointId, since })` **finds** messages that were never confirmed delivered to the given endpoint — the ids whose latest attempt is in a non-delivered state. Useful as a recurring background job: a healthy endpoint returns an empty page; an unhealthy one surfaces the backlog, which you can feed to `replay`.
 
 ```ts
-const replayed = await postel.outbound.reconcile({
+const page = await postel.outbound.reconcile({
   endpointId: "ep_payments_webhook",
-  since:      Date.now() - 86_400_000,
+  since:      new Date(Date.now() - 86_400_000),
+  limit:      500,                    // default 100
 });
-console.log(`replayed ${replayed.length} previously-failed messages`);
+page.items;       // MessageId[] — oldest-first
+page.nextCursor;  // resume token, or null once the backlog is exhausted
+console.log(`${page.items.length} messages never confirmed delivered`);
 ```
+
+The result is bounded — at most `limit` ids per call, oldest-first, with `nextCursor` resuming exactly where the previous page ended — so a reconcile over a long outage never materializes the entire backlog in one array. It is the same `{ items, nextCursor }` envelope every list read uses.
 
 ## Throughput control
 

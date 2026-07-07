@@ -241,9 +241,127 @@ describe("Admin HTTP handlers", () => {
 
     const res = await router(req("GET", "/admin/messages?type=order.created&limit=50"));
     expect(res.status).toBe(200);
-    const { messages } = (await res.json()) as { messages: Array<{ type: string }> };
+    const { messages, nextCursor } = (await res.json()) as {
+      messages: Array<{ type: string }>;
+      nextCursor: string | null;
+    };
     expect(messages).toHaveLength(2);
     expect(messages.every((m) => m.type === "order.created")).toBe(true);
+    expect(nextCursor).toBeNull();
+  });
+
+  it("List messages via admin router paginates: nextCursor feeds the next page until exhausted", async () => {
+    const { postel, router } = build(ALLOW);
+    const sent: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      sent.push(await postel.outbound.send({ type: "order.created", data: { i } }));
+    }
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const path = cursor
+        ? `/admin/messages?limit=2&cursor=${encodeURIComponent(cursor)}`
+        : "/admin/messages?limit=2";
+      const res = await router(req("GET", path));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        messages: Array<{ id: string }>;
+        nextCursor: string | null;
+      };
+      expect(body.messages.length).toBeLessThanOrEqual(2);
+      seen.push(...body.messages.map((m) => m.id));
+      cursor = body.nextCursor;
+    } while (cursor !== null);
+    expect(seen.length).toBe(sent.length);
+    expect(new Set(seen)).toEqual(new Set(sent));
+  });
+
+  it("List endpoints via admin router (paginated): limit and cursor walk the set; malformed cursor is 400", async () => {
+    const { router } = build(ALLOW);
+    const created: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const res = await router(
+        req("POST", "/admin/endpoints", { url: "http://127.0.0.1:65535/hook", allowHttp: true }),
+      );
+      created.push(((await res.json()) as { id: string }).id);
+    }
+
+    const first = await router(req("GET", "/admin/endpoints?limit=2"));
+    expect(first.status).toBe(200);
+    const page1 = (await first.json()) as {
+      endpoints: Array<{ id: string }>;
+      nextCursor: string | null;
+    };
+    expect(page1.endpoints).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const second = await router(
+      req(
+        "GET",
+        `/admin/endpoints?limit=2&cursor=${encodeURIComponent(page1.nextCursor as string)}`,
+      ),
+    );
+    const page2 = (await second.json()) as {
+      endpoints: Array<{ id: string }>;
+      nextCursor: string | null;
+    };
+    expect(page2.endpoints).toHaveLength(1);
+    expect(page2.nextCursor).toBeNull();
+    const seen = [...page1.endpoints, ...page2.endpoints].map((e) => e.id);
+    expect(new Set(seen)).toEqual(new Set(created));
+
+    for (const bad of ["-1", "0", "1.5", "abc"]) {
+      const res = await router(req("GET", `/admin/endpoints?limit=${bad}`));
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+    }
+    const badCursor = await router(req("GET", "/admin/endpoints?cursor=not-a-valid-cursor"));
+    expect(badCursor.status).toBe(400);
+    expect(((await badCursor.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+  });
+
+  it("Reconcile via admin handler returns a bounded page: limit caps messageIds and cursor resumes the backlog", async () => {
+    const { postel, router } = build(ALLOW);
+    const sent: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      sent.push(await postel.outbound.send({ type: "order.created", data: { i } }));
+    }
+    const since = new Date(Date.now() - 60_000).toISOString();
+
+    const first = await router(
+      req("POST", "/admin/reconcile", { endpointId: "ep_recon", since, limit: 2 }),
+    );
+    expect(first.status).toBe(200);
+    const page1 = (await first.json()) as { messageIds: string[]; nextCursor: string | null };
+    expect(page1.messageIds).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const seen = [...page1.messageIds];
+    let cursor = page1.nextCursor;
+    while (cursor !== null) {
+      const res = await router(
+        req("POST", "/admin/reconcile", { endpointId: "ep_recon", since, limit: 2, cursor }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { messageIds: string[]; nextCursor: string | null };
+      expect(body.messageIds.length).toBeLessThanOrEqual(2);
+      seen.push(...body.messageIds);
+      cursor = body.nextCursor;
+    }
+    expect(seen.length).toBe(sent.length);
+    expect(new Set(seen)).toEqual(new Set(sent));
+
+    const badLimit = await router(
+      req("POST", "/admin/reconcile", { endpointId: "ep_recon", since, limit: 0 }),
+    );
+    expect(badLimit.status).toBe(400);
+    expect(((await badLimit.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
+
+    const badCursor = await router(
+      req("POST", "/admin/reconcile", { endpointId: "ep_recon", since, cursor: "not-a-cursor" }),
+    );
+    expect(badCursor.status).toBe(400);
+    expect(((await badCursor.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
   });
 
   it("Tenant-scoped admin: a tenant-bound caller cannot read another tenant's message (404, no leak)", async () => {
@@ -268,6 +386,10 @@ describe("Admin HTTP handlers", () => {
       const res = await router(req("GET", `/admin/messages?limit=${bad}`));
       expect(res.status).toBe(400);
     }
+
+    const badCursor = await router(req("GET", "/admin/messages?cursor=not-a-valid-cursor"));
+    expect(badCursor.status).toBe(400);
+    expect(((await badCursor.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
 
     // A well-formed query still succeeds.
     const ok = await router(req("GET", "/admin/messages?since=2026-06-01T00:00:00Z&limit=10"));

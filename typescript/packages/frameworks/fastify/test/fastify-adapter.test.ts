@@ -166,7 +166,7 @@ describe("Admin router binding", () => {
     ).admin.bindAdminRoutes("/admin", { authorize: () => true });
     const res = await app.inject({ method: "GET", url: "/admin/endpoints" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ endpoints: [] });
+    expect(res.json()).toEqual({ endpoints: [], nextCursor: null });
     await app.close();
   });
 

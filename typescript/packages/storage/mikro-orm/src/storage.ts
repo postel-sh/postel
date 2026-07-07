@@ -25,7 +25,9 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  DEFAULT_ENDPOINT_LIST_LIMIT,
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_RECONCILE_LIMIT,
   DEFAULT_TENANT_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
@@ -39,6 +41,7 @@ import {
   createCallbackRegistry,
   decodeAttempt,
   decodeEndpoint,
+  decodeKeysetCursor,
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
@@ -50,6 +53,7 @@ import {
   encodeMessageInsert,
   encodeSecretInsert,
   encodeTenantCursor,
+  pageFromRows,
 } from "@postel/storage-helpers";
 
 export type MikroOrmDialect = "postgres" | "mysql" | "sqlite";
@@ -410,12 +414,22 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
       if (filter.status !== undefined && filter.status.length > 0) {
         conds.push(`status in (${filter.status.map((s) => p.add(s)).join(", ")})`);
       }
-      const limitPlaceholder = p.add(filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT);
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        const ts1 = p.add(tsParam(createdAt));
+        const ts2 = p.add(tsParam(createdAt));
+        conds.push(`(created_at < ${ts1} or (created_at = ${ts2} and id < ${p.add(id)}))`);
+      }
+      const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
+      const limitPlaceholder = p.add(limit + 1);
       const result = await rows<Record<string, unknown>>(
         `select * from messages where ${conds.join(" and ")} order by created_at desc, id desc limit ${limitPlaceholder}`,
         p.values,
       );
-      return result.map((row) => decodeStoredMessage(row, codec));
+      return pageFromRows(
+        result.map((row) => decodeStoredMessage(row, codec)),
+        limit,
+      );
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {
@@ -437,23 +451,40 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
       }
     },
 
-    async *reconcile(filter: ReconcileFilter) {
+    async reconcile(filter: ReconcileFilter) {
       await ready();
+      const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
       const p = new Params();
       const conds = [`created_at >= ${p.add(tsParam(filter.since))}`];
       if (filter.tenantId !== undefined) conds.push(`tenant_id = ${p.add(filter.tenantId)}`);
-      const msgRows = await rows<{ id: string }>(
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        const ts1 = p.add(tsParam(createdAt));
+        const ts2 = p.add(tsParam(createdAt));
+        conds.push(`(created_at > ${ts1} or (created_at = ${ts2} and id > ${p.add(id)}))`);
+      }
+      const msgRows = await rows<{ id: string; created_at: unknown }>(
         `select id, created_at from messages where ${conds.join(" and ")} order by created_at, id`,
         p.values,
       );
+      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
       for (const row of msgRows) {
+        // Overfetch by one so the page slice can prove another page exists.
+        if (candidates.length > limit) break;
         const lp = new Params();
         const last = await rows<{ status: string }>(
           `select status from attempts where message_id = ${lp.add(row.id)} and endpoint_id = ${lp.add(filter.endpointId)} order by attempt_number desc limit 1`,
           lp.values,
         );
-        if (last.length === 0 || last[0]?.status !== "success") yield row.id as MessageId;
+        if (last.length === 0 || last[0]?.status !== "success") {
+          candidates.push({
+            id: row.id,
+            createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
+          });
+        }
       }
+      const page = pageFromRows(candidates, limit);
+      return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },
 
     async countPendingByTenant() {
@@ -563,14 +594,25 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
       },
       async list(opts) {
         await ready();
-        const res =
-          opts?.tenantId !== undefined
-            ? await rows(
-                `select * from endpoints where tenant_id = ${isPg ? "$1" : "?"} order by created_at, id`,
-                [opts.tenantId],
-              )
-            : await rows("select * from endpoints order by created_at, id");
-        return res.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry));
+        const p = new Params();
+        const conds = ["1 = 1"];
+        if (opts?.tenantId !== undefined) conds.push(`tenant_id = ${p.add(opts.tenantId)}`);
+        if (opts?.cursor !== undefined) {
+          const { createdAt, id } = decodeKeysetCursor(opts.cursor);
+          const ts1 = p.add(tsParam(createdAt));
+          const ts2 = p.add(tsParam(createdAt));
+          conds.push(`(created_at < ${ts1} or (created_at = ${ts2} and id < ${p.add(id)}))`);
+        }
+        const limit = opts?.limit ?? DEFAULT_ENDPOINT_LIST_LIMIT;
+        const limitPlaceholder = p.add(limit + 1);
+        const res = await rows<Record<string, unknown>>(
+          `select * from endpoints where ${conds.join(" and ")} order by created_at desc, id desc limit ${limitPlaceholder}`,
+          p.values,
+        );
+        return pageFromRows(
+          res.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry)),
+          limit,
+        );
       },
       async get(id) {
         await ready();

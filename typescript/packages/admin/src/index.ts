@@ -14,6 +14,7 @@ import type {
   MessageListOptions,
   MessageStatus,
   OutboundApi,
+  Page,
   ReplayOptions,
   RetryStrategy,
   Tenant,
@@ -51,6 +52,8 @@ interface AdminBody {
   since?: unknown;
   until?: unknown;
   perSecond?: unknown;
+  limit?: unknown;
+  cursor?: unknown;
 }
 
 const STATUS_BY_CODE: Record<PostelErrorCode, number> = {
@@ -195,6 +198,33 @@ export function adminRouter(
       .filter((v) => v.length > 0);
   }
 
+  // Shared `?limit=` / `?cursor=` parsing for every paginated list route
+  // (`GET /endpoints`, `GET /messages`, `GET /tenants`). Returns a 400
+  // response for a non-positive / non-integer limit.
+  function pageParams(url: URL): { limit?: number; cursor?: string } | Response {
+    const out: { limit?: number; cursor?: string } = {};
+    const limitParam = url.searchParams.get("limit");
+    if (limitParam) {
+      const n = Number(limitParam);
+      if (!Number.isInteger(n) || n <= 0) {
+        return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'limit': ${limitParam}` });
+      }
+      out.limit = n;
+    }
+    const cursor = url.searchParams.get("cursor");
+    if (cursor) out.cursor = cursor;
+    return out;
+  }
+
+  // An undecodable cursor surfaces from storage as a TypeError; every
+  // cursor-accepting route maps it to 400 INVALID_QUERY.
+  function invalidCursor(err: unknown, cursor: string | undefined): Response | undefined {
+    if (err instanceof TypeError) {
+      return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'cursor': ${cursor}` });
+    }
+    return undefined;
+  }
+
   async function dispatch(req: Request, tenantId: string | undefined): Promise<Response> {
     const method = req.method.toUpperCase();
     const url = new URL(req.url);
@@ -237,8 +267,20 @@ export function adminRouter(
 
     if (/\/endpoints$/.test(path)) {
       if (method === "GET") {
-        const endpoints = await out.endpoints.list(tenantId !== undefined ? { tenantId } : {});
-        return json(200, { endpoints });
+        const params = pageParams(url);
+        if (params instanceof Response) return params;
+        let page: Page<Endpoint>;
+        try {
+          page = await out.endpoints.list({
+            ...(tenantId !== undefined ? { tenantId } : {}),
+            ...params,
+          });
+        } catch (err) {
+          const bad = invalidCursor(err, params.cursor);
+          if (bad) return bad;
+          throw err;
+        }
+        return json(200, { endpoints: page.items, nextCursor: page.nextCursor });
       }
       if (method === "POST") {
         const body = await readJson(req);
@@ -295,21 +337,25 @@ export function adminRouter(
         }
         listOpts.until = until;
       }
-      const limit = url.searchParams.get("limit");
-      if (limit) {
-        const n = Number(limit);
-        if (!Number.isInteger(n) || n <= 0) {
-          return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'limit': ${limit}` });
-        }
-        listOpts.limit = n;
-      }
+      const params = pageParams(url);
+      if (params instanceof Response) return params;
+      if (params.limit !== undefined) listOpts.limit = params.limit;
+      if (params.cursor !== undefined) listOpts.cursor = params.cursor;
       // Tenant scoping is authorize-derived; a bound caller can't widen it via query.
       if (tenantId !== undefined) listOpts.tenantId = tenantId;
       else {
         const qt = url.searchParams.get("tenantId");
         if (qt) listOpts.tenantId = qt;
       }
-      return json(200, { messages: await out.messages.list(listOpts) });
+      let page: Page<Message>;
+      try {
+        page = await out.messages.list(listOpts);
+      } catch (err) {
+        const bad = invalidCursor(err, params.cursor);
+        if (bad) return bad;
+        throw err;
+      }
+      return json(200, { messages: page.items, nextCursor: page.nextCursor });
     }
 
     if (/\/replay$/.test(path) && method === "POST") {
@@ -325,11 +371,30 @@ export function adminRouter(
           error: "reconcile requires { endpointId, since }",
         });
       }
-      const messageIds = await out.reconcile({
-        endpointId: body.endpointId,
-        since: String(body.since),
-      });
-      return json(200, { messageIds });
+      if (
+        body.limit !== undefined &&
+        (!Number.isInteger(body.limit) || (body.limit as number) <= 0)
+      ) {
+        return json(400, {
+          errorCode: "INVALID_QUERY",
+          error: `invalid 'limit': ${String(body.limit)}`,
+        });
+      }
+      const cursor = typeof body.cursor === "string" ? body.cursor : undefined;
+      let page: Page<string>;
+      try {
+        page = await out.reconcile({
+          endpointId: body.endpointId,
+          since: String(body.since),
+          ...(body.limit !== undefined ? { limit: body.limit as number } : {}),
+          ...(cursor !== undefined ? { cursor } : {}),
+        });
+      } catch (err) {
+        const bad = invalidCursor(err, cursor);
+        if (bad) return bad;
+        throw err;
+      }
+      return json(200, { messageIds: page.items, nextCursor: page.nextCursor });
     }
 
     const rateLimit = /\/tenants\/([^/]+)\/rate-limit$/.exec(path);
@@ -364,16 +429,8 @@ export function adminRouter(
     }
 
     if (/\/tenants$/.test(path) && method === "GET") {
-      const limitParam = url.searchParams.get("limit");
-      let limit: number | undefined;
-      if (limitParam) {
-        const n = Number(limitParam);
-        if (!Number.isInteger(n) || n <= 0) {
-          return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'limit': ${limitParam}` });
-        }
-        limit = n;
-      }
-      const cursor = url.searchParams.get("cursor") ?? undefined;
+      const params = pageParams(url);
+      if (params instanceof Response) return params;
       // A tenant-bound caller can only ever see its own tenant — there is
       // nothing for `storage.tenants.list` to filter by, since a tenant IS the
       // scope key (unlike messages, which carry a separate `tenantId` column).
@@ -381,16 +438,12 @@ export function adminRouter(
         const tenant = await tenantForTenant(tenantId, tenantId);
         return json(200, { tenants: tenant ? [tenant] : [], nextCursor: null });
       }
-      let page: { items: ReadonlyArray<Tenant>; nextCursor: string | null };
+      let page: Page<Tenant>;
       try {
-        page = await out.tenants.list({
-          ...(limit !== undefined ? { limit } : {}),
-          ...(cursor !== undefined ? { cursor } : {}),
-        });
+        page = await out.tenants.list(params);
       } catch (err) {
-        if (err instanceof TypeError) {
-          return json(400, { errorCode: "INVALID_QUERY", error: `invalid 'cursor': ${cursor}` });
-        }
+        const bad = invalidCursor(err, params.cursor);
+        if (bad) return bad;
         throw err;
       }
       return json(200, { tenants: page.items, nextCursor: page.nextCursor });

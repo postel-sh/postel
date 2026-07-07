@@ -24,7 +24,9 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  DEFAULT_ENDPOINT_LIST_LIMIT,
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_RECONCILE_LIMIT,
   DEFAULT_TENANT_LIST_LIMIT,
   MYSQL_CAPABILITIES,
   MYSQL_CODEC,
@@ -38,16 +40,19 @@ import {
   createCallbackRegistry,
   decodeAttempt,
   decodeEndpoint,
+  decodeKeysetCursor,
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
   decodeTenant,
   decodeTenantCursor,
+  decodeTimestamp,
   encodeAttemptInsert,
   encodeEndpointInsert,
   encodeMessageInsert,
   encodeSecretInsert,
   encodeTenantCursor,
+  pageFromRows,
 } from "@postel/storage-helpers";
 import { type SQL, sql } from "drizzle-orm";
 import type { MySqlDatabase } from "drizzle-orm/mysql-core";
@@ -455,13 +460,22 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
           )})`,
         );
       }
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        conds.push(
+          sql`(created_at < ${tsParam(createdAt)} or (created_at = ${tsParam(createdAt)} and id < ${id}))`,
+        );
+      }
       const where = sql.join(conds, sql` and `);
       const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
       const res = await rows<Record<string, unknown>>(
         db,
-        sql`select * from messages where ${where} order by created_at desc, id desc limit ${limit}`,
+        sql`select * from messages where ${where} order by created_at desc, id desc limit ${limit + 1}`,
       );
-      return res.map((row) => decodeStoredMessage(row, codec));
+      return pageFromRows(
+        res.map((row) => decodeStoredMessage(row, codec)),
+        limit,
+      );
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {
@@ -483,23 +497,40 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
       }
     },
 
-    async *reconcile(filter: ReconcileFilter) {
+    async reconcile(filter: ReconcileFilter) {
       await ready();
+      const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
       const conds = [sql`created_at >= ${tsParam(filter.since)}`];
       if (filter.tenantId !== undefined) conds.push(sql`tenant_id = ${filter.tenantId}`);
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        conds.push(
+          sql`(created_at > ${tsParam(createdAt)} or (created_at = ${tsParam(createdAt)} and id > ${id}))`,
+        );
+      }
       const where = sql.join(conds, sql` and `);
-      const res = await rows<{ id: string }>(
+      const res = await rows<{ id: string; created_at: unknown }>(
         db,
         sql`select id, created_at from messages where ${where} order by created_at, id`,
       );
+      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
       for (const row of res) {
+        // Overfetch by one so the page slice can prove another page exists.
+        if (candidates.length > limit) break;
         const last = await rows<{ status: string }>(
           db,
           sql`select status from attempts where message_id = ${row.id} and endpoint_id = ${filter.endpointId}
             order by attempt_number desc limit 1`,
         );
-        if (last.length === 0 || last[0]?.status !== "success") yield row.id as MessageId;
+        if (last.length === 0 || last[0]?.status !== "success") {
+          candidates.push({
+            id: row.id,
+            createdAt: decodeTimestamp(row.created_at, codec) ?? new Date(0),
+          });
+        }
       }
+      const page = pageFromRows(candidates, limit);
+      return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },
 
     async countPendingByTenant() {
@@ -600,13 +631,24 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
       },
       async list(opts) {
         await ready();
-        const where =
-          opts?.tenantId !== undefined ? sql`where tenant_id = ${opts.tenantId}` : sql``;
+        const conds = [sql`1 = 1`];
+        if (opts?.tenantId !== undefined) conds.push(sql`tenant_id = ${opts.tenantId}`);
+        if (opts?.cursor !== undefined) {
+          const { createdAt, id } = decodeKeysetCursor(opts.cursor);
+          conds.push(
+            sql`(created_at < ${tsParam(createdAt)} or (created_at = ${tsParam(createdAt)} and id < ${id}))`,
+          );
+        }
+        const where = sql.join(conds, sql` and `);
+        const limit = opts?.limit ?? DEFAULT_ENDPOINT_LIST_LIMIT;
         const res = await rows<Record<string, unknown>>(
           db,
-          sql`select * from endpoints ${where} order by created_at, id`,
+          sql`select * from endpoints where ${where} order by created_at desc, id desc limit ${limit + 1}`,
         );
-        return res.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry));
+        return pageFromRows(
+          res.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry)),
+          limit,
+        );
       },
       async get(id) {
         await ready();

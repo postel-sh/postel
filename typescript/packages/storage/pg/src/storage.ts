@@ -25,7 +25,9 @@ import type {
 } from "@postel/core";
 import {
   type ColumnCodec,
+  DEFAULT_ENDPOINT_LIST_LIMIT,
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_RECONCILE_LIMIT,
   DEFAULT_TENANT_LIST_LIMIT,
   PG_CAPABILITIES,
   PG_MIGRATIONS,
@@ -33,6 +35,7 @@ import {
   createCallbackRegistry,
   decodeAttempt,
   decodeEndpoint,
+  decodeKeysetCursor,
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
@@ -43,6 +46,7 @@ import {
   encodeMessageInsert,
   encodeSecretInsert,
   encodeTenantCursor,
+  pageFromRows,
 } from "@postel/storage-helpers";
 import type { Pool } from "pg";
 
@@ -368,13 +372,24 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
         values.push(filter.status);
         clauses.push(`status = ANY($${values.length})`);
       }
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        values.push(createdAt, id);
+        clauses.push(
+          `(created_at < $${values.length - 1} OR (created_at = $${values.length - 1} AND id < $${values.length}))`,
+        );
+      }
       const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-      values.push(filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT);
+      const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
+      values.push(limit + 1);
       const res = await pool().query(
         `SELECT * FROM messages ${where} ORDER BY created_at DESC, id DESC LIMIT $${values.length}`,
         values,
       );
-      return res.rows.map((row) => decodeStoredMessage(row, codec));
+      return pageFromRows(
+        res.rows.map((row) => decodeStoredMessage(row, codec)),
+        limit,
+      );
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {
@@ -406,26 +421,39 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
       }
     },
 
-    async *reconcile(filter: ReconcileFilter) {
+    async reconcile(filter: ReconcileFilter) {
       await ready();
+      const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
       const values: unknown[] = [iso(filter.since)];
       let where = "created_at >= $1";
       if (filter.tenantId !== undefined) {
         values.push(filter.tenantId);
         where += ` AND tenant_id = $${values.length}`;
       }
-      const res = await pool().query<{ id: string }>(
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        values.push(createdAt, id);
+        where += ` AND (created_at > $${values.length - 1} OR (created_at = $${values.length - 1} AND id > $${values.length}))`;
+      }
+      const res = await pool().query<{ id: string; created_at: Date }>(
         `SELECT id, created_at FROM messages WHERE ${where} ORDER BY created_at, id`,
         values,
       );
+      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
       for (const row of res.rows) {
+        // Overfetch by one so the page slice can prove another page exists.
+        if (candidates.length > limit) break;
         const last = await pool().query<{ status: string }>(
           `SELECT status FROM attempts WHERE message_id = $1 AND endpoint_id = $2
            ORDER BY attempt_number DESC LIMIT 1`,
           [row.id, filter.endpointId],
         );
-        if (last.rows.length === 0 || last.rows[0]?.status !== "success") yield row.id as MessageId;
+        if (last.rows.length === 0 || last.rows[0]?.status !== "success") {
+          candidates.push({ id: row.id, createdAt: new Date(row.created_at) });
+        }
       }
+      const page = pageFromRows(candidates, limit);
+      return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },
 
     async countPendingByTenant() {
@@ -559,14 +587,30 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
       },
       async list(opts) {
         await ready();
-        const res =
-          opts?.tenantId !== undefined
-            ? await pool().query(
-                "SELECT * FROM endpoints WHERE tenant_id = $1 ORDER BY created_at, id",
-                [opts.tenantId],
-              )
-            : await pool().query("SELECT * FROM endpoints ORDER BY created_at, id");
-        return res.rows.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry));
+        const clauses: string[] = [];
+        const values: unknown[] = [];
+        if (opts?.tenantId !== undefined) {
+          values.push(opts.tenantId);
+          clauses.push(`tenant_id = $${values.length}`);
+        }
+        if (opts?.cursor !== undefined) {
+          const { createdAt, id } = decodeKeysetCursor(opts.cursor);
+          values.push(createdAt, id);
+          clauses.push(
+            `(created_at < $${values.length - 1} OR (created_at = $${values.length - 1} AND id < $${values.length}))`,
+          );
+        }
+        const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+        const limit = opts?.limit ?? DEFAULT_ENDPOINT_LIST_LIMIT;
+        values.push(limit + 1);
+        const res = await pool().query(
+          `SELECT * FROM endpoints ${where} ORDER BY created_at DESC, id DESC LIMIT $${values.length}`,
+          values,
+        );
+        return pageFromRows(
+          res.rows.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry)),
+          limit,
+        );
       },
       async get(id) {
         await ready();

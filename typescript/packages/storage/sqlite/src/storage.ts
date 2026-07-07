@@ -24,7 +24,9 @@ import type {
   TenantRecord,
 } from "@postel/core";
 import {
+  DEFAULT_ENDPOINT_LIST_LIMIT,
   DEFAULT_MESSAGE_LIST_LIMIT,
+  DEFAULT_RECONCILE_LIMIT,
   DEFAULT_TENANT_LIST_LIMIT,
   SQLITE_CAPABILITIES,
   SQLITE_CODEC,
@@ -33,6 +35,7 @@ import {
   createCallbackRegistry,
   decodeAttempt,
   decodeEndpoint,
+  decodeKeysetCursor,
   decodeReservedMessage,
   decodeSecret,
   decodeStoredMessage,
@@ -43,6 +46,7 @@ import {
   encodeMessageInsert,
   encodeSecretInsert,
   encodeTenantCursor,
+  pageFromRows,
 } from "@postel/storage-helpers";
 import DatabaseConstructor, { type Database } from "better-sqlite3";
 
@@ -349,12 +353,21 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
         clauses.push(`status IN (${filter.status.map(() => "?").join(", ")})`);
         values.push(...filter.status);
       }
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        clauses.push("(created_at < ? OR (created_at = ? AND id < ?))");
+        values.push(iso(createdAt), iso(createdAt), id);
+      }
       const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-      values.push(filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT);
+      const limit = filter.limit ?? DEFAULT_MESSAGE_LIST_LIMIT;
+      values.push(limit + 1);
       const rows = db
         .prepare(`SELECT * FROM messages ${where} ORDER BY created_at DESC, id DESC LIMIT ?`)
         .all(...values) as Record<string, unknown>[];
-      return rows.map((row) => decodeStoredMessage(row, codec));
+      return pageFromRows(
+        rows.map((row) => decodeStoredMessage(row, codec)),
+        limit,
+      );
     },
 
     async *rangeQuery(filter: RangeQueryFilter) {
@@ -384,31 +397,39 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
       }
     },
 
-    async *reconcile(filter: ReconcileFilter) {
-      const clauses = ["created_at >= @since"];
-      const params: { since: string; ep: string; tenant?: string } = {
-        since: iso(filter.since),
-        ep: filter.endpointId,
-      };
+    async reconcile(filter: ReconcileFilter) {
+      const limit = filter.limit ?? DEFAULT_RECONCILE_LIMIT;
+      const clauses = ["created_at >= ?"];
+      const values: unknown[] = [iso(filter.since)];
       if (filter.tenantId !== undefined) {
-        clauses.push("tenant_id = @tenant");
-        params.tenant = filter.tenantId;
+        clauses.push("tenant_id = ?");
+        values.push(filter.tenantId);
+      }
+      if (filter.cursor !== undefined) {
+        const { createdAt, id } = decodeKeysetCursor(filter.cursor);
+        clauses.push("(created_at > ? OR (created_at = ? AND id > ?))");
+        values.push(iso(createdAt), iso(createdAt), id);
       }
       const iterator = db
         .prepare(
           `SELECT id, created_at FROM messages WHERE ${clauses.join(" AND ")} ORDER BY created_at, id`,
         )
-        .iterate(params) as IterableIterator<{ id: string }>;
+        .iterate(...values) as IterableIterator<{ id: string; created_at: string }>;
       const lastAttempt = db.prepare(
-        `SELECT status FROM attempts WHERE message_id = @msg AND endpoint_id = @ep
+        `SELECT status FROM attempts WHERE message_id = ? AND endpoint_id = ?
          ORDER BY attempt_number DESC LIMIT 1`,
       );
+      const candidates: Array<{ id: MessageId; createdAt: Date }> = [];
       for (const row of iterator) {
-        const last = lastAttempt.get({ msg: row.id, ep: filter.endpointId }) as
-          | { status: string }
-          | undefined;
-        if (last === undefined || last.status !== "success") yield row.id as MessageId;
+        // Overfetch by one so the page slice can prove another page exists.
+        if (candidates.length > limit) break;
+        const last = lastAttempt.get(row.id, filter.endpointId) as { status: string } | undefined;
+        if (last === undefined || last.status !== "success") {
+          candidates.push({ id: row.id, createdAt: new Date(row.created_at) });
+        }
       }
+      const page = pageFromRows(candidates, limit);
+      return { items: page.items.map((c) => c.id), nextCursor: page.nextCursor };
     },
 
     async countPendingByTenant() {
@@ -516,11 +537,27 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
         registry.delete(id);
       },
       async list(opts) {
-        const where = opts?.tenantId !== undefined ? "WHERE tenant_id = @tenant" : "";
+        const clauses: string[] = [];
+        const values: unknown[] = [];
+        if (opts?.tenantId !== undefined) {
+          clauses.push("tenant_id = ?");
+          values.push(opts.tenantId);
+        }
+        if (opts?.cursor !== undefined) {
+          const { createdAt, id } = decodeKeysetCursor(opts.cursor);
+          clauses.push("(created_at < ? OR (created_at = ? AND id < ?))");
+          values.push(iso(createdAt), iso(createdAt), id);
+        }
+        const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+        const limit = opts?.limit ?? DEFAULT_ENDPOINT_LIST_LIMIT;
+        values.push(limit + 1);
         const rows = db
-          .prepare(`SELECT * FROM endpoints ${where} ORDER BY created_at, id`)
-          .all({ tenant: opts?.tenantId ?? null }) as Record<string, unknown>[];
-        return rows.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry));
+          .prepare(`SELECT * FROM endpoints ${where} ORDER BY created_at DESC, id DESC LIMIT ?`)
+          .all(...values) as Record<string, unknown>[];
+        return pageFromRows(
+          rows.map((row) => attachCallbacks(decodeEndpoint(row, codec), registry)),
+          limit,
+        );
       },
       async get(id) {
         return loadEndpointRecord(id);

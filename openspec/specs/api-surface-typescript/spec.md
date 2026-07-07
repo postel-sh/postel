@@ -14,7 +14,7 @@ The TypeScript port SHALL expose `Postel({ observability?, outbound?, inbound? }
 
 The factory identifier is the PascalCase `Postel` — a callable function, not a class; adopters do not use `new`. This capability spec describes the TypeScript port — one of several first-class language ports per [ADR 0005 — Polyglot staged rollout](../../../decisions/0005-polyglot-staged-rollout.md). Other ports' API surfaces are defined under their own `api-surface-<lang>` capabilities and conform to the same compliance contract.
 
-The `messages.{get,attempts,list}` read surface is the TypeScript projection of the `message-introspection` capability; its read OUTCOME (a message and its attempt history are retrievable) is the cross-port CONTRACT, while these method names are the port mechanism. The `tenants.{get,list}` read surface is the TypeScript projection of the `multi-tenancy` capability's tenant-read requirements; its read OUTCOME (a tenant is retrievable by id, and tenants are listable in a bounded, paginated order) is the cross-port CONTRACT, while these method names, and the `Page<T>` / `CursorOptions` pagination shape, are the port mechanism.
+The `messages.{get,attempts,list}` read surface is the TypeScript projection of the `message-introspection` capability; its read OUTCOME (a message and its attempt history are retrievable) is the cross-port CONTRACT, while these method names are the port mechanism. The `tenants.{get,list}` read surface is the TypeScript projection of the `multi-tenancy` capability's tenant-read requirements; its read OUTCOME (a tenant is retrievable by id, and tenants are listable in a bounded, paginated order) is the cross-port CONTRACT, while these method names are the port mechanism. Every list-returning read on the outbound surface — `endpoints.list`, `messages.list`, `tenants.list`, and `reconcile` — accepts the shared `CursorOptions` (`{ limit?, cursor? }`) and resolves to the shared `Page<T>` (`{ items, nextCursor }`); the bounded-with-cursor-continuation OUTCOME is CONTRACT per [ADR 0015](../../../decisions/0015-pagination-envelope.md), while the `Page<T>` / `CursorOptions` type names and cursor encoding are the port mechanism.
 
 #### Scenario: Type inference for the outbound surface
 
@@ -32,7 +32,7 @@ The `messages.{get,attempts,list}` read surface is the TypeScript projection of 
 
 - **WHEN** a TypeScript caller configures `outbound` and calls `postel.outbound.messages.get(id)`
 - **THEN** the call is well-typed and returns the message (or an absent result)
-- **AND** `postel.outbound.messages.attempts(id)` and `postel.outbound.messages.list(...)` are present on the instance type
+- **AND** `postel.outbound.messages.attempts(id)` and `postel.outbound.messages.list(...)` are present on the instance type, with `messages.list(...)` resolving to a `{ items, nextCursor }`-shaped page
 
 #### Scenario: Outbound tenant read surface is present
 
