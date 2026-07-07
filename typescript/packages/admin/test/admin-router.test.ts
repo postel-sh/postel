@@ -86,7 +86,10 @@ describe("Admin HTTP handlers", () => {
 
   it("Replay via admin handler: POST /admin/replay re-enqueues by messageId", async () => {
     const { postel, router } = build(ALLOW);
-    const messageId = await postel.outbound.send({ type: "order.created", data: { id: "o1" } });
+    const { id: messageId } = await postel.outbound.send({
+      type: "order.created",
+      data: { id: "o1" },
+    });
     const res = await router(req("POST", "/admin/replay", { messageId, freshWebhookId: false }));
     expect(res.status).toBe(200);
     expect(typeof ((await res.json()) as { enqueued: number }).enqueued).toBe("number");
@@ -103,7 +106,10 @@ describe("Admin HTTP handlers", () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage, ...SSRF } });
     const router = adminRouter(postel, ALLOW);
-    const messageId = await postel.outbound.send({ type: "order.created", data: { id: "o1" } });
+    const { id: messageId } = await postel.outbound.send({
+      type: "order.created",
+      data: { id: "o1" },
+    });
     await storage.recordAttempt({
       id: "att_admin_1",
       messageId,
@@ -143,7 +149,10 @@ describe("Admin HTTP handlers", () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage, ...SSRF } });
     const router = adminRouter(postel, ALLOW);
-    const messageId = await postel.outbound.send({ type: "order.created", data: { id: "o1" } });
+    const { id: messageId } = await postel.outbound.send({
+      type: "order.created",
+      data: { id: "o1" },
+    });
     const base = {
       messageId,
       endpointId: "ep_1",
@@ -214,7 +223,10 @@ describe("Admin HTTP handlers", () => {
   it("Tenant-scoped admin: a tenant-bound caller cannot read another tenant's message (404, no leak)", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage, ...SSRF, defaultTenantId: "t_2" } });
-    const messageId = await postel.outbound.send({ type: "order.created", data: { id: "o1" } });
+    const { id: messageId } = await postel.outbound.send({
+      type: "order.created",
+      data: { id: "o1" },
+    });
     const asT1 = adminRouter(postel, { authorize: () => ({ allow: true, tenantId: "t_1" }) });
     const res = await asT1(req("GET", `/admin/messages/${messageId}`));
     expect(res.status).toBe(404);

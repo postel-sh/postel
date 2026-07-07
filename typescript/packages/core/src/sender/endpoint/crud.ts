@@ -2,6 +2,8 @@ import { EndpointNotFound } from "../../errors.js";
 import { bytesToBase64 } from "../../internal/base64.js";
 import { assertHttpWired } from "../../internal/config-guards.js";
 import type {
+  AutoDisableDefaults,
+  CircuitBreakerDefaults,
   Endpoint,
   EndpointCreateOptions,
   EndpointUpdateOptions,
@@ -14,6 +16,7 @@ import type {
   SecretAlgorithm,
   Storage,
 } from "../../storage/types.js";
+import type { RetryStrategy } from "../../strategies/retry.js";
 import type { SigningStrategy } from "../../strategies/signing.js";
 import { DEFAULT_SSRF_POLICY, type SsrfPolicy } from "../dispatcher/ssrf.js";
 import { mintSecretMaterial, newSecretId } from "../keys/material.js";
@@ -32,6 +35,13 @@ function newEndpointId(): string {
   return `ep_${bytesToBase64(bytes).replace(/[+/=]/g, "")}`;
 }
 
+// Callable headers are a code-side JS function, not serializable data — only a
+// plain key/value record survives onto the public read shape.
+function plainRecordHeaders(headers: unknown): Readonly<Record<string, string>> | null {
+  if (headers === null || typeof headers !== "object") return null;
+  return headers as Readonly<Record<string, string>>;
+}
+
 function toPublicEndpoint(rec: EndpointRecord): Endpoint {
   const out: {
     -readonly [K in keyof Endpoint]: Endpoint[K];
@@ -39,6 +49,17 @@ function toPublicEndpoint(rec: EndpointRecord): Endpoint {
     id: rec.id,
     url: rec.url,
     state: rec.state,
+    types: rec.types,
+    channels: rec.channels,
+    retryPolicy: rec.retryPolicy as RetryStrategy | null,
+    headers: plainRecordHeaders(rec.headers),
+    allowHttp: rec.allowHttp,
+    maxInflight: rec.maxInflight,
+    http: rec.http as HttpDefaults | null,
+    circuitBreaker: rec.circuitBreaker as CircuitBreakerDefaults | null,
+    autoDisable: rec.autoDisable as AutoDisableDefaults | null,
+    createdAt: rec.createdAt,
+    updatedAt: rec.updatedAt,
   };
   if (rec.tenantId !== null) out.tenantId = rec.tenantId;
   if (rec.metadata !== null) out.metadata = rec.metadata as Record<string, unknown>;

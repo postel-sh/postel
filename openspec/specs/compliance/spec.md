@@ -499,7 +499,7 @@ The v0.2.0 corpus SHALL cover the following CONTRACT requirements via sender-mod
 
 | Capability | Requirement |
 |---|---|
-| `sender` | Send is non-blocking and returns a MessageId |
+| `sender` | Send is non-blocking and returns a SendResult |
 | `sender` | Idempotent send by client-supplied key |
 | `sender` | Late-binding fanout |
 | `sender` | Per-message TTL |

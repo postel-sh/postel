@@ -44,6 +44,7 @@ export type {
   RotateSecretOptions,
   SendEvent,
   SendOptions,
+  SendResult,
   SetRateLimitOptions,
   Tenant,
   TenantListOptions,

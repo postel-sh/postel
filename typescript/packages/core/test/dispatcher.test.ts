@@ -1,7 +1,7 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
-import { EndpointNotFound, Postel } from "../src/index.js";
+import { EndpointNotFound, ExponentialBackoff, LinearBackoff, Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
 import { base64ToBytes } from "../src/internal/base64.js";
@@ -167,7 +167,7 @@ describe("Per-endpoint custom HTTP headers", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const messageId = await postel.outbound.send({ type: "event.x" });
+    const { id: messageId } = await postel.outbound.send({ type: "event.x" });
     await postel.start();
     await tick(300);
     await postel.stop();
@@ -193,6 +193,86 @@ describe("Endpoint CRUD", () => {
     expect(ep.id).toMatch(/^ep_/);
     const fetched = await postel.outbound.endpoints.get(ep.id);
     expect(fetched.id).toBe(ep.id);
+  });
+
+  it("Create round-trips every accepted serializable field across create/get/list", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const retryPolicy = ExponentialBackoff({ maxAttempts: 3 });
+    const created = await postel.outbound.endpoints.create({
+      url: "http://127.0.0.1:65535/hook",
+      types: ["order.*"],
+      channels: ["eu"],
+      retryPolicy,
+      headers: { "x-team": "billing" },
+      metadata: { customerEmail: "a@b" },
+      allowHttp: true,
+      maxInflight: 10,
+      http: { requestTimeout: "5s" },
+      circuitBreaker: { threshold: 5, cooldown: "1m" },
+      autoDisable: { failureRate: 0.5, window: "24h", minAttempts: 20 },
+    });
+    const fetched = await postel.outbound.endpoints.get(created.id);
+    const listed = await postel.outbound.endpoints.list();
+    const inList = listed.find((e) => e.id === created.id);
+    for (const ep of [created, fetched, inList]) {
+      expect(ep).toBeDefined();
+      if (!ep) continue;
+      expect(ep.url).toBe("http://127.0.0.1:65535/hook");
+      expect(ep.state).toBe("active");
+      expect(ep.types).toEqual(["order.*"]);
+      expect(ep.channels).toEqual(["eu"]);
+      expect(ep.retryPolicy).toEqual(retryPolicy);
+      expect(ep.headers).toEqual({ "x-team": "billing" });
+      expect(ep.metadata).toEqual({ customerEmail: "a@b" });
+      expect(ep.allowHttp).toBe(true);
+      expect(ep.maxInflight).toBe(10);
+      expect(ep.http).toEqual({ requestTimeout: "5s" });
+      expect(ep.circuitBreaker).toEqual({ threshold: 5, cooldown: "1m" });
+      expect(ep.autoDisable).toEqual({ failureRate: 0.5, window: "24h", minAttempts: 20 });
+      expect(ep.createdAt).toBeInstanceOf(Date);
+      expect(ep.updatedAt).toBeInstanceOf(Date);
+    }
+  });
+
+  it("Update returns the effective endpoint: new channels plus previously stored types and retryPolicy", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const retryPolicy = LinearBackoff({ step: "10s", maxAttempts: 4 });
+    const created = await postel.outbound.endpoints.create({
+      url: "http://127.0.0.1:65535/hook",
+      types: ["order.*"],
+      retryPolicy,
+      allowHttp: true,
+    });
+    const updated = await postel.outbound.endpoints.update(created.id, { channels: ["eu"] });
+    expect(updated.channels).toEqual(["eu"]);
+    expect(updated.types).toEqual(["order.*"]);
+    expect(updated.retryPolicy).toEqual(retryPolicy);
+  });
+
+  it("Function-shaped options stay off the read shape: filter/transform absent, callable headers read back as absent", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const created = await postel.outbound.endpoints.create({
+      url: "http://127.0.0.1:65535/hook",
+      allowHttp: true,
+      filter: () => true,
+      transform: (event) => event,
+      headers: () => ({ "x-dynamic": "yes" }),
+    });
+    const fetched = await postel.outbound.endpoints.get(created.id);
+    for (const ep of [created, fetched]) {
+      expect("filter" in ep).toBe(false);
+      expect("transform" in ep).toBe(false);
+      expect(ep.headers).toBeNull();
+    }
   });
 
   it("Get of an unknown id throws EndpointNotFound", async () => {
@@ -275,7 +355,7 @@ describe("SSRF protection on outbound delivery", () => {
       notAfter: null,
     });
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "event.x" });
+    const { id } = await postel.outbound.send({ type: "event.x" });
     await postel.start();
     await tick(300);
     await postel.stop();
@@ -407,7 +487,7 @@ describe("Filter and transform errors fail closed", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const messageId = await postel.outbound.send({
+    const { id: messageId } = await postel.outbound.send({
       type: "order.created",
       data: { id: "ord_1" },
     });
@@ -435,7 +515,7 @@ describe("Filter and transform errors fail closed", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const messageId = await postel.outbound.send({
+    const { id: messageId } = await postel.outbound.send({
       type: "order.created",
       data: { id: "ord_1" },
     });
@@ -492,7 +572,7 @@ describe("Per-endpoint and overall delivery deadlines", () => {
         },
       },
     });
-    const id = await postel.outbound.send({ type: "slow.event" });
+    const { id } = await postel.outbound.send({ type: "slow.event" });
     await postel.start();
     await tick(600);
     await postel.stop();

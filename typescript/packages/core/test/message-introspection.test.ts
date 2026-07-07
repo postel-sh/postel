@@ -26,7 +26,7 @@ function setup(clock?: Clock) {
 describe("Read a message by id", () => {
   it("Get an existing message returns metadata and payload", async () => {
     const { postel } = setup();
-    const id = await postel.outbound.send({ type: "order.created", data: { orderId: "o1" } });
+    const { id } = await postel.outbound.send({ type: "order.created", data: { orderId: "o1" } });
 
     const message = await postel.outbound.messages.get(id);
     expect(message?.id).toBe(id);
@@ -45,7 +45,7 @@ describe("Read a message by id", () => {
 describe("List a message's delivery attempts", () => {
   it("Attempts are returned ordered with status, code, and latency", async () => {
     const { storage, postel } = setup();
-    const id = await postel.outbound.send({ type: "order.created", data: { orderId: "o1" } });
+    const { id } = await postel.outbound.send({ type: "order.created", data: { orderId: "o1" } });
     await storage.recordAttempt({
       id: "att_2",
       messageId: id,
@@ -92,8 +92,14 @@ describe("List a message's delivery attempts", () => {
 
   it("Replay attempts carry the replay tag", async () => {
     const { storage, postel } = setup();
-    const original = await postel.outbound.send({ type: "order.created", data: { orderId: "o1" } });
-    const replayId = await postel.outbound.send({ type: "order.created", data: { orderId: "o1" } });
+    const { id: original } = await postel.outbound.send({
+      type: "order.created",
+      data: { orderId: "o1" },
+    });
+    const { id: replayId } = await postel.outbound.send({
+      type: "order.created",
+      data: { orderId: "o1" },
+    });
     await storage.recordAttempt({
       id: "att_replay",
       messageId: replayId,
@@ -129,7 +135,7 @@ describe("List and filter messages", () => {
     clock.set(new Date("2026-07-01T10:00:00.000Z"));
     await postel.outbound.send({ type: "order.created", data: { n: 1 } });
     clock.set(new Date("2026-07-01T11:00:00.000Z"));
-    const second = await postel.outbound.send({ type: "order.created", data: { n: 2 } });
+    const { id: second } = await postel.outbound.send({ type: "order.created", data: { n: 2 } });
     clock.set(new Date("2026-07-01T12:00:00.000Z"));
     await postel.outbound.send({ type: "user.deleted" });
 
@@ -143,7 +149,10 @@ describe("List and filter messages", () => {
 
   it("Filter by outbox status", async () => {
     const { storage, postel } = setup();
-    const dispatched = await postel.outbound.send({ type: "order.created", data: { n: 1 } });
+    const { id: dispatched } = await postel.outbound.send({
+      type: "order.created",
+      data: { n: 1 },
+    });
     await postel.outbound.send({ type: "order.created", data: { n: 2 } });
     await storage.markMessageFinal(dispatched, "dispatched");
 

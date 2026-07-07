@@ -84,6 +84,11 @@ export interface EphemeralKeysDefaults {
 
 export type MessageId = string;
 
+export interface SendResult {
+  readonly id: MessageId;
+  readonly reused: boolean;
+}
+
 export interface SendEvent<TData = unknown> {
   readonly type: string;
   readonly data?: TData;
@@ -122,10 +127,25 @@ export interface EndpointCreateOptions {
 
 export interface EndpointUpdateOptions extends Partial<EndpointCreateOptions> {}
 
+// The public read shape for endpoints: every accepted serializable field
+// round-trips through create/get/list/update. Function-shaped options
+// (`filter`, `transform`, callable `headers`) are code-side JS values and stay
+// off this shape; `signing` stays off because a strategy can carry key material.
 export interface Endpoint {
   readonly id: string;
   readonly url: string;
   readonly state: "active" | "disabled" | "circuit-open";
+  readonly types: ReadonlyArray<string> | null;
+  readonly channels: ReadonlyArray<string> | null;
+  readonly retryPolicy: RetryStrategy | null;
+  readonly headers: Readonly<Record<string, string>> | null;
+  readonly allowHttp: boolean;
+  readonly maxInflight: number | null;
+  readonly http: HttpDefaults | null;
+  readonly circuitBreaker: CircuitBreakerDefaults | null;
+  readonly autoDisable: AutoDisableDefaults | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
   readonly tenantId?: string;
   readonly metadata?: Record<string, unknown>;
 }
@@ -237,7 +257,7 @@ export interface TenantListOptions extends CursorOptions {}
 export type TenantPage = Page<Tenant>;
 
 export interface OutboundApi<TTx = unknown> {
-  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<MessageId>;
+  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<SendResult>;
   endpoints: {
     create(opts: EndpointCreateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
     update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;

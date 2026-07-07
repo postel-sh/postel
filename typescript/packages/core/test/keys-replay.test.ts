@@ -139,7 +139,7 @@ describe("Replay a single message", () => {
   it("Replay one message: re-enqueues the message for delivery", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await storage.markMessageFinal(id, "dispatched");
     const result = await postel.outbound.replay({ messageId: id, freshWebhookId: false });
     expect(result.enqueued).toBe(1);
@@ -165,8 +165,8 @@ describe("Replay a range", () => {
   it("Replay a 1-hour window: every message in the range is re-enqueued for the endpoint", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id1 = await postel.outbound.send({ type: "evt.x", data: { i: 1 } });
-    const id2 = await postel.outbound.send({ type: "evt.x", data: { i: 2 } });
+    const { id: id1 } = await postel.outbound.send({ type: "evt.x", data: { i: 1 } });
+    const { id: id2 } = await postel.outbound.send({ type: "evt.x", data: { i: 2 } });
     await storage.markMessageFinal(id1, "dispatched");
     await storage.markMessageFinal(id2, "dispatched");
     const since = new Date(Date.now() - 60 * 60 * 1000);
@@ -183,7 +183,7 @@ describe("Replay by predicate", () => {
   it("Replay by tenant: predicate-form replays every message matching the predicate", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage, defaultTenantId: "t_42" } });
-    const id1 = await postel.outbound.send({ type: "evt.x" });
+    const { id: id1 } = await postel.outbound.send({ type: "evt.x" });
     await postel.outbound.send({ type: "evt.x", tenantId: "t_99" });
     await storage.markMessageFinal(id1, "dispatched");
     const result = await postel.outbound.replay({
@@ -209,7 +209,7 @@ describe("Replay safety contract", () => {
   it("Replay with fresh id: a new MessageId is created when freshWebhookId is true", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await storage.markMessageFinal(id, "dispatched");
     const result = await postel.outbound.replay({ messageId: id, freshWebhookId: true });
     expect(result.enqueued).toBe(1);
@@ -220,7 +220,7 @@ describe("Replay safety contract", () => {
   it("Replay with reused id: rescheduleMessage reuses the original id when freshWebhookId is false", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await storage.markMessageFinal(id, "dispatched");
     await postel.outbound.replay({ messageId: id, freshWebhookId: false });
     const depth = await storage.outboxDepth();
@@ -260,7 +260,7 @@ describe("Replay attempts tagged for audit", () => {
       notAfter: null,
     });
     const postel = Postel({ outbound: { storage } });
-    const originalId = await postel.outbound.send({ type: "evt.x" });
+    const { id: originalId } = await postel.outbound.send({ type: "evt.x" });
     await storage.markMessageFinal(originalId, "dispatched");
     await postel.outbound.replay({ messageId: originalId, freshWebhookId: true });
 
@@ -281,7 +281,7 @@ describe("Replay attempts tagged for audit", () => {
   it("Reused-id replay tags the rescheduled row's attempts with replay_of", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await storage.markMessageFinal(id, "dispatched");
     await postel.outbound.replay({ messageId: id, freshWebhookId: false });
     let replayOf: string | null | undefined;
@@ -298,7 +298,7 @@ describe("Replay rate limiting", () => {
     const storage = InMemoryStorage({ clock });
     const postel = Postel({ outbound: { storage, clock } });
     for (let i = 0; i < 5; i++) {
-      const id = await postel.outbound.send({ type: "evt.x", data: { i } });
+      const { id } = await postel.outbound.send({ type: "evt.x", data: { i } });
       await storage.markMessageFinal(id, "dispatched");
     }
     const before = clock.now().getTime();
@@ -319,7 +319,7 @@ describe("Default replay throughput", () => {
     const storage = InMemoryStorage({ clock });
     const postel = Postel({ outbound: { storage, clock, replay: { defaultThroughput: 3 } } });
     for (let i = 0; i < 7; i++) {
-      const id = await postel.outbound.send({ type: "evt.x", data: { i } });
+      const { id } = await postel.outbound.send({ type: "evt.x", data: { i } });
       await storage.markMessageFinal(id, "dispatched");
     }
     const before = clock.now().getTime();
@@ -337,7 +337,7 @@ describe("Default replay throughput", () => {
     const storage = InMemoryStorage({ clock });
     const postel = Postel({ outbound: { storage, clock } });
     for (let i = 0; i < 4; i++) {
-      const id = await postel.outbound.send({ type: "evt.x", data: { i } });
+      const { id } = await postel.outbound.send({ type: "evt.x", data: { i } });
       await storage.markMessageFinal(id, "dispatched");
     }
     const before = clock.now().getTime();
@@ -354,7 +354,7 @@ describe("Reconciliation API", () => {
   it("Reconcile finds gaps: returns message ids whose latest attempt is non-success for an endpoint since a baseline", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     // No attempts recorded yet for ep_recon → reconcile lists the message.
     const since = new Date(Date.now() - 60 * 60 * 1000);
     const result = await postel.outbound.reconcile({ endpointId: "ep_recon", since });
@@ -388,7 +388,7 @@ describe("Tenant-scoped persistence", () => {
   it("Single-tenant nullable: rows omitted from tenant filter retain tenantId=null and queries omit the filter", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     let found = false;
     for await (const m of storage.rangeQuery({})) {
       if (m.id === id && m.tenantId === null) found = true;

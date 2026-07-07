@@ -34,6 +34,10 @@ const one = await postel.outbound.endpoints.get(ep.id);
 
 Every endpoint operation accepts an optional `tx` so endpoint state changes can join the same DB transaction as your business write.
 
+## What reads return
+
+`create`, `update`, `get`, and `list` return the full endpoint — every serializable field you passed in (`types`, `channels`, `retryPolicy`, plain-record `headers`, `metadata`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, `autoDisable`) plus `id`, `url`, `state`, `createdAt`, and `updatedAt`. Two kinds of options stay off the read shape: function-shaped ones (`filter`, `transform`, and `headers` given as a callback) are code rather than data — they run at dispatch time but can't round-trip through a read — and `signing` is never echoed back because a strategy can carry key material.
+
 ## Filtering
 
 The `types` filter accepts string globs:

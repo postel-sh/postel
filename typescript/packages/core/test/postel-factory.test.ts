@@ -69,13 +69,13 @@ describe("Postel factory returns the library instance", () => {
 });
 
 describe("Public function signatures match Standard Webhooks event shape", () => {
-  it("Strongly-typed event: postel.outbound.send<TData> returns a MessageId at runtime", async () => {
+  it("Strongly-typed event: postel.outbound.send<TData> returns a SendResult at runtime", async () => {
     interface OrderCreated {
       readonly id: string;
       readonly amount_cents: number;
     }
     const postel = Postel({ outbound: { storage: InMemoryStorage() } });
-    const id = await postel.outbound.send<OrderCreated>({
+    const { id } = await postel.outbound.send<OrderCreated>({
       type: "order.created",
       data: { id: "order_42", amount_cents: 1999 },
     });

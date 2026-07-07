@@ -203,7 +203,7 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
           if (body.idempotencyKey !== undefined) event.idempotencyKey = body.idempotencyKey;
           if (body.ttl !== undefined) event.ttl = body.ttl;
           if (body.tenantId !== undefined) event.tenantId = body.tenantId;
-          const messageId = await host.postel.outbound.send(event);
+          const { id: messageId } = await host.postel.outbound.send(event);
           send(res, 200, { messageId });
           return;
         }

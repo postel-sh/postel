@@ -23,12 +23,13 @@ async function tick(ms = 5): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-describe("Send is non-blocking and returns a MessageId", () => {
-  it("Successful enqueue: send inserts a single row and returns a MessageId; no HTTP fired", async () => {
+describe("Send is non-blocking and returns a SendResult", () => {
+  it("Successful enqueue: send inserts a single row and returns { id, reused: false }; no HTTP fired", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "order.created", data: { id: "ord_1" } });
-    expect(id).toMatch(/^msg_/);
+    const result = await postel.outbound.send({ type: "order.created", data: { id: "ord_1" } });
+    expect(result.id).toMatch(/^msg_/);
+    expect(result.reused).toBe(false);
     const depth = await storage.outboxDepth();
     expect(depth.depth).toBe(1);
   });
@@ -50,14 +51,14 @@ describe("Send participates in the host transaction (outbox pattern)", () => {
 });
 
 describe("Idempotent send by client-supplied key", () => {
-  it("Repeat send with same key: both calls return the same MessageId; one row inserted", async () => {
+  it("Repeat send with same key: both calls return the same id; reused false then true; one row inserted", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const a = await postel.outbound.send(
+    const baseline = await postel.outbound.send(
       { type: "order.created", data: { id: "ord_1" } },
       undefined,
     );
-    void a; // first call has no idempotencyKey; baseline insert
+    expect(baseline.reused).toBe(false); // first call has no idempotencyKey; baseline insert
     const b = await postel.outbound.send({
       type: "order.created",
       data: { id: "ord_1" },
@@ -68,7 +69,9 @@ describe("Idempotent send by client-supplied key", () => {
       data: { id: "ord_1" },
       idempotencyKey: "idem-1",
     });
-    expect(b).toBe(c);
+    expect(b.id).toBe(c.id);
+    expect(b.reused).toBe(false);
+    expect(c.reused).toBe(true);
     const depth = await storage.outboxDepth();
     expect(depth.depth).toBe(2);
   });
@@ -91,7 +94,7 @@ describe("Late-binding fanout", () => {
   it("Endpoint added between send and dispatch: dispatch sees the newly-added endpoint", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "order.created", data: { id: "ord_1" } });
+    const { id } = await postel.outbound.send({ type: "order.created", data: { id: "ord_1" } });
     await storage.endpoints.create({
       id: "ep_late",
       tenantId: null,
@@ -122,7 +125,7 @@ describe("Late binding at dispatch time", () => {
   it("Endpoints are resolved at dispatch time, not at send time", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({ outbound: { storage } });
-    const id1 = await postel.outbound.send({ type: "user.signup" });
+    const { id: id1 } = await postel.outbound.send({ type: "user.signup" });
     await storage.endpoints.create({
       id: "ep_dispatch_time",
       tenantId: null,
@@ -170,7 +173,7 @@ describe("Per-message TTL", () => {
       circuitBreaker: null,
       autoDisable: null,
     });
-    const id = await postel.outbound.send({ type: "order.created", ttl: "1s" });
+    const { id } = await postel.outbound.send({ type: "order.created", ttl: "1s" });
     clock.advance(2_000);
     await postel.start();
     await tick(200);

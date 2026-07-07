@@ -1,5 +1,6 @@
 import type { Clock } from "../clock.js";
-import type { MessageId, NewMessage, Storage } from "../storage/types.js";
+import type { SendResult } from "../outbound.js";
+import type { NewMessage, Storage } from "../storage/types.js";
 import { durationToMs } from "./internal/duration.js";
 import { newMessageId } from "./internal/id.js";
 
@@ -24,7 +25,7 @@ export async function sendImpl(
   ctx: SendContext,
   event: SendInput,
   opts?: { readonly tx?: unknown },
-): Promise<MessageId> {
+): Promise<SendResult> {
   const createdAt = ctx.clock.now();
   const tenantId = event.tenantId ?? ctx.defaultTenantId ?? null;
   let ttlSeconds: number | null = null;
@@ -51,7 +52,7 @@ export async function sendImpl(
   };
   if (event.idempotencyKey !== undefined) {
     const res = await ctx.storage.insertOrReuseByIdempotencyKey(row, opts);
-    return res.id;
+    return { id: res.id, reused: res.reused };
   }
-  return ctx.storage.insertMessage(row, opts);
+  return { id: await ctx.storage.insertMessage(row, opts), reused: false };
 }
