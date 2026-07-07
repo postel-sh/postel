@@ -257,7 +257,12 @@ export function adminRouter(
       if (!msg) {
         return json(404, { errorCode: "MESSAGE_NOT_FOUND", error: `message not found: ${id}` });
       }
-      return json(200, { attempts: await out.messages.attempts(id) });
+      let attempts = await out.messages.attempts(id);
+      const statuses = csvParam(url, "status");
+      if (statuses.length > 0) {
+        attempts = attempts.filter((attempt) => statuses.includes(attempt.status));
+      }
+      return json(200, { attempts });
     }
 
     const messageById = /\/messages\/([^/]+)$/.exec(path);
