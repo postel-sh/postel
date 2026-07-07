@@ -254,7 +254,8 @@ describe("Admin HTTP handlers", () => {
     const { postel, router } = build(ALLOW);
     const sent: string[] = [];
     for (let i = 0; i < 5; i += 1) {
-      sent.push(await postel.outbound.send({ type: "order.created", data: { i } }));
+      const { id } = await postel.outbound.send({ type: "order.created", data: { i } });
+      sent.push(id);
     }
     const seen: string[] = [];
     let cursor: string | null = null;
@@ -324,7 +325,8 @@ describe("Admin HTTP handlers", () => {
     const { postel, router } = build(ALLOW);
     const sent: string[] = [];
     for (let i = 0; i < 5; i += 1) {
-      sent.push(await postel.outbound.send({ type: "order.created", data: { i } }));
+      const { id } = await postel.outbound.send({ type: "order.created", data: { i } });
+      sent.push(id);
     }
     const since = new Date(Date.now() - 60_000).toISOString();
 

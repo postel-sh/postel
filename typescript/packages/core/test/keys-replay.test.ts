@@ -374,7 +374,8 @@ describe("Reconciliation API", () => {
     const postel = Postel({ outbound: { storage, clock } });
     const ids: string[] = [];
     for (let i = 0; i < 5; i += 1) {
-      ids.push(await postel.outbound.send({ type: "evt.x", data: { i } }));
+      const { id } = await postel.outbound.send({ type: "evt.x", data: { i } });
+      ids.push(id);
       clock.current = new Date(clock.current.getTime() + 1000);
     }
     const since = new Date("2026-07-01T09:00:00.000Z");
@@ -464,6 +465,7 @@ describe("List endpoints (paginated)", () => {
       const ep = await postel.outbound.endpoints.create({
         url: "http://127.0.0.1:65535/h",
         allowHttp: true,
+        types: ["order.*"],
       });
       ids.push(ep.id);
       clock.current = new Date(clock.current.getTime() + 1000);
@@ -471,6 +473,10 @@ describe("List endpoints (paginated)", () => {
     const first = await postel.outbound.endpoints.list({ limit: 2 });
     expect(first.items.length).toBe(2);
     expect(first.nextCursor).not.toBeNull();
+    // Paged items carry the full serializable read shape, not a slimmed one.
+    expect(first.items[0]?.types).toEqual(["order.*"]);
+    expect(first.items[0]?.allowHttp).toBe(true);
+    expect(first.items[0]?.createdAt).toBeInstanceOf(Date);
 
     const seen: string[] = [];
     let cursor: string | undefined;

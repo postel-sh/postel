@@ -222,7 +222,7 @@ describe("Endpoint CRUD", () => {
     });
     const fetched = await postel.outbound.endpoints.get(created.id);
     const listed = await postel.outbound.endpoints.list();
-    const inList = listed.find((e) => e.id === created.id);
+    const inList = listed.items.find((e) => e.id === created.id);
     for (const ep of [created, fetched, inList]) {
       expect(ep).toBeDefined();
       if (!ep) continue;

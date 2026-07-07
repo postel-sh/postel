@@ -188,7 +188,8 @@ describe("List and filter messages", () => {
     const ids: string[] = [];
     for (let i = 0; i < 5; i += 1) {
       clock.set(new Date(Date.parse("2026-07-01T10:00:00.000Z") + i * 1000));
-      ids.push(await postel.outbound.send({ type: "order.created", data: { i } }));
+      const { id } = await postel.outbound.send({ type: "order.created", data: { i } });
+      ids.push(id);
     }
     const seen: string[] = [];
     let cursor: string | undefined;
