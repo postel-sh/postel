@@ -1,4 +1,9 @@
-import { EventValidation, MalformedHeader, SignatureInvalid, TimestampTooOld } from "./errors.js";
+import {
+  ConfigurationError,
+  EventValidation,
+  SignatureInvalid,
+  TimestampTooOld,
+} from "./errors.js";
 import type { StandardSchemaV1 } from "./standard-schema.js";
 import type { Verifier } from "./strategies/verify.js";
 import { ttlToSeconds } from "./ttl.js";
@@ -73,7 +78,7 @@ async function verifySource<TData>(
 ): Promise<ComposedVerifyResult<TData>> {
   const verifiers = Array.isArray(source.verify) ? source.verify : [source.verify];
   if (verifiers.length === 0) {
-    throw new MalformedHeader("inbound source has no verifiers configured");
+    throw new ConfigurationError("inbound source has no verifiers configured");
   }
   const options: VerifyOptions = {
     ...(source.tolerance !== undefined ? { toleranceSeconds: source.tolerance } : {}),
@@ -89,7 +94,7 @@ async function verifySource<TData>(
       matched = { ...result, matchedVerifierIndex: i };
       break;
     } catch (err) {
-      if (err instanceof TimestampTooOld) {
+      if (err instanceof TimestampTooOld || err instanceof ConfigurationError) {
         source.onFailure?.(err, headers);
         throw err;
       }
@@ -148,7 +153,7 @@ function buildSourceApi<S extends InboundSource>(key: string, source: S): Inboun
     async dedup(messageId: string, options?: InboundDedupOptions): Promise<DedupResult> {
       const ttl = options?.ttl ?? defaultTtl;
       if (ttl === undefined) {
-        throw new MalformedHeader(
+        throw new ConfigurationError(
           `inbound source "${key}" dedup() called without ttl; provide one at the call site or via dedupTtl in config`,
         );
       }

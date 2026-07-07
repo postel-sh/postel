@@ -1,4 +1,5 @@
 import {
+  ConfigurationError,
   EventValidation,
   MalformedHeader,
   NotImplementedError,
@@ -32,6 +33,12 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
 
   it("treats NotImplementedError as outside the PostelError hierarchy so it bubbles as 5xx", () => {
     const err = new NotImplementedError("outbound.send");
+    expect(err instanceof PostelError).toBe(false);
+    expect(err instanceof Error).toBe(true);
+  });
+
+  it("treats ConfigurationError as outside the PostelError hierarchy so it bubbles as 5xx", () => {
+    const err = new ConfigurationError("inbound source has no verifiers configured");
     expect(err instanceof PostelError).toBe(false);
     expect(err instanceof Error).toBe(true);
   });

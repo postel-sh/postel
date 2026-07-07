@@ -1,5 +1,5 @@
-import { InMemoryStorage, Postel } from "@postel/core";
-import { describe, expect, it } from "vitest";
+import { ConfigurationError, InMemoryStorage, Postel } from "@postel/core";
+import { describe, expect, it, vi } from "vitest";
 
 import { type AdminRouterOptions, adminRouter } from "../src/index.js";
 
@@ -82,6 +82,18 @@ describe("Admin HTTP handlers", () => {
     const res = await router(req("POST", "/admin/endpoints", { url: "http://example.com/hook" }));
     expect(res.status).toBe(422);
     expect(((await res.json()) as { errorCode: string }).errorCode).toBe("ENDPOINT_VALIDATION");
+  });
+
+  it("Configuration mistakes are not misclassified as wire errors: a ConfigurationError surfaces as 500, not 4xx", async () => {
+    const { postel, router } = build(ALLOW);
+    vi.spyOn(postel.outbound.endpoints, "list").mockRejectedValueOnce(
+      new ConfigurationError("integrator config bug"),
+    );
+    const res = await router(req("GET", "/admin/endpoints"));
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string; errorCode?: string };
+    expect(body.errorCode).toBeUndefined();
+    expect(body.error).toBe("integrator config bug");
   });
 
   it("Replay via admin handler: POST /admin/replay re-enqueues by messageId", async () => {

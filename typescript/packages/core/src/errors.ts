@@ -80,6 +80,11 @@ export class SsrfBlocked extends PostelError {
   readonly code = "SSRF_BLOCKED" as const;
 }
 
+export class ConfigurationError extends Error {
+  override readonly name = "ConfigurationError" as const;
+  readonly code = "CONFIGURATION_ERROR" as const;
+}
+
 export class NotImplementedError extends Error {
   override readonly name = "NotImplementedError" as const;
   readonly code = "NOT_IMPLEMENTED" as const;

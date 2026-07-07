@@ -53,6 +53,7 @@ export type {
 export type { CursorOptions, Page } from "./pagination.js";
 
 export {
+  ConfigurationError,
   EndpointDisabled,
   EndpointNotFound,
   EndpointValidation,

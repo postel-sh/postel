@@ -1,4 +1,4 @@
-import { MalformedHeader } from "./errors.js";
+import { ConfigurationError } from "./errors.js";
 import { bytesToBase64 } from "./internal/base64.js";
 import { signHmacV1 } from "./internal/hmac.js";
 import { HMAC_PREFIX, decodeSecret } from "./internal/secret.js";
@@ -15,7 +15,7 @@ export async function signFixture<TData = unknown>(
 ): Promise<SignedFixture> {
   const decoded = decodeSecret(options.secret);
   if (decoded.kind !== "hmac") {
-    throw new MalformedHeader(
+    throw new ConfigurationError(
       `signFixture: only ${HMAC_PREFIX}-prefixed HMAC secrets are supported in the v0.1.0 helper`,
     );
   }

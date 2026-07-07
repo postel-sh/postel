@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { jwksHandler } from "../src/index.js";
+import { ConfigurationError, jwksHandler } from "../src/index.js";
 
 const PUBLIC_JWK = {
   kty: "OKP",
@@ -56,8 +56,8 @@ describe("JWKS endpoint mounter", () => {
 });
 
 describe("JWKS publishes only public keys", () => {
-  it("Private key absent — construction throws if a JWK has private fields", () => {
-    expect(() =>
+  it("Private key absent — construction throws ConfigurationError if a JWK has private fields", () => {
+    const buildWithPrivateField = () =>
       jwksHandler({
         keys: [
           {
@@ -65,8 +65,9 @@ describe("JWKS publishes only public keys", () => {
             d: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           },
         ],
-      }),
-    ).toThrowError(/private key material/);
+      });
+    expect(buildWithPrivateField).toThrowError(/private key material/);
+    expect(buildWithPrivateField).toThrowError(ConfigurationError);
   });
 
   it("scrubs any other private field if it slipped through (defense in depth)", async () => {

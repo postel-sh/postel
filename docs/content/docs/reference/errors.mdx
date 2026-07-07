@@ -25,10 +25,11 @@ Error
     └── MigrationRequired            code: "MIGRATION_REQUIRED"          (reserved)
 
 Error
+├── ConfigurationError               code: "CONFIGURATION_ERROR"
 └── NotImplementedError              code: "NOT_IMPLEMENTED"
 ```
 
-`NotImplementedError` is **not** a `PostelError` subclass on purpose — it signals a not-yet-implemented configuration option (a worker strategy without an adapter), not a verification outcome. Don't try to catch it as part of normal flow; it means a config slot you selected has no runtime yet.
+`ConfigurationError` and `NotImplementedError` are **not** `PostelError` subclasses on purpose — they signal developer mistakes (a misconfigured source, a not-yet-implemented config slot), not verification outcomes. The `if (err instanceof PostelError) return 4xx` pattern deliberately misses them, so a config bug in your integration bubbles as a 500/crash instead of masquerading as a client error.
 
 ## Class reference
 
@@ -36,7 +37,7 @@ Error
 
 **Code:** `MALFORMED_HEADER`
 **Thrown by:** `postel.inbound.<source>.verify` — step 1.
-**When:** A required webhook header (`webhook-id`, `webhook-timestamp`, `webhook-signature`) is missing or doesn't parse. Also thrown when the `verify` slot is configured with an empty array of verifiers (configuration error caught at first call).
+**When:** A required webhook header (`webhook-id`, `webhook-timestamp`, `webhook-signature`) is missing or doesn't parse. Strictly a wire-format outcome — mistakes in your own configuration (an empty verifier array, a bad `secretOrKeyset`) throw `ConfigurationError` instead.
 
 **Recovery:** `400 Bad Request`. The producer's request is malformed; retrying won't help.
 
@@ -129,6 +130,14 @@ if (err instanceof EndpointValidation) {
 ### Reserved codes (defined, not yet emitted by the runtime)
 
 `IdempotencyKeyConflict` (`IDEMPOTENCY_KEY_CONFLICT`), `EndpointDisabled` (`ENDPOINT_DISABLED`), and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them yet: idempotent `send` reuses the existing message id rather than conflicting, a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the in-memory storage adapter has no migration step. They become live when strict-idempotency conflict reporting and the database-backed storage adapters land.
+
+### `ConfigurationError`
+
+**Code:** `CONFIGURATION_ERROR`
+**Thrown by:** Any API you call with a broken configuration.
+**When:** You made an integration mistake, not the webhook producer: an inbound source with no verifiers configured, `dedup()` called without a ttl (in config or at the call site), an unparsable ttl value, an empty secret array, a `secretOrKeyset` that is not a string / string array / Keyset, a receiver-side secret carrying the `whsk_` private-key prefix, `createKeyset` in a runtime without `fetch`, or `signFixture` with a non-HMAC secret.
+
+**Recovery:** Fix your code. It is not a `PostelError` — the framework gate and `@postel/admin` never map it to a 4xx, so it surfaces as a 500/crash in development instead of silently rejecting the producer's requests. When a verifier in a composed array throws it, the composition loop rethrows immediately rather than folding it into `SignatureInvalid`.
 
 ### `NotImplementedError`
 

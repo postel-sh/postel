@@ -98,6 +98,8 @@ Every failure is a typed subclass of `PostelError`:
 
 Each carries a stable `code` string for log filters and cross-port discrimination. Error messages are safe to log — they never contain the secret or the signature bytes.
 
+Mistakes in your own configuration — an empty verifier array, a `dedup()` call without a ttl, a `secretOrKeyset` that isn't a string, string array, or Keyset — throw `ConfigurationError` instead, which is deliberately **not** a `PostelError`: the framework gate never maps it to a 4xx, so your bug surfaces as a 500 in development instead of rejecting the producer's requests as client errors. See [Errors](/docs/reference/errors).
+
 ## Configuration shape
 
 ```ts
@@ -147,7 +149,7 @@ export const postel = Postel({
 });
 ```
 
-A verifier returns a `VerifyResult` (`{ event, matchedSecretIndex }`) on success and throws on failure. Throw a `PostelError` subclass — `SignatureInvalid`, `MalformedHeader`, … — so the [framework gate](/docs/web-adapters) maps it to the right HTTP status; any other error bubbles as a 5xx. Custom verifiers compose in arrays alongside the built-ins exactly like `Secret`/`Keyset` do — tried in order, first match wins, and `matchedVerifierIndex` reports which one matched:
+A verifier returns a `VerifyResult` (`{ event, matchedSecretIndex }`) on success and throws on failure. Throw a `PostelError` subclass — `SignatureInvalid`, `MalformedHeader`, … — so the [framework gate](/docs/web-adapters) maps it to the right HTTP status; any other error bubbles as a 5xx. Custom verifiers compose in arrays alongside the built-ins exactly like `Secret`/`Keyset` do — tried in order, first match wins, and `matchedVerifierIndex` reports which one matched. Two errors short-circuit the array instead of falling through to the next verifier: `TimestampTooOld` (timestamp validity is independent of which key signed) and `ConfigurationError` (a config bug is not evidence about the signature — it rethrows immediately, never folded into `SignatureInvalid`):
 
 ```ts
 verify: [Secret(config.legacySecret), PartnerToken(config.partnerToken)]
