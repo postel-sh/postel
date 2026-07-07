@@ -2,10 +2,14 @@ import { EndpointNotFound } from "../../errors.js";
 import { bytesToBase64 } from "../../internal/base64.js";
 import { assertHttpWired } from "../../internal/config-guards.js";
 import type {
+  AutoDisableDefaults,
+  CircuitBreakerDefaults,
   Endpoint,
   EndpointCreateOptions,
   EndpointUpdateOptions,
   HttpDefaults,
+  SerializableHttpDefaults,
+  SerializableRetryStrategy,
 } from "../../outbound.js";
 import type {
   EndpointRecord,
@@ -32,6 +36,32 @@ function newEndpointId(): string {
   return `ep_${bytesToBase64(bytes).replace(/[+/=]/g, "")}`;
 }
 
+// Function-carrying values are code-side JS values, not serializable data —
+// the public read shape normalizes them identically across storage adapters
+// (the in-memory adapter holds live functions; DB adapters JSON-strip them).
+
+// Only a plain key/value record survives; callable headers read back as null.
+function plainRecordHeaders(headers: unknown): Readonly<Record<string, string>> | null {
+  if (headers === null || typeof headers !== "object") return null;
+  return headers as Readonly<Record<string, string>>;
+}
+
+// A `custom` strategy carries a `compute` function and reads back as null;
+// data-only strategies (`exponential`, `linear`) round-trip unchanged.
+function serializableRetryPolicy(raw: unknown): SerializableRetryStrategy | null {
+  if (raw === null || typeof raw !== "object") return null;
+  if ((raw as { kind?: unknown }).kind === "custom") return null;
+  return raw as SerializableRetryStrategy;
+}
+
+// `fetch` is the one function-typed key on HttpDefaults; the read shape is the
+// stored overrides minus that key.
+function serializableHttp(raw: unknown): SerializableHttpDefaults | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const { fetch: _fetch, ...rest } = raw as HttpDefaults;
+  return rest;
+}
+
 function toPublicEndpoint(rec: EndpointRecord): Endpoint {
   const out: {
     -readonly [K in keyof Endpoint]: Endpoint[K];
@@ -39,6 +69,17 @@ function toPublicEndpoint(rec: EndpointRecord): Endpoint {
     id: rec.id,
     url: rec.url,
     state: rec.state,
+    types: rec.types,
+    channels: rec.channels,
+    retryPolicy: serializableRetryPolicy(rec.retryPolicy),
+    headers: plainRecordHeaders(rec.headers),
+    allowHttp: rec.allowHttp,
+    maxInflight: rec.maxInflight,
+    http: serializableHttp(rec.http),
+    circuitBreaker: rec.circuitBreaker as CircuitBreakerDefaults | null,
+    autoDisable: rec.autoDisable as AutoDisableDefaults | null,
+    createdAt: rec.createdAt,
+    updatedAt: rec.updatedAt,
   };
   if (rec.tenantId !== null) out.tenantId = rec.tenantId;
   if (rec.metadata !== null) out.metadata = rec.metadata as Record<string, unknown>;

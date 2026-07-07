@@ -111,7 +111,7 @@ describe("Default retry schedule with jitter", () => {
         http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } },
       },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(500);
     await postel.stop();
@@ -136,7 +136,7 @@ describe("Programmable per-endpoint retry policy", () => {
         http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } },
       },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(300);
     await postel.stop();
@@ -156,7 +156,7 @@ describe("Status-code-aware retry", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(300);
     await postel.stop();
@@ -175,7 +175,7 @@ describe("Status-code-aware retry", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(300);
     await postel.stop();
@@ -206,7 +206,7 @@ describe("Per-endpoint and overall delivery deadlines", () => {
         http: { ssrf: { allowedRanges: ["127.0.0.0/8"] }, requestTimeout: 80 },
       },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(800);
     await postel.stop();
@@ -232,7 +232,7 @@ describe("Dead-letter event", () => {
     });
     const events: unknown[] = [];
     postel.on("dead-letter", (p) => events.push(p));
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(400);
     await postel.stop();
@@ -274,7 +274,7 @@ describe("Per-endpoint circuit breaker", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(800);
     await postel.stop();

@@ -84,6 +84,11 @@ export interface EphemeralKeysDefaults {
 
 export type MessageId = string;
 
+export interface SendResult {
+  readonly id: MessageId;
+  readonly reused: boolean;
+}
+
 export interface SendEvent<TData = unknown> {
   readonly type: string;
   readonly data?: TData;
@@ -122,10 +127,32 @@ export interface EndpointCreateOptions {
 
 export interface EndpointUpdateOptions extends Partial<EndpointCreateOptions> {}
 
+// The public read shape for endpoints: every accepted serializable field
+// round-trips through create/get/list/update, identically across storage
+// adapters. Function-shaped options are code-side JS values and stay off this
+// shape: `filter`/`transform` are absent keys, callable `headers` and `custom`
+// retry strategies (whose `compute` is a function) read back as null, and
+// `http` drops its function-typed `fetch` key. `signing` stays off because a
+// strategy can carry key material.
+export type SerializableRetryStrategy = Exclude<RetryStrategy, { kind: "custom" }>;
+
+export type SerializableHttpDefaults = Readonly<Omit<HttpDefaults, "fetch">>;
+
 export interface Endpoint {
   readonly id: string;
   readonly url: string;
   readonly state: "active" | "disabled" | "circuit-open";
+  readonly types: ReadonlyArray<string> | null;
+  readonly channels: ReadonlyArray<string> | null;
+  readonly retryPolicy: SerializableRetryStrategy | null;
+  readonly headers: Readonly<Record<string, string>> | null;
+  readonly allowHttp: boolean;
+  readonly maxInflight: number | null;
+  readonly http: SerializableHttpDefaults | null;
+  readonly circuitBreaker: CircuitBreakerDefaults | null;
+  readonly autoDisable: AutoDisableDefaults | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
   readonly tenantId?: string;
   readonly metadata?: Record<string, unknown>;
 }
@@ -237,7 +264,7 @@ export interface TenantListOptions extends CursorOptions {}
 export type TenantPage = Page<Tenant>;
 
 export interface OutboundApi<TTx = unknown> {
-  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<MessageId>;
+  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<SendResult>;
   endpoints: {
     create(opts: EndpointCreateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;
     update(id: string, opts: EndpointUpdateOptions, runtime?: { tx?: TTx }): Promise<Endpoint>;

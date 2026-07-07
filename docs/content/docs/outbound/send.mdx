@@ -23,12 +23,13 @@ const postel = Postel({
 await db.tx(async (tx) => {
   await db.orders.insert({ id: "ord_123", status: "paid" }, { tx });
 
-  const messageId = await postel.outbound.send(
+  const { id, reused } = await postel.outbound.send(
     { type: "order.created", data: { id: "ord_123", amount: 4200 } },
     { tx },
   );
 
-  // messageId is the webhook-id the receiver will see.
+  // id is the webhook-id the receiver will see.
+  // reused is true only when an idempotencyKey matched an existing message.
 });
 ```
 
@@ -64,7 +65,7 @@ Filter strings support globs and (for advanced cases) a custom `filter: (event) 
 
 ## What about idempotency on send?
 
-`SendEvent` accepts an optional `idempotencyKey`. If the caller provides one, the outbox uses a unique constraint on `(idempotencyKey)` to enforce at-most-once *enqueuing* — repeated calls with the same key in the same transaction are no-ops.
+`SendEvent` accepts an optional `idempotencyKey`. If the caller provides one, the outbox uses a unique constraint on `(idempotencyKey)` to enforce at-most-once *enqueuing* — a repeated call with the same key resolves to the existing message's `id` with `reused: true` instead of inserting a second row. That flag is how you tell "accepted" from "deduplicated"; sends without a key always report `reused: false`.
 
 If you don't pass one, Postel generates a stable `webhook-id` for the receiver but does not enforce send-side idempotency. (You usually don't need both — the [receiver's dedup](/docs/inbound/deduplication) handles the at-least-once contract on the wire.)
 

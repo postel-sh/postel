@@ -103,7 +103,7 @@ describe("Late-binding fanout", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(400);
     await postel.stop();
@@ -161,7 +161,7 @@ describe("Late-binding fanout", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(400);
     await postel.stop();
@@ -202,7 +202,7 @@ describe("Late-binding fanout", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(250);
     await postel.stop();
@@ -316,7 +316,7 @@ describe("Per-message TTL", () => {
     });
     // ttl: 60 must mean 60 seconds. If it were 60ms the message would expire
     // before the worker (which starts ~tens of ms later) ever dispatches it.
-    const id = await postel.outbound.send({ type: "evt.x", ttl: 60 });
+    const { id } = await postel.outbound.send({ type: "evt.x", ttl: 60 });
     await postel.start();
     await tick(250);
     await postel.stop();
@@ -352,7 +352,7 @@ describe("SSRF protection on outbound delivery", () => {
     });
     await insertSecret(storage, ep.id);
     const postel = Postel({ outbound: { storage } });
-    const id = await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
     await tick(400);
     await postel.stop();

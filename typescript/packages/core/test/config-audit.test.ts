@@ -226,7 +226,7 @@ describe("Logger pass-through for runtime events [PORT-SPECIFIC]", () => {
     const storage = InMemoryStorage();
     await seedEndpoint(storage, server.url());
     const postel = Postel({ outbound: { storage, http: LOOPBACK } });
-    const id = await postel.outbound.send({ type: "evt.y" });
+    const { id } = await postel.outbound.send({ type: "evt.y" });
     await postel.start();
     await tick(400);
     await postel.stop();
