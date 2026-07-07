@@ -1,4 +1,4 @@
-import { Postel, Secret, inMemoryDedupAdapter, signFixture } from "@postel/core";
+import { InMemoryDedup, Postel, Secret, signFixture } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
 import { handleInbound } from "../src/index.js";
@@ -11,7 +11,7 @@ const NOW = new Date("2026-05-14T13:00:00Z");
 function dedupSource() {
   return Postel({
     inbound: {
-      vendor: { verify: Secret(SECRET), clock: fixedClock(NOW), dedup: inMemoryDedupAdapter() },
+      vendor: { verify: Secret(SECRET), clock: fixedClock(NOW), dedup: InMemoryDedup() },
     },
   }).inbound.vendor;
 }

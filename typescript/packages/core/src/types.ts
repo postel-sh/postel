@@ -53,11 +53,6 @@ export interface JwksHandlerOptions {
   readonly tenantId?: string;
 }
 
-export interface DedupOptions {
-  readonly ttl: number | string;
-  readonly adapter: DedupAdapter;
-}
-
 export interface DedupResult {
   readonly duplicate: boolean;
 }

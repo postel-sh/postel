@@ -76,9 +76,6 @@ export {
 export type { PostelErrorCode } from "./errors.js";
 export type { StandardSchemaV1 } from "./standard-schema.js";
 
-export { dedup, inMemoryDedupAdapter } from "./dedup.js";
-export type { InMemoryDedupOptions } from "./dedup.js";
-
 export { ttlToSeconds } from "./ttl.js";
 export { systemClock } from "./clock.js";
 export type { Clock } from "./clock.js";
@@ -125,7 +122,6 @@ export { verify } from "./verify.js";
 
 export type {
   DedupAdapter,
-  DedupOptions,
   DedupRecordOptions,
   DedupResult,
   Jwk,
@@ -170,6 +166,7 @@ export type {
   ExponentialBackoffOptions,
   FixedRateOptions,
   GcpKmsOptions,
+  InMemoryDedupOptions,
   InProcessOptions,
   KmsStrategy,
   LinearBackoffOptions,

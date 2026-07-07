@@ -11,7 +11,7 @@ Postel ships a dedup helper that gets this right. The contract is simple: hand i
 
 ## The dedup contract
 
-Configure a dedup adapter on the inbound source, then call `dedup(messageId, options?)` from the verified-event branch:
+Configure a dedup adapter on the inbound source, then call `postel.inbound.<source>.dedup(messageId, options?)` from the verified-event branch:
 
 ```ts
 import { Postel, Secret, InMemoryDedup } from "@postel/core";
@@ -42,7 +42,7 @@ A few things to note:
 
 - **TTL is your choice.** Pick a window longer than the producer's retry budget — 24h to 7d is typical. The downside of a too-short TTL is accepting a duplicate after expiry; a too-long TTL costs more storage. Set `dedupTtl` once on the source or pass `{ ttl: "1h" }` per call.
 - **The first-receipt branch must succeed.** If your work fails after `dedup` returns `{ duplicate: false }`, the next retry will be marked duplicate and skipped. Either move dedup after a successful commit, or use the transactional pattern below.
-- **Concurrent calls race exactly once.** Two parallel `dedup('msg_X')` calls return `{ duplicate: false }` from exactly one of them. The other(s) return `{ duplicate: true }`. The compliance suite tests this.
+- **Concurrent calls race exactly once.** Two parallel `postel.inbound.vendor.dedup('msg_X')` calls return `{ duplicate: false }` from exactly one of them. The other(s) return `{ duplicate: true }`. The compliance suite tests this.
 - **`postel.inbound.<source>.dedup` only exists when an adapter is configured.** Omit `dedup` from the source config and the method is not on the instance type — TypeScript catches the mistake at compile time.
 
 ## Storage adapters

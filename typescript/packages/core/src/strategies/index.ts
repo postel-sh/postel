@@ -2,6 +2,7 @@ export { Secret, PublicKey, Keyset, Noop } from "./verify.js";
 export type { Verifier } from "./verify.js";
 
 export { InMemoryDedup } from "./dedup.js";
+export type { InMemoryDedupOptions } from "./dedup.js";
 
 export { HmacV1, Ed25519V1a } from "./signing.js";
 export type { SigningStrategy, SigningOptions } from "./signing.js";
