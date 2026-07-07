@@ -173,7 +173,9 @@ describe("Admin HTTP handlers", () => {
       latencyMs: 9,
     });
 
-    const filtered = await router(req("GET", `/admin/messages/${messageId}/attempts?status=failed`));
+    const filtered = await router(
+      req("GET", `/admin/messages/${messageId}/attempts?status=failed`),
+    );
     expect(filtered.status).toBe(200);
     const body = (await filtered.json()) as { attempts: Array<{ status: string }> };
     expect(body.attempts).toHaveLength(1);
