@@ -36,7 +36,14 @@ Every endpoint operation accepts an optional `tx` so endpoint state changes can 
 
 ## What reads return
 
-`create`, `update`, `get`, and `list` return the full endpoint — every serializable field you passed in (`types`, `channels`, `retryPolicy`, plain-record `headers`, `metadata`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, `autoDisable`) plus `id`, `url`, `state`, `createdAt`, and `updatedAt`. Two kinds of options stay off the read shape: function-shaped ones (`filter`, `transform`, and `headers` given as a callback) are code rather than data — they run at dispatch time but can't round-trip through a read — and `signing` is never echoed back because a strategy can carry key material.
+`create`, `update`, `get`, and `list` return the full endpoint — every serializable field you passed in (`types`, `channels`, `retryPolicy`, plain-record `headers`, `metadata`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, `autoDisable`) plus `id`, `url`, `state`, `createdAt`, and `updatedAt`.
+
+Function-shaped options stay off the read shape — they are code rather than data, so they run at dispatch time but can't round-trip through a read, and the shape is identical whichever storage adapter you use:
+
+- `filter` and `transform` are absent from the returned endpoint.
+- `headers` given as a callback, and a `Custom(...)` retry policy (whose `compute` is a function), read back as `null`. `ExponentialBackoff` and `LinearBackoff` policies round-trip unchanged.
+- The returned `http` carries your stored overrides minus the `fetch` key.
+- `signing` is never echoed back because a strategy can carry key material.
 
 ## Filtering
 

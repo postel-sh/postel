@@ -8,6 +8,8 @@ import type {
   EndpointCreateOptions,
   EndpointUpdateOptions,
   HttpDefaults,
+  SerializableHttpDefaults,
+  SerializableRetryStrategy,
 } from "../../outbound.js";
 import type {
   EndpointRecord,
@@ -16,7 +18,6 @@ import type {
   SecretAlgorithm,
   Storage,
 } from "../../storage/types.js";
-import type { RetryStrategy } from "../../strategies/retry.js";
 import type { SigningStrategy } from "../../strategies/signing.js";
 import { DEFAULT_SSRF_POLICY, type SsrfPolicy } from "../dispatcher/ssrf.js";
 import { mintSecretMaterial, newSecretId } from "../keys/material.js";
@@ -35,11 +36,30 @@ function newEndpointId(): string {
   return `ep_${bytesToBase64(bytes).replace(/[+/=]/g, "")}`;
 }
 
-// Callable headers are a code-side JS function, not serializable data — only a
-// plain key/value record survives onto the public read shape.
+// Function-carrying values are code-side JS values, not serializable data —
+// the public read shape normalizes them identically across storage adapters
+// (the in-memory adapter holds live functions; DB adapters JSON-strip them).
+
+// Only a plain key/value record survives; callable headers read back as null.
 function plainRecordHeaders(headers: unknown): Readonly<Record<string, string>> | null {
   if (headers === null || typeof headers !== "object") return null;
   return headers as Readonly<Record<string, string>>;
+}
+
+// A `custom` strategy carries a `compute` function and reads back as null;
+// data-only strategies (`exponential`, `linear`) round-trip unchanged.
+function serializableRetryPolicy(raw: unknown): SerializableRetryStrategy | null {
+  if (raw === null || typeof raw !== "object") return null;
+  if ((raw as { kind?: unknown }).kind === "custom") return null;
+  return raw as SerializableRetryStrategy;
+}
+
+// `fetch` is the one function-typed key on HttpDefaults; the read shape is the
+// stored overrides minus that key.
+function serializableHttp(raw: unknown): SerializableHttpDefaults | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const { fetch: _fetch, ...rest } = raw as HttpDefaults;
+  return rest;
 }
 
 function toPublicEndpoint(rec: EndpointRecord): Endpoint {
@@ -51,11 +71,11 @@ function toPublicEndpoint(rec: EndpointRecord): Endpoint {
     state: rec.state,
     types: rec.types,
     channels: rec.channels,
-    retryPolicy: rec.retryPolicy as RetryStrategy | null,
+    retryPolicy: serializableRetryPolicy(rec.retryPolicy),
     headers: plainRecordHeaders(rec.headers),
     allowHttp: rec.allowHttp,
     maxInflight: rec.maxInflight,
-    http: rec.http as HttpDefaults | null,
+    http: serializableHttp(rec.http),
     circuitBreaker: rec.circuitBreaker as CircuitBreakerDefaults | null,
     autoDisable: rec.autoDisable as AutoDisableDefaults | null,
     createdAt: rec.createdAt,

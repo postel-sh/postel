@@ -247,6 +247,47 @@ export function runStorageTests(factory: StorageTestFactory): void {
         // Generous timeout: real-DB tiers (pglite WASM, MySQL containers) can run
         // this well past vitest's 5s default under CI load.
       }, 30_000);
+
+      it("Endpoint CRUD: create/get round-trip serializable endpoint field values without dialect drift", async () => {
+        const { storage } = await factory.create();
+        const retryPolicy = {
+          kind: "exponential",
+          schedule: ["5s", "1m"],
+          jitter: 0.2,
+          maxAttempts: 2,
+        };
+        const created = await storage.endpoints.create(
+          buildEndpoint({
+            id: "ep_roundtrip",
+            types: ["order.*"],
+            channels: ["eu"],
+            retryPolicy,
+            headers: { "x-team": "billing" },
+            metadata: { customerEmail: "a@b" },
+            maxInflight: 7,
+            http: { requestTimeout: "5s" },
+            circuitBreaker: { threshold: 5, cooldown: "1m" },
+            autoDisable: { failureRate: 0.5, window: "24h", minAttempts: 20 },
+          }),
+        );
+        const fetched = await storage.endpoints.get("ep_roundtrip");
+        expect(fetched).toBeDefined();
+        for (const ep of [created, fetched]) {
+          if (!ep) continue;
+          expect(ep.url).toBe("https://example.com/hook");
+          expect(ep.types).toEqual(["order.*"]);
+          expect(ep.channels).toEqual(["eu"]);
+          expect(ep.retryPolicy).toEqual(retryPolicy);
+          expect(ep.headers).toEqual({ "x-team": "billing" });
+          expect(ep.metadata).toEqual({ customerEmail: "a@b" });
+          expect(ep.maxInflight).toBe(7);
+          expect(ep.http).toEqual({ requestTimeout: "5s" });
+          expect(ep.circuitBreaker).toEqual({ threshold: 5, cooldown: "1m" });
+          expect(ep.autoDisable).toEqual({ failureRate: 0.5, window: "24h", minAttempts: 20 });
+          expect(ep.createdAt).toBeInstanceOf(Date);
+          expect(ep.updatedAt).toBeInstanceOf(Date);
+        }
+      }, 30_000);
     });
 
     describe("Schema is a fixed set of canonical tables", () => {

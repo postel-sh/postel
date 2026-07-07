@@ -55,7 +55,11 @@ describe("Admin HTTP handlers", () => {
   it("create, list, and get endpoints through the router", async () => {
     const { router } = build(ALLOW);
     const created = await router(
-      req("POST", "/admin/endpoints", { url: "http://127.0.0.1:65535/hook", allowHttp: true }),
+      req("POST", "/admin/endpoints", {
+        url: "http://127.0.0.1:65535/hook",
+        allowHttp: true,
+        types: ["order.*"],
+      }),
     );
     expect(created.status).toBe(201);
     const { id } = (await created.json()) as { id: string };
@@ -67,7 +71,17 @@ describe("Admin HTTP handlers", () => {
 
     const got = await router(req("GET", `/admin/endpoints/${id}`));
     expect(got.status).toBe(200);
-    expect(((await got.json()) as { id: string }).id).toBe(id);
+    const body = (await got.json()) as {
+      id: string;
+      types: string[];
+      state: string;
+      createdAt: string;
+    };
+    expect(body.id).toBe(id);
+    // The read plane carries the full endpoint shape; Date fields serialize as ISO strings.
+    expect(body.types).toEqual(["order.*"]);
+    expect(body.state).toBe("active");
+    expect(new Date(body.createdAt).getTime()).not.toBeNaN();
   });
 
   it("a missing endpoint id maps to 404 (EndpointNotFound)", async () => {

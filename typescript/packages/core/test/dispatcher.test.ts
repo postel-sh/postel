@@ -1,7 +1,13 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
-import { EndpointNotFound, ExponentialBackoff, LinearBackoff, Postel } from "../src/index.js";
+import {
+  Custom,
+  EndpointNotFound,
+  ExponentialBackoff,
+  LinearBackoff,
+  Postel,
+} from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
 import { base64ToBytes } from "../src/internal/base64.js";
@@ -255,7 +261,7 @@ describe("Endpoint CRUD", () => {
     expect(updated.retryPolicy).toEqual(retryPolicy);
   });
 
-  it("Function-shaped options stay off the read shape: filter/transform absent, callable headers read back as absent", async () => {
+  it("Function-shaped options stay off the read shape: filter/transform absent, callable headers and custom retryPolicy read back as null, http drops fetch", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
@@ -266,12 +272,16 @@ describe("Endpoint CRUD", () => {
       filter: () => true,
       transform: (event) => event,
       headers: () => ({ "x-dynamic": "yes" }),
+      retryPolicy: Custom({ compute: () => "5s", maxAttempts: 2 }),
+      http: { requestTimeout: "3s", fetch: globalThis.fetch },
     });
     const fetched = await postel.outbound.endpoints.get(created.id);
     for (const ep of [created, fetched]) {
       expect("filter" in ep).toBe(false);
       expect("transform" in ep).toBe(false);
       expect(ep.headers).toBeNull();
+      expect(ep.retryPolicy).toBeNull();
+      expect(ep.http).toEqual({ requestTimeout: "3s" });
     }
   });
 

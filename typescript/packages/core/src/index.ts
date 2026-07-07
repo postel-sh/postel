@@ -45,6 +45,8 @@ export type {
   SendEvent,
   SendOptions,
   SendResult,
+  SerializableHttpDefaults,
+  SerializableRetryStrategy,
   SetRateLimitOptions,
   Tenant,
   TenantListOptions,

@@ -128,20 +128,27 @@ export interface EndpointCreateOptions {
 export interface EndpointUpdateOptions extends Partial<EndpointCreateOptions> {}
 
 // The public read shape for endpoints: every accepted serializable field
-// round-trips through create/get/list/update. Function-shaped options
-// (`filter`, `transform`, callable `headers`) are code-side JS values and stay
-// off this shape; `signing` stays off because a strategy can carry key material.
+// round-trips through create/get/list/update, identically across storage
+// adapters. Function-shaped options are code-side JS values and stay off this
+// shape: `filter`/`transform` are absent keys, callable `headers` and `custom`
+// retry strategies (whose `compute` is a function) read back as null, and
+// `http` drops its function-typed `fetch` key. `signing` stays off because a
+// strategy can carry key material.
+export type SerializableRetryStrategy = Exclude<RetryStrategy, { kind: "custom" }>;
+
+export type SerializableHttpDefaults = Readonly<Omit<HttpDefaults, "fetch">>;
+
 export interface Endpoint {
   readonly id: string;
   readonly url: string;
   readonly state: "active" | "disabled" | "circuit-open";
   readonly types: ReadonlyArray<string> | null;
   readonly channels: ReadonlyArray<string> | null;
-  readonly retryPolicy: RetryStrategy | null;
+  readonly retryPolicy: SerializableRetryStrategy | null;
   readonly headers: Readonly<Record<string, string>> | null;
   readonly allowHttp: boolean;
   readonly maxInflight: number | null;
-  readonly http: HttpDefaults | null;
+  readonly http: SerializableHttpDefaults | null;
   readonly circuitBreaker: CircuitBreakerDefaults | null;
   readonly autoDisable: AutoDisableDefaults | null;
   readonly createdAt: Date;
