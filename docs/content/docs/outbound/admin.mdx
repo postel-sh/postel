@@ -81,7 +81,7 @@ When `authorize` returns a `tenantId`, every route is scoped to it: lists and cr
 | `POST /keys/symmetric` · `POST /keys/asymmetric` | generate signing keys |
 | `GET /messages` | list messages (`?type=`, `?status=`, `?since=`, `?until=`, `?limit=`) |
 | `GET /messages/:id` | fetch one message, including its payload |
-| `GET /messages/:id/attempts` | the message's delivery-attempt history |
+| `GET /messages/:id/attempts` | the message's delivery-attempt history (`?status=` to narrow by delivery status) |
 
 Failures map to status by `PostelError.code` — `ENDPOINT_NOT_FOUND` → 404, `ENDPOINT_VALIDATION` → 422, `ENDPOINT_DISABLED` → 409, `MIGRATION_REQUIRED` → 503 — with a `{ errorCode, error }` JSON body. A read for a message id that doesn't exist (or is outside the caller's tenant) responds `404` with `errorCode: "MESSAGE_NOT_FOUND"`; the same goes for a tenant id, with `errorCode: "TENANT_NOT_FOUND"`. A malformed `GET /tenants?cursor=` responds `400` with `errorCode: "INVALID_QUERY"`. Code-only endpoint options (`filter`, `transform`, callable `headers`) aren't configurable over HTTP; set them in your `Postel` config.
 

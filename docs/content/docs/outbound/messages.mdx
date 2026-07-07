@@ -64,4 +64,4 @@ const recent = await postel.outbound.messages.list({
 
 ## Over HTTP
 
-The same three reads are exposed by the [admin API](/docs/outbound/admin) as `GET /messages`, `GET /messages/:id`, and `GET /messages/:id/attempts` (with `?type=`, `?status=`, `?since=`, `?until=`, `?limit=` query filters). Those routes are tenant-scoped from the `authorize` decision, and an unknown or cross-tenant id responds `404 MESSAGE_NOT_FOUND`.
+The same three reads are exposed by the [admin API](/docs/outbound/admin) as `GET /messages`, `GET /messages/:id`, and `GET /messages/:id/attempts` (the list takes `?type=`, `?status=`, `?since=`, `?until=`, `?limit=` query filters; the attempts route takes `?status=` to narrow by delivery status). Those routes are tenant-scoped from the `authorize` decision, and an unknown or cross-tenant id responds `404 MESSAGE_NOT_FOUND`.

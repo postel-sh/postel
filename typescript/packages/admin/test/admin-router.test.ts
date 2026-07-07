@@ -139,6 +139,56 @@ describe("Admin HTTP handlers", () => {
     expect(body.attempts[0]?.latencyMs).toBe(8);
   });
 
+  it("Filter attempts by status via admin router: ?status= returns only matching attempts", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage, ...SSRF } });
+    const router = adminRouter(postel, ALLOW);
+    const messageId = await postel.outbound.send({ type: "order.created", data: { id: "o1" } });
+    const base = {
+      messageId,
+      endpointId: "ep_1",
+      tenantId: null,
+      scheduledFor: null,
+      startedAt: new Date(),
+      completedAt: new Date(),
+      responseHeaders: null,
+      responseBody: null,
+      error: null,
+      replayOf: null,
+    };
+    await storage.recordAttempt({
+      ...base,
+      id: "att_f_1",
+      attemptNumber: 1,
+      status: "failed",
+      responseCode: 500,
+      latencyMs: 12,
+    });
+    await storage.recordAttempt({
+      ...base,
+      id: "att_f_2",
+      attemptNumber: 2,
+      status: "success",
+      responseCode: 200,
+      latencyMs: 9,
+    });
+
+    const filtered = await router(req("GET", `/admin/messages/${messageId}/attempts?status=failed`));
+    expect(filtered.status).toBe(200);
+    const body = (await filtered.json()) as { attempts: Array<{ status: string }> };
+    expect(body.attempts).toHaveLength(1);
+    expect(body.attempts[0]?.status).toBe("failed");
+
+    const csv = await router(
+      req("GET", `/admin/messages/${messageId}/attempts?status=failed,success`),
+    );
+    expect(((await csv.json()) as { attempts: unknown[] }).attempts).toHaveLength(2);
+
+    const none = await router(req("GET", `/admin/messages/${messageId}/attempts?status=bogus`));
+    expect(none.status).toBe(200);
+    expect(((await none.json()) as { attempts: unknown[] }).attempts).toHaveLength(0);
+  });
+
   it("Read of an unknown message maps to 404 (MESSAGE_NOT_FOUND)", async () => {
     const { router } = build(ALLOW);
     const res = await router(req("GET", "/admin/messages/msg_nope"));
