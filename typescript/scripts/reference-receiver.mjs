@@ -58,6 +58,7 @@ const dedupPreseedPrefixes = (process.env.POSTEL_DEDUP_PRESEED ?? "pre_seen_")
 const toleranceSeconds = Number(process.env.POSTEL_TOLERANCE ?? "300");
 const fixedNow = process.env.POSTEL_NOW ? new Date(process.env.POSTEL_NOW) : undefined;
 const nowFn = fixedNow ? () => fixedNow : () => new Date();
+const clock = { now: nowFn, sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
 
 const dedupAdapter = inMemoryDedupAdapter({ now: nowFn });
 const jwks = jwksKeys.length > 0 ? jwksHandler({ keys: jwksKeys }) : undefined;
@@ -155,7 +156,7 @@ async function handleWebhook(req, res) {
 
     result = await verify(body, verifyHeaders, target, {
       toleranceSeconds,
-      now: nowFn,
+      clock,
     });
 
     if (dedupEnabled && messageId) {
