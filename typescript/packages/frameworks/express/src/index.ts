@@ -1,4 +1,5 @@
 import { type AdminRouterOptions, adminRouter } from "@postel/admin";
+import { ConfigurationError } from "@postel/core";
 import type {
   ComposedVerifyResult,
   EventOf,
@@ -55,7 +56,19 @@ export function getVerified<TData = unknown>(req: ExpressRequest): ComposedVerif
 }
 
 function rawBuffer(body: unknown): Uint8Array {
-  return body instanceof Uint8Array ? body : new Uint8Array(0);
+  if (body instanceof Uint8Array) return body;
+  // A bodyless request never populates `req.body`; let verification reject it as
+  // a malformed/missing-header 400 rather than blaming the integrator.
+  if (body === undefined || body === null) return new Uint8Array(0);
+  // Anything else — a parsed object or string — means an upstream body parser
+  // consumed the raw bytes before the gate's own raw-body middleware ran.
+  throw new ConfigurationError(
+    "Postel's webhook gate received an already-parsed request body. A body-parsing middleware " +
+      "(e.g. express.json() or express.urlencoded()) consumed the raw bytes before the gate ran, " +
+      "so the signature cannot be verified against the original payload. Register the Postel " +
+      "webhook route before any global body parser, or scope the parser so it does not apply to " +
+      "webhook routes — the gate installs its own raw-body middleware and must see the untouched bytes.",
+  );
 }
 
 function gate<TData>(

@@ -113,6 +113,29 @@ describe("Framework adapters preserve raw bytes", () => {
   });
 });
 
+describe("Consumed raw body surfaces a descriptive configuration error [PORT-SPECIFIC]", () => {
+  it("Body-parser ordering yields a descriptive error, not a signature failure", async () => {
+    const app = express();
+    // The classic mistake: a global body parser registered before the webhook
+    // route consumes the raw bytes the gate needs.
+    app.use(express.json());
+    ExpressWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", (_req, res) => {
+      res.json({ ok: true });
+    });
+
+    const sig = await signed("order.created", "o_1");
+    const res = await request(app)
+      .post("/webhooks/vendor")
+      .set(sig.headers)
+      .set("content-type", "application/json")
+      .send(sig.body);
+
+    expect(res.status).toBe(500);
+    expect(res.text).toMatch(/body-parsing middleware/);
+    expect(res.text).not.toContain("SIGNATURE_INVALID");
+  });
+});
+
 describe("JWKS endpoint mounter", () => {
   it("outbound.bindJwks() serves the JWKS document on GET (default provider)", async () => {
     const app = express();

@@ -43,6 +43,22 @@ export const postel = Postel({
 
 `Secret(...)` is a *verifier strategy* — swap in `Keyset({ jwksUri })` for JWKS, or pass an array for [key rotation](/docs/inbound/key-rotation). `postel.inbound.github` is fully typed; sources you didn't configure don't exist on the type.
 
+<Callout title="Declaring the config separately? Keep the literal.">
+
+`postel.inbound` / `postel.outbound` exist on the instance type only because the factory reads the config's **literal** shape. Annotating a config with `: PostelConfig` widens that literal and the slots vanish from the type. Inline the object (as above), or — if you keep it in its own `const` — wrap it in `definePostelConfig(...)` (or write `as const satisfies PostelConfig`) so the literal is preserved:
+
+```ts
+import { definePostelConfig, Postel, Secret } from "@postel/core";
+
+const config = definePostelConfig({
+  inbound: { github: { verify: Secret(process.env.GH_SECRET!) } },
+});
+
+export const postel = Postel(config); // postel.inbound.github is still typed
+```
+
+</Callout>
+
 </Step>
 
 <Step>
