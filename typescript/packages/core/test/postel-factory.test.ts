@@ -33,6 +33,56 @@ const PAYLOAD = {
   data: { id: "order_42", amount_cents: 1999 },
 } as const;
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i] as number);
+  return btoa(binary);
+}
+
+async function signEd25519(privateKey: CryptoKey, message: Uint8Array): Promise<string> {
+  const sig = new Uint8Array(
+    await crypto.subtle.sign({ name: "Ed25519" }, privateKey, message as BufferSource),
+  );
+  return bytesToBase64(sig);
+}
+
+// Mirrors verify-keyset.test.ts's fixture builder — a real Ed25519 keypair,
+// a v1a-signed payload, and the matching public JWK for a mocked JWKS fetch.
+async function buildEd25519Fixture(kid: string, timestamp: Date) {
+  const keypair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const publicJwk = (await crypto.subtle.exportKey("jwk", keypair.publicKey)) as {
+    kty: string;
+    crv: string;
+    x: string;
+  };
+  const messageId = `msg_${kid}_test`;
+  const timestampSeconds = Math.floor(timestamp.getTime() / 1000).toString();
+  const body = JSON.stringify(PAYLOAD);
+  const canonical = new TextEncoder().encode(`${messageId}.${timestampSeconds}.${body}`);
+  const signatureB64 = await signEd25519(keypair.privateKey, canonical);
+  return {
+    body,
+    headers: {
+      "webhook-id": messageId,
+      "webhook-timestamp": timestampSeconds,
+      "webhook-signature": `v1a,${signatureB64}`,
+      "webhook-key-id": kid,
+    },
+    publicJwk: { ...publicJwk, kid, alg: "EdDSA" },
+  };
+}
+
+function jwksFetcher(jwks: { keys: Array<Record<string, unknown>> }): typeof globalThis.fetch {
+  return async () =>
+    new Response(JSON.stringify(jwks), {
+      status: 200,
+      headers: { "content-type": "application/jwk-set+json" },
+    });
+}
+
 describe("Postel factory returns the library instance", () => {
   it("Type inference for the outbound surface", () => {
     const postel = Postel({
@@ -323,6 +373,94 @@ describe("Verifier strategy composition", () => {
     });
     const postel = Postel({
       inbound: { vendor: { verify: [], tolerance: 600, clock: fixedClock(FIXED_NOW) } },
+    });
+    await expect(
+      postel.inbound.vendor.verify(fixture.body, fixture.headers),
+    ).rejects.toBeInstanceOf(ConfigurationError);
+  });
+
+  it("Named-map verifier reports the matched name", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_B,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const postel = Postel({
+      inbound: {
+        vendor: {
+          verify: { current: Secret(TEST_SECRET_A), legacy: Secret(TEST_SECRET_B) },
+          tolerance: 600,
+          clock: fixedClock(FIXED_NOW),
+        },
+      },
+    });
+    const result = await postel.inbound.vendor.verify(fixture.body, fixture.headers);
+    expect(result.matchedVerifier).toBe("legacy");
+    expect(result.matchedVerifierIndex).toBe(1);
+  });
+
+  it("Named-map verifier composes with cross-scheme migration", async () => {
+    const fixture = await buildEd25519Fixture("k-alpha", FIXED_NOW);
+    const postel = Postel({
+      inbound: {
+        api: {
+          verify: {
+            hmac: Secret(TEST_SECRET_A),
+            jwks: Keyset({
+              jwksUri: "https://example.test/.well-known/jwks.json",
+              fetch: jwksFetcher({ keys: [fixture.publicJwk] }),
+            }),
+          },
+          clock: fixedClock(FIXED_NOW),
+        },
+      },
+    });
+    const result = await postel.inbound.api.verify(fixture.body, fixture.headers);
+    expect(result.matchedVerifier).toBe("jwks");
+    expect(result.matchedVerifierIndex).toBe(1);
+    expect(result.event.type).toBe("order.created");
+  });
+
+  it("Array and single-verifier forms carry no matchedVerifier key", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_A,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const arrayPostel = Postel({
+      inbound: {
+        vendor: { verify: [Secret(TEST_SECRET_A)], tolerance: 600, clock: fixedClock(FIXED_NOW) },
+      },
+    });
+    const arrayResult = await arrayPostel.inbound.vendor.verify(fixture.body, fixture.headers);
+    expect("matchedVerifier" in arrayResult).toBe(false);
+
+    const singlePostel = Postel({
+      inbound: {
+        vendor: { verify: Secret(TEST_SECRET_A), tolerance: 600, clock: fixedClock(FIXED_NOW) },
+      },
+    });
+    const singleResult = await singlePostel.inbound.vendor.verify(fixture.body, fixture.headers);
+    expect("matchedVerifier" in singleResult).toBe(false);
+  });
+
+  it("Named-map ConfigurationError rethrow", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_A,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const misconfiguredVerifier: Verifier = {
+      verify: (rawBody, headers, options) => verify(rawBody, headers, [], options),
+    };
+    const postel = Postel({
+      inbound: {
+        vendor: {
+          verify: { broken: misconfiguredVerifier },
+          tolerance: 600,
+          clock: fixedClock(FIXED_NOW),
+        },
+      },
     });
     await expect(
       postel.inbound.vendor.verify(fixture.body, fixture.headers),
