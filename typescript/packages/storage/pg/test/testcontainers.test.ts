@@ -15,7 +15,7 @@ if (process.env.POSTEL_PG_TESTCONTAINERS) {
 
   runStorageTests({
     name: "@postel/pg (testcontainers)",
-    expectedSchemaVersion: 4,
+    expectedSchemaVersion: 5,
     setupTimeoutMs: 120_000,
     capabilities: { notify: true, txIsolation: true },
     async setup() {

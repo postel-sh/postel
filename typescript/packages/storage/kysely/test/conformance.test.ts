@@ -12,7 +12,7 @@ import { KyselyStorage } from "../src/index.js";
 // SQL plus the testcontainers tier.
 runStorageTests({
   name: "@postel/kysely (sqlite dialect)",
-  expectedSchemaVersion: 4,
+  expectedSchemaVersion: 5,
   capabilities: { notify: false, txIsolation: false },
   async create() {
     const clock = makeFakeClock();
@@ -43,7 +43,7 @@ if (process.env.POSTEL_MYSQL_TESTCONTAINERS || process.env.POSTEL_MYSQL_URL) {
 
   runStorageTests({
     name: "@postel/kysely (mysql dialect, testcontainers)",
-    expectedSchemaVersion: 4,
+    expectedSchemaVersion: 5,
     setupTimeoutMs: 120_000,
     capabilities: { notify: false, txIsolation: true },
     async setup() {

@@ -53,6 +53,7 @@ async function seedEndpoint(
     state: "active",
     types: null,
     channels: null,
+    filter: null,
     retryPolicy: null,
     headers: null,
     signing: null,

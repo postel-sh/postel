@@ -70,6 +70,7 @@ describe("Late-binding fanout", () => {
       state: "active",
       types: ["evt.x"],
       channels: null,
+      filter: null,
       retryPolicy: ExponentialBackoff({ schedule: ["50ms"], maxAttempts: 3, jitter: 0 }),
       headers: null,
       signing: null,
@@ -88,6 +89,7 @@ describe("Late-binding fanout", () => {
       state: "active",
       types: ["evt.x"],
       channels: null,
+      filter: null,
       retryPolicy: ExponentialBackoff({ schedule: ["50ms"], maxAttempts: 3, jitter: 0 }),
       headers: null,
       signing: null,
@@ -129,6 +131,7 @@ describe("Late-binding fanout", () => {
       state: "active",
       types: ["other.event"],
       channels: null,
+      filter: null,
       retryPolicy: null,
       headers: null,
       signing: null,
@@ -147,6 +150,7 @@ describe("Late-binding fanout", () => {
       state: "active",
       types: ["evt.x"],
       channels: null,
+      filter: null,
       retryPolicy: ExponentialBackoff({ schedule: ["50ms"], maxAttempts: 3, jitter: 0 }),
       headers: null,
       signing: null,
@@ -188,6 +192,7 @@ describe("Late-binding fanout", () => {
       state: "disabled",
       types: ["evt.x"],
       channels: null,
+      filter: null,
       retryPolicy: null,
       headers: null,
       signing: null,
@@ -252,7 +257,7 @@ describe("Transform produces body to send", () => {
     expect(received).toEqual({ summary: "order ord_9" });
   });
 
-  it("a predicate filter configured via endpoints.create suppresses non-matching events", async () => {
+  it("a structural filter configured via endpoints.create suppresses non-matching events", async () => {
     const server = await startServer(() => 200);
     const storage = InMemoryStorage();
     const postel = Postel({
@@ -262,7 +267,7 @@ describe("Transform produces body to send", () => {
       url: server.url(),
       types: ["order.created"],
       allowHttp: true,
-      filter: (event) => (event as { data?: { vip?: boolean } }).data?.vip === true,
+      filter: { dataPath: "vip", equals: true },
     });
     await insertSecret(storage, ep.id);
     await postel.outbound.send({ type: "order.created", data: { vip: false } });
@@ -300,6 +305,7 @@ describe("Per-message TTL", () => {
       state: "active",
       types: ["evt.x"],
       channels: null,
+      filter: null,
       retryPolicy: null,
       headers: null,
       signing: null,
@@ -340,6 +346,7 @@ describe("SSRF protection on outbound delivery", () => {
       state: "active",
       types: ["evt.x"],
       channels: null,
+      filter: null,
       retryPolicy: ExponentialBackoff({ schedule: ["50ms"], maxAttempts: 2, jitter: 0 }),
       headers: null,
       signing: null,

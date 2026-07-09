@@ -40,11 +40,11 @@ Every endpoint operation accepts an optional `tx` so endpoint state changes can 
 
 ## What reads return
 
-`create`, `update`, `get`, and `list` return the full endpoint — every serializable field you passed in (`types`, `channels`, `retryPolicy`, plain-record `headers`, `metadata`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, `autoDisable`) plus `id`, `url`, `state`, `createdAt`, and `updatedAt`.
+`create`, `update`, `get`, and `list` return the full endpoint — every serializable field you passed in (`types`, `channels`, `filter`, `retryPolicy`, plain-record `headers`, `metadata`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, `autoDisable`) plus `id`, `url`, `state`, `createdAt`, and `updatedAt`.
 
 Function-shaped options stay off the read shape — they are code rather than data, so they run at dispatch time but can't round-trip through a read, and the shape is identical whichever storage adapter you use:
 
-- `filter` and `transform` are absent from the returned endpoint.
+- `filterFn` and `transform` are absent from the returned endpoint.
 - `headers` given as a callback, and a `Custom(...)` retry policy (whose `compute` is a function), read back as `null`. `ExponentialBackoff` and `LinearBackoff` policies round-trip unchanged.
 - The returned `http` carries your stored overrides minus the `fetch` key.
 - `signing` is never echoed back because a strategy can carry key material.
@@ -60,18 +60,38 @@ The `types` filter accepts string globs:
 | `"*.created"` | `order.created`, `user.created`, … |
 | `"*"` | Everything |
 
-For finer control, pass a `filter: (event) => boolean` callback:
+For "does this data field equal this value" checks, pass a structural `filter` — `{ dataPath, equals }`, or an array of clauses ANDed together. `dataPath` is a dot-separated path into the event's `data`; unlike a predicate function, this is plain JSON: it round-trips through `get`/`list`, survives a restart on real storage, and is safe to expose over the admin HTTP API.
 
 ```ts
 await postel.outbound.endpoints.create({
   url:   "https://internal.example.com/audit",
   types: ["*"],
-  filter: (event) =>
-    event.type === "user.signup" && event.data.plan === "enterprise",
+  filter: { dataPath: "plan", equals: "enterprise" },
+});
+
+// Multiple clauses are ANDed:
+await postel.outbound.endpoints.create({
+  url:   "https://eu-gold.example.com/webhooks",
+  types: ["*"],
+  filter: [
+    { dataPath: "region", equals: "eu" },
+    { dataPath: "tier", equals: "gold" },
+  ],
 });
 ```
 
-The callback runs at `send` time, in-process — keep it cheap.
+For anything a structural clause can't express, drop to `filterFn` — a predicate `(event) => boolean` receiving a typed `{ type, data, channels?, timestamp? }` envelope:
+
+```ts
+await postel.outbound.endpoints.create({
+  url:   "https://internal.example.com/audit",
+  types: ["*"],
+  filterFn: (event) =>
+    event.type === "user.signup" && (event.data as { plan?: string }).plan === "enterprise",
+});
+```
+
+`filterFn` is code, not data: it runs at dispatch time, in-process, and — like `transform` — is held in a process-local registry on non-memory storage, so it does not survive a restart unless you re-register it (via `create`/`update`) and does not cross the admin HTTP API. Prefer the structural `filter` unless you genuinely need arbitrary logic. Both `filter` and `filterFn` apply together, ANDed with `types`/`channels`: `filter` is evaluated first, then `filterFn`.
 
 ## Transformation (per-endpoint payload shape)
 

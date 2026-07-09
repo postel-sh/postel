@@ -37,9 +37,12 @@ function newEndpointId(): string {
   return `ep_${bytesToBase64(bytes).replace(/[+/=]/g, "")}`;
 }
 
-// Function-carrying values are code-side JS values, not serializable data —
-// the public read shape normalizes them identically across storage adapters
-// (the in-memory adapter holds live functions; DB adapters JSON-strip them).
+// Function-carrying values (`filterFn`, `transform`, callable `headers`, a
+// `custom` retryPolicy's `compute`, `http.fetch`) are code-side JS values, not
+// serializable data — the public read shape normalizes them identically
+// across storage adapters (the in-memory adapter holds live functions; DB
+// adapters JSON-strip them). `filter` is real, serializable data and is not
+// one of these.
 
 // Only a plain key/value record survives; callable headers read back as null.
 function plainRecordHeaders(headers: unknown): Readonly<Record<string, string>> | null {
@@ -72,6 +75,7 @@ function toPublicEndpoint(rec: EndpointRecord): Endpoint {
     state: rec.state,
     types: rec.types,
     channels: rec.channels,
+    filter: rec.filter,
     retryPolicy: serializableRetryPolicy(rec.retryPolicy),
     headers: plainRecordHeaders(rec.headers),
     allowHttp: rec.allowHttp,
@@ -135,6 +139,7 @@ export function buildEndpointApi(
         circuitBreaker: opts.circuitBreaker ?? null,
         autoDisable: opts.autoDisable ?? null,
         filter: opts.filter ?? null,
+        filterFn: opts.filterFn ?? null,
         transform: opts.transform ?? null,
       };
       if (opts.provisionSecret === false) {
@@ -202,6 +207,7 @@ export function buildEndpointApi(
       if (opts.autoDisable !== undefined) patch.autoDisable = opts.autoDisable;
       if (opts.tenantId !== undefined) patch.tenantId = opts.tenantId;
       if (opts.filter !== undefined) patch.filter = opts.filter;
+      if (opts.filterFn !== undefined) patch.filterFn = opts.filterFn;
       if (opts.transform !== undefined) patch.transform = opts.transform;
       const rec = await storage.endpoints.update(id, patch, txOption);
       return toPublicEndpoint(rec);

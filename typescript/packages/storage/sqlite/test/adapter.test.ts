@@ -61,7 +61,7 @@ describe("Migrations runnable from CLI and programmatic API", () => {
       .prepare("SELECT value FROM _postel_meta WHERE key = 'schema_version'")
       .get() as { value: string };
     expect(second.value).toBe(first.value);
-    expect(second.value).toBe("4");
+    expect(second.value).toBe("5");
 
     const tables = (
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]

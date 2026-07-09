@@ -490,7 +490,7 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
         const now = clock.now();
         const full: EndpointRecord = {
           ...rec,
-          filter: rec.filter ?? null,
+          filterFn: rec.filterFn ?? null,
           transform: rec.transform ?? null,
           createdAt: now,
           updatedAt: now,
@@ -498,14 +498,15 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
         const row = bindable(encodeEndpointInsert(full, codec));
         db.prepare(
           `INSERT INTO endpoints
-             (id, tenant_id, url, state, types, channels, retry_policy, headers, signing, metadata,
-              allow_http, max_inflight, http, circuit_breaker, auto_disable, created_at, updated_at)
+             (id, tenant_id, url, state, types, channels, filter, retry_policy, headers, signing,
+              metadata, allow_http, max_inflight, http, circuit_breaker, auto_disable, created_at,
+              updated_at)
            VALUES
-             (@id, @tenant_id, @url, @state, @types, @channels, @retry_policy, @headers, @signing,
-              @metadata, @allow_http, @max_inflight, @http, @circuit_breaker, @auto_disable,
-              @created_at, @updated_at)`,
+             (@id, @tenant_id, @url, @state, @types, @channels, @filter, @retry_policy, @headers,
+              @signing, @metadata, @allow_http, @max_inflight, @http, @circuit_breaker,
+              @auto_disable, @created_at, @updated_at)`,
         ).run(row);
-        registry.set(full.id, { filter: full.filter, transform: full.transform });
+        registry.set(full.id, { filterFn: full.filterFn, transform: full.transform });
         void opts;
         return full;
       },
@@ -517,14 +518,15 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
           const row = bindable(encodeEndpointInsert(next, codec));
           db.prepare(
             `UPDATE endpoints SET tenant_id = @tenant_id, url = @url, state = @state, types = @types,
-               channels = @channels, retry_policy = @retry_policy, headers = @headers,
-               signing = @signing, metadata = @metadata, allow_http = @allow_http,
-               max_inflight = @max_inflight, http = @http, circuit_breaker = @circuit_breaker,
-               auto_disable = @auto_disable, updated_at = @updated_at WHERE id = @id`,
+               channels = @channels, filter = @filter, retry_policy = @retry_policy,
+               headers = @headers, signing = @signing, metadata = @metadata,
+               allow_http = @allow_http, max_inflight = @max_inflight, http = @http,
+               circuit_breaker = @circuit_breaker, auto_disable = @auto_disable,
+               updated_at = @updated_at WHERE id = @id`,
           ).run(row);
-          if ("filter" in patch || "transform" in patch) {
+          if ("filterFn" in patch || "transform" in patch) {
             registry.applyPatch(id, {
-              ...("filter" in patch ? { filter: patch.filter ?? null } : {}),
+              ...("filterFn" in patch ? { filterFn: patch.filterFn ?? null } : {}),
               ...("transform" in patch ? { transform: patch.transform ?? null } : {}),
             });
           }

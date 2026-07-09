@@ -46,7 +46,7 @@ describe("Helpers package for adapter authors", () => {
   });
 
   it("exposes the schema version the library targets", () => {
-    expect(POSTEL_SCHEMA_VERSION).toBe(4);
+    expect(POSTEL_SCHEMA_VERSION).toBe(5);
   });
 
   it("formats the tenant-scoped idempotency key like the in-memory reference", () => {
@@ -182,7 +182,8 @@ function buildEndpoint(): EndpointRecord {
     http: null,
     circuitBreaker: null,
     autoDisable: null,
-    filter: null,
+    filter: { dataPath: "region", equals: "eu" },
+    filterFn: null,
     transform: null,
     createdAt: new Date("2026-05-26T10:00:00.000Z"),
     updatedAt: new Date("2026-05-26T10:00:00.000Z"),
@@ -198,7 +199,8 @@ describe("endpoint row codec", () => {
     expect(back.maxInflight).toBe(10);
     expect(back.retryPolicy).toEqual({ maxAttempts: 5 });
     expect(back.types).toEqual(["order.*"]);
-    expect(back.filter).toBeNull();
+    expect(back.filter).toEqual({ dataPath: "region", equals: "eu" });
+    expect(back.filterFn).toBeNull();
     expect(back.transform).toBeNull();
   });
 });
@@ -230,28 +232,28 @@ describe("secret row codec", () => {
 describe("callback registry", () => {
   it("stores, patches, attaches, and deletes code-side callbacks by endpoint id", () => {
     const registry = createCallbackRegistry();
-    const filter = (): boolean => true;
-    registry.set("ep_1", { filter });
-    expect(registry.get("ep_1").filter).toBe(filter);
+    const filterFn = (): boolean => true;
+    registry.set("ep_1", { filterFn });
+    expect(registry.get("ep_1").filterFn).toBe(filterFn);
     expect(registry.get("ep_1").transform).toBeNull();
 
     const transform = (e: unknown): unknown => e;
     registry.applyPatch("ep_1", { transform });
-    expect(registry.get("ep_1").filter).toBe(filter); // patch preserves untouched key
+    expect(registry.get("ep_1").filterFn).toBe(filterFn); // patch preserves untouched key
     expect(registry.get("ep_1").transform).toBe(transform);
 
     const attached = attachCallbacks(buildEndpoint(), registry);
-    expect(attached.filter).toBe(filter);
+    expect(attached.filterFn).toBe(filterFn);
     expect(attached.transform).toBe(transform);
 
     registry.delete("ep_1");
-    expect(registry.get("ep_1").filter).toBeNull();
+    expect(registry.get("ep_1").filterFn).toBeNull();
   });
 });
 
 describe("MySQL migrations dialect", () => {
-  it("forward-only versions 1..4 ending at the target schema version", () => {
-    expect(MYSQL_MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4]);
+  it("forward-only versions 1..5 ending at the target schema version", () => {
+    expect(MYSQL_MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5]);
     expect(MYSQL_MIGRATIONS.at(-1)?.version).toBe(POSTEL_SCHEMA_VERSION);
   });
 

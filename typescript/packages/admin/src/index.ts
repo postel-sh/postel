@@ -17,6 +17,8 @@ import type {
   Page,
   ReplayOptions,
   RetryStrategy,
+  StructuralFilter,
+  StructuralFilterClause,
   Tenant,
 } from "@postel/core";
 
@@ -39,6 +41,7 @@ interface AdminBody {
   url?: unknown;
   types?: unknown;
   channels?: unknown;
+  filter?: unknown;
   headers?: unknown;
   metadata?: unknown;
   allowHttp?: unknown;
@@ -89,6 +92,22 @@ async function readJson(req: Request): Promise<AdminBody> {
   }
 }
 
+function isStructuralFilterClause(raw: unknown): raw is StructuralFilterClause {
+  if (raw === null || typeof raw !== "object") return false;
+  const obj = raw as { dataPath?: unknown; equals?: unknown };
+  return typeof obj.dataPath === "string" && "equals" in obj;
+}
+
+// The structural filter is plain JSON, so — unlike filterFn/transform — it
+// crosses the admin HTTP API like any other data field.
+function normalizeStructuralFilter(raw: unknown): StructuralFilter | undefined {
+  if (isStructuralFilterClause(raw)) return raw;
+  if (Array.isArray(raw) && raw.every(isStructuralFilterClause)) {
+    return raw as ReadonlyArray<StructuralFilterClause>;
+  }
+  return undefined;
+}
+
 function normalizeRetryPolicy(raw: unknown): RetryStrategy | undefined {
   if (raw === null || typeof raw !== "object") return undefined;
   const obj = raw as {
@@ -111,13 +130,16 @@ function normalizeRetryPolicy(raw: unknown): RetryStrategy | undefined {
 }
 
 // Only JSON-representable, data-shaped fields are accepted over HTTP. Function
-// fields (filter / transform / callable headers) cannot cross the wire and are
-// never read from the body.
+// fields (filterFn / transform / callable headers) cannot cross the wire and
+// are never read from the body. The structural `filter` is plain JSON, so it
+// is accepted here like any other data-shaped field.
 function endpointFields(body: AdminBody, tenantId: string | undefined): EndpointUpdateOptions {
   const opts: { -readonly [K in keyof EndpointCreateOptions]?: EndpointCreateOptions[K] } = {};
   if (typeof body.url === "string") opts.url = body.url;
   if (Array.isArray(body.types)) opts.types = body.types as string[];
   if (Array.isArray(body.channels)) opts.channels = body.channels as string[];
+  const filter = normalizeStructuralFilter(body.filter);
+  if (filter !== undefined) opts.filter = filter;
   if (body.headers !== null && typeof body.headers === "object" && !Array.isArray(body.headers)) {
     opts.headers = body.headers as Record<string, string>;
   }

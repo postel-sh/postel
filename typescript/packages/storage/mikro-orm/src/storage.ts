@@ -549,13 +549,13 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
         const now = clock.now();
         const full: EndpointRecord = {
           ...rec,
-          filter: rec.filter ?? null,
+          filterFn: rec.filterFn ?? null,
           transform: rec.transform ?? null,
           createdAt: now,
           updatedAt: now,
         };
         await insert("endpoints", encodeEndpointInsert(full, codec), opts?.tx);
-        registry.set(full.id, { filter: full.filter, transform: full.transform });
+        registry.set(full.id, { filterFn: full.filterFn, transform: full.transform });
         return full;
       },
       async update(id, patch, opts) {
@@ -570,9 +570,9 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
             .map((c) => `${ident(c)} = ${p.add(row[c])}`)
             .join(", ");
           await run(`update endpoints set ${assignments} where id = ${p.add(id)}`, p.values, ctx);
-          if ("filter" in patch || "transform" in patch) {
+          if ("filterFn" in patch || "transform" in patch) {
             registry.applyPatch(id, {
-              ...("filter" in patch ? { filter: patch.filter ?? null } : {}),
+              ...("filterFn" in patch ? { filterFn: patch.filterFn ?? null } : {}),
               ...("transform" in patch ? { transform: patch.transform ?? null } : {}),
             });
           }

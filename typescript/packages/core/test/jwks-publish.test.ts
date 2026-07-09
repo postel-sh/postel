@@ -13,6 +13,7 @@ function emptyEndpoint(id: string) {
     state: "active" as const,
     types: null,
     channels: null,
+    filter: null,
     retryPolicy: null,
     headers: null,
     signing: null,
