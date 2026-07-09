@@ -2,8 +2,10 @@ import type { Clock } from "./clock.js";
 import {
   ConfigurationError,
   EventValidation,
+  MalformedHeader,
   SignatureInvalid,
   TimestampTooOld,
+  type VerifierFailure,
 } from "./errors.js";
 import type { StandardSchemaV1 } from "./standard-schema.js";
 import type { Verifier } from "./strategies/verify.js";
@@ -94,7 +96,7 @@ async function verifySource<TData>(
   };
 
   let matched: ComposedVerifyResult<TData> | undefined;
-  let lastError: unknown;
+  const failures: VerifierFailure[] = [];
   for (let i = 0; i < verifiers.length; i++) {
     const v = verifiers[i] as Verifier;
     try {
@@ -106,16 +108,27 @@ async function verifySource<TData>(
         source.onFailure?.(err, headers);
         throw err;
       }
-      lastError = err;
+      failures.push({
+        verifierIndex: i,
+        error: err instanceof Error ? err : new Error(String(err)),
+      });
     }
   }
 
   if (!matched) {
-    const cause = lastError instanceof Error ? lastError : undefined;
-    const err = new SignatureInvalid(
+    const errors: ReadonlyArray<VerifierFailure> = failures;
+    const cause = new AggregateError(
+      failures.map((f) => f.error),
       `no verifier matched (tried ${verifiers.length})`,
-      cause ? { cause } : undefined,
     );
+    // A unanimous wire-format failure is a MalformedHeader, not a signature
+    // mismatch; both map to HTTP 400 but the former names the actual problem.
+    const allMalformed =
+      failures.length > 0 && failures.every((f) => f.error instanceof MalformedHeader);
+    const message = `no verifier matched (tried ${verifiers.length})`;
+    const err = allMalformed
+      ? new MalformedHeader(message, { cause, errors })
+      : new SignatureInvalid(message, { cause, errors });
     source.onFailure?.(err, headers);
     throw err;
   }

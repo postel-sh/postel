@@ -15,6 +15,7 @@ import {
   PublicKey,
   Secret,
   SignatureInvalid,
+  definePostelConfig,
   signFixture,
   verify,
 } from "../src/index.js";
@@ -471,5 +472,56 @@ describe("NotImplementedError is intentionally outside the PostelError hierarchy
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(PostelError);
     expect(err.code).toBe("NOT_IMPLEMENTED");
+  });
+});
+
+describe("`definePostelConfig` preserves literal config inference [PORT-SPECIFIC]", () => {
+  it("keeps inbound/outbound on the instance type for a separately-declared config", () => {
+    const inboundConfig = definePostelConfig({
+      inbound: { github: { verify: Secret(TEST_SECRET_A) } },
+    });
+    const p1 = Postel(inboundConfig);
+    expect(typeof p1.inbound.github.verify).toBe("function");
+    // @ts-expect-error — outbound is not configured, must not exist on the type
+    p1.outbound;
+
+    const outboundConfig = definePostelConfig({ outbound: { storage: InMemoryStorage() } });
+    const p2 = Postel(outboundConfig);
+    expect(typeof p2.outbound.send).toBe("function");
+    // @ts-expect-error — inbound is not configured, must not exist on the type
+    p2.inbound;
+  });
+});
+
+describe("Health check endpoint", () => {
+  it("Healthy state: an outbound instance reports ok:true with outbox depth and worker count", async () => {
+    const postel = Postel({ outbound: { storage: InMemoryStorage() } });
+    const h = await postel.health();
+    expect(h.ok).toBe(true);
+    expect(h.outboxDepth).toBe(0);
+    expect(typeof h.workerCount).toBe("number");
+  });
+
+  it("Storage probe failure reports unhealthy without rejecting", async () => {
+    const storage = InMemoryStorage();
+    storage.outboxDepth = async () => {
+      throw new Error("connection refused");
+    };
+    const postel = Postel({ outbound: { storage } });
+    const h = await postel.health();
+    expect(h.ok).toBe(false);
+    expect(h.reason).toMatch(/storage probe failed/);
+  });
+
+  it("Outbox-depth threshold breach reports unhealthy while still returning the depth", async () => {
+    const postel = Postel({
+      outbound: { storage: InMemoryStorage() },
+      observability: { health: { maxOutboxDepth: 0 } },
+    });
+    await postel.outbound.send({ type: "evt.x" });
+    const h = await postel.health();
+    expect(h.ok).toBe(false);
+    expect(h.outboxDepth).toBeGreaterThan(0);
+    expect(h.reason).toMatch(/maxOutboxDepth/);
   });
 });

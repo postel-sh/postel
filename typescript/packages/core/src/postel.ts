@@ -13,7 +13,8 @@ import {
   type PostelEvent,
   PostelEventEmitter,
 } from "./sender/events.js";
-import type { Storage } from "./storage/types.js";
+import type { Storage, Unsubscribe } from "./storage/types.js";
+import { ttlToSeconds } from "./ttl.js";
 
 // A forwarded runtime event. The library forwards the same events surfaced by
 // `postel.on(...)` to `observability.logger` with a severity level. See
@@ -37,8 +38,16 @@ export type LogLevel = LogEvent["level"];
 
 export type Logger = (entry: LogEvent) => void;
 
+// Thresholds that let `health()` report `ok: false` on a degraded-but-reachable
+// outbox. Durations use the shared `number | "<integer><s|m|h|d>"` grammar.
+export interface HealthThresholds {
+  readonly maxOutboxDepth?: number;
+  readonly maxOldestPendingAge?: number | string;
+}
+
 export interface ObservabilityConfig {
   readonly logger?: Logger;
+  readonly health?: HealthThresholds;
 }
 
 export interface HealthStatus {
@@ -46,14 +55,16 @@ export interface HealthStatus {
   readonly outboxDepth?: number;
   readonly oldestPendingAge?: number | undefined;
   readonly workerCount?: number;
+  // Present only when `ok` is false: names the failing condition.
+  readonly reason?: string;
 }
 
 export interface LifecycleApi {
   start(): Promise<void>;
   stop(): Promise<void>;
   health(): Promise<HealthStatus>;
-  on(event: PostelEvent, handler: EventHandler): void;
-  off(event: PostelEvent, handler: EventHandler): void;
+  on<E extends PostelEvent>(event: E, handler: EventHandler<E>): Unsubscribe;
+  off<E extends PostelEvent>(event: E, handler: EventHandler<E>): void;
 }
 
 export interface PostelConfig<
@@ -90,18 +101,10 @@ export function Postel<const C extends PostelConfig>(config: C): PostelInstance<
 
   const logger = config.observability?.logger;
   if (logger) {
-    emitter.on("attempt", (p) =>
-      logger({ event: "attempt", level: "debug", data: p as AttemptPayload }),
-    );
-    emitter.on("circuit-open", (p) =>
-      logger({ event: "circuit-open", level: "warn", data: p as CircuitTransitionPayload }),
-    );
-    emitter.on("circuit-close", (p) =>
-      logger({ event: "circuit-close", level: "info", data: p as CircuitTransitionPayload }),
-    );
-    emitter.on("dead-letter", (p) =>
-      logger({ event: "dead-letter", level: "error", data: p as DeadLetterPayload }),
-    );
+    emitter.on("attempt", (data) => logger({ event: "attempt", level: "debug", data }));
+    emitter.on("circuit-open", (data) => logger({ event: "circuit-open", level: "warn", data }));
+    emitter.on("circuit-close", (data) => logger({ event: "circuit-close", level: "info", data }));
+    emitter.on("dead-letter", (data) => logger({ event: "dead-letter", level: "error", data }));
   }
 
   const lifecycle: LifecycleApi = {
@@ -113,16 +116,42 @@ export function Postel<const C extends PostelConfig>(config: C): PostelInstance<
     },
     async health() {
       if (!outboundRuntime) return { ok: true };
-      const depth = await outboundRuntime.storage.outboxDepth();
-      return {
-        ok: true,
+      const runtime = outboundRuntime;
+      let depth: { depth: number; oldestPendingAge: number | undefined };
+      try {
+        depth = await runtime.storage.outboxDepth();
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { ok: false, reason: `storage probe failed: ${detail}` };
+      }
+      const observed = {
         outboxDepth: depth.depth,
         oldestPendingAge: depth.oldestPendingAge,
-        workerCount: outboundRuntime.pool.workerCount(),
+        workerCount: runtime.pool.workerCount(),
       };
+      const thresholds = config.observability?.health;
+      if (thresholds?.maxOutboxDepth !== undefined && depth.depth > thresholds.maxOutboxDepth) {
+        return {
+          ok: false,
+          ...observed,
+          reason: `outbox depth ${depth.depth} exceeds maxOutboxDepth ${thresholds.maxOutboxDepth}`,
+        };
+      }
+      if (thresholds?.maxOldestPendingAge !== undefined && depth.oldestPendingAge !== undefined) {
+        const configured = thresholds.maxOldestPendingAge;
+        const maxMs = ttlToSeconds(configured) * 1000;
+        if (depth.oldestPendingAge > maxMs) {
+          return {
+            ok: false,
+            ...observed,
+            reason: `oldest pending age ${depth.oldestPendingAge}ms exceeds maxOldestPendingAge ${configured} (${maxMs}ms)`,
+          };
+        }
+      }
+      return { ok: true, ...observed };
     },
     on(event, handler) {
-      emitter.on(event, handler);
+      return emitter.on(event, handler);
     },
     off(event, handler) {
       emitter.off(event, handler);
@@ -134,4 +163,16 @@ export function Postel<const C extends PostelConfig>(config: C): PostelInstance<
     ...(outboundRuntime ? { outbound: outboundRuntime.api } : {}),
     ...(config.inbound ? { inbound: buildInboundApi(config.inbound) } : {}),
   } as PostelInstance<C>;
+}
+
+/**
+ * Identity helper that preserves a config's literal type. Annotating a config
+ * with `PostelConfig` before passing it to `Postel(...)` widens the literal, so
+ * the `WithInbound` / `WithOutbound` conditionals can no longer see the
+ * configured slots and `postel.inbound` / `postel.outbound` vanish from the
+ * instance type. Declaring the config through `definePostelConfig(...)` keeps
+ * the literal and full instance typing without inlining the object.
+ */
+export function definePostelConfig<const C extends PostelConfig>(config: C): C {
+  return config;
 }

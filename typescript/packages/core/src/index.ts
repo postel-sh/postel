@@ -1,6 +1,7 @@
-export { Postel } from "./postel.js";
+export { definePostelConfig, Postel } from "./postel.js";
 export type {
   HealthStatus,
+  HealthThresholds,
   LifecycleApi,
   LogEvent,
   Logger,
@@ -11,6 +12,14 @@ export type {
   WithInbound,
   WithOutbound,
 } from "./postel.js";
+
+export type {
+  AttemptPayload,
+  CircuitTransitionPayload,
+  DeadLetterPayload,
+  PostelEvent,
+  PostelEventMap,
+} from "./sender/events.js";
 
 export type {
   ComposedVerifyResult,
@@ -73,7 +82,7 @@ export {
   TimestampTooOld,
   UnknownKeyId,
 } from "./errors.js";
-export type { PostelErrorCode } from "./errors.js";
+export type { PostelErrorCode, VerifierFailure } from "./errors.js";
 export type { StandardSchemaV1 } from "./standard-schema.js";
 
 export { ttlToSeconds } from "./ttl.js";

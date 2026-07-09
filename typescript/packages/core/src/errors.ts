@@ -14,12 +14,28 @@ export type PostelErrorCode =
   | "ENDPOINT_VALIDATION"
   | "SSRF_BLOCKED";
 
+// One rejecting verifier's failure, reported when an inbound source composes
+// several verifiers and none match. See the multi-verifier aggregation in
+// `inbound.ts` and the `receiver` capability.
+export interface VerifierFailure {
+  readonly verifierIndex: number;
+  readonly error: Error;
+}
+
+export interface PostelErrorOptions extends ErrorOptions {
+  readonly errors?: ReadonlyArray<VerifierFailure>;
+}
+
 export abstract class PostelError extends Error {
   abstract readonly code: PostelErrorCode;
+  // Populated only on the aggregate error a multi-verifier source throws when
+  // no verifier matched: one entry per rejecting verifier, in config order.
+  readonly errors?: ReadonlyArray<VerifierFailure>;
 
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string, options?: PostelErrorOptions) {
     super(message, options);
     this.name = new.target.name;
+    if (options?.errors) this.errors = options.errors;
   }
 }
 

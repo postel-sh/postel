@@ -1,7 +1,13 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
-import { type Clock, ExponentialBackoff, LinearBackoff, Postel } from "../src/index.js";
+import {
+  type Clock,
+  type DeadLetterPayload,
+  ExponentialBackoff,
+  LinearBackoff,
+  Postel,
+} from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
 import { CircuitBreakerRegistry } from "../src/sender/retry/circuit.js";
@@ -241,6 +247,55 @@ describe("Dead-letter event", () => {
     const dl = events[0] as { messageId: string; endpointId: string; finalError: string };
     expect(dl.messageId).toBe(id);
     expect(dl.endpointId).toMatch(/^ep_/);
+  });
+});
+
+describe("Typed lifecycle event emitter [PORT-SPECIFIC]", () => {
+  it("on('dead-letter') hands the handler a typed DeadLetterPayload and returns an Unsubscribe", async () => {
+    const server = await startServerWithSequence([503]);
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), {
+      retryPolicy: ExponentialBackoff({ schedule: ["20ms"], maxAttempts: 1, jitter: 0 }),
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const seen: DeadLetterPayload[] = [];
+    const off = postel.on("dead-letter", (p) => {
+      // Compile-time proof the payload is DeadLetterPayload, not `unknown`.
+      const finalError: string = p.finalError;
+      seen.push({ messageId: p.messageId, endpointId: p.endpointId, finalError });
+    });
+    expect(typeof off).toBe("function");
+    const { id } = await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(400);
+    await postel.stop();
+    await server.close();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0]?.messageId).toBe(id);
+  });
+
+  it("the Unsubscribe returned by on() stops further delivery of events", async () => {
+    const server = await startServerWithSequence([503]);
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), {
+      retryPolicy: ExponentialBackoff({ schedule: ["20ms"], maxAttempts: 1, jitter: 0 }),
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    let attempts = 0;
+    const off = postel.on("attempt", () => {
+      attempts += 1;
+    });
+    off();
+    await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(400);
+    await postel.stop();
+    await server.close();
+    expect(attempts).toBe(0);
   });
 });
 
