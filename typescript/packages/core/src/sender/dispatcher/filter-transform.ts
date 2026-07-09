@@ -34,24 +34,53 @@ function intersects(a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean
   return false;
 }
 
-function jsonDeepEqual(a: Json, b: Json): boolean {
-  if (a === b) return true;
-  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-    return a.every((item, i) => jsonDeepEqual(item, b[i] as Json));
+// `value` is genuinely `unknown` at runtime (it's whatever the caller passed
+// to `send({ data })`) even though `equals` is a trusted, statically-known
+// `Json` literal from config — so this only trusts the *shape* of `equals`,
+// never assumes `value` conforms. `seen` guards against cycles in `value`
+// (`equals` is a plain literal and can't contain one); non-plain objects
+// (Date, Map, class instances, …) are never treated as matching JSON data.
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== "object") return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+function isJsonArray(v: Json): v is ReadonlyArray<Json> {
+  return Array.isArray(v);
+}
+
+function jsonDeepEqual(
+  value: unknown,
+  equals: Json,
+  seen: WeakSet<object> = new WeakSet(),
+): boolean {
+  if (value === equals) return true;
+  if (equals === null) return false;
+  if (isJsonArray(equals)) {
+    if (!Array.isArray(value) || value.length !== equals.length) return false;
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return equals.every((item, i) => jsonDeepEqual(value[i], item, seen));
   }
-  const aObj = a as Readonly<Record<string, Json>>;
-  const bObj = b as Readonly<Record<string, Json>>;
-  const aKeys = Object.keys(aObj);
-  const bKeys = Object.keys(bObj);
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key) => key in bObj && jsonDeepEqual(aObj[key] as Json, bObj[key] as Json));
+  if (typeof equals === "object") {
+    if (!isPlainObject(value)) return false;
+    if (seen.has(value)) return false;
+    seen.add(value);
+    const equalsKeys = Object.keys(equals);
+    if (equalsKeys.length !== Object.keys(value).length) return false;
+    return equalsKeys.every(
+      (key) => Object.hasOwn(value, key) && jsonDeepEqual(value[key], equals[key] as Json, seen),
+    );
+  }
+  return false;
 }
 
 function resolveDataPath(data: unknown, dataPath: string): unknown {
+  const segments = dataPath.split(".");
+  if (segments.some((segment) => segment.length === 0)) return undefined;
   let cursor: unknown = data;
-  for (const segment of dataPath.split(".")) {
+  for (const segment of segments) {
     if (cursor === null || typeof cursor !== "object") return undefined;
     cursor = (cursor as Record<string, unknown>)[segment];
   }
@@ -61,7 +90,7 @@ function resolveDataPath(data: unknown, dataPath: string): unknown {
 function matchesClause(clause: StructuralFilterClause, data: unknown): boolean {
   const value = resolveDataPath(data, clause.dataPath);
   if (value === undefined) return false;
-  return jsonDeepEqual(value as Json, clause.equals);
+  return jsonDeepEqual(value, clause.equals);
 }
 
 function matchesStructuralFilter(filter: StructuralFilter, data: unknown): boolean {

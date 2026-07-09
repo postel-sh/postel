@@ -536,6 +536,55 @@ describe("Structural filter matches a data path", () => {
     expect(server.requests().length).toBe(0);
   });
 
+  it("Non-plain values (e.g. Date) never match and do not throw", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), { filter: { dataPath: "when", equals: {} } });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "order.created", data: { when: new Date() } });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(0);
+  });
+
+  it("Cyclic data does not crash the dispatcher", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), {
+      filter: { dataPath: "self", equals: { self: {} } },
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const cyclic: Record<string, unknown> = {};
+    Object.assign(cyclic, { self: cyclic });
+    await postel.outbound.send({ type: "order.created", data: cyclic });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(0);
+  });
+
+  it("A dataPath with an empty segment does not match", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), { filter: { dataPath: "a..b", equals: "x" } });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "order.created", data: { a: { "": { b: "x" } } } });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(0);
+  });
+
   it("filter round-trips through the read shape", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({

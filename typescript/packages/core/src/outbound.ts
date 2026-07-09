@@ -126,8 +126,8 @@ export interface StructuralFilterClause {
 
 export type StructuralFilter = StructuralFilterClause | ReadonlyArray<StructuralFilterClause>;
 
-// What `filterFn`/`transform` receive at dispatch time — a concrete envelope
-// instead of `unknown`, so a predicate can narrow its shape without an `as` cast.
+// What `filterFn` receives at dispatch time — a concrete envelope instead of
+// `unknown`, so a predicate can narrow its shape without an `as` cast.
 export interface FilterEnvelope {
   readonly type: string;
   readonly data: unknown;
