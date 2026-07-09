@@ -128,6 +128,7 @@ function buildEndpoint(
     circuitBreaker: overrides.circuitBreaker ?? null,
     autoDisable: overrides.autoDisable ?? null,
     filter: overrides.filter ?? null,
+    filterFn: overrides.filterFn ?? null,
     transform: overrides.transform ?? null,
   };
 }
@@ -384,6 +385,7 @@ export function runStorageTests(factory: StorageTestFactory): void {
             id: "ep_roundtrip",
             types: ["order.*"],
             channels: ["eu"],
+            filter: { dataPath: "region", equals: "eu" },
             retryPolicy,
             headers: { "x-team": "billing" },
             metadata: { customerEmail: "a@b" },
@@ -400,6 +402,7 @@ export function runStorageTests(factory: StorageTestFactory): void {
           expect(ep.url).toBe("https://example.com/hook");
           expect(ep.types).toEqual(["order.*"]);
           expect(ep.channels).toEqual(["eu"]);
+          expect(ep.filter).toEqual({ dataPath: "region", equals: "eu" });
           expect(ep.retryPolicy).toEqual(retryPolicy);
           expect(ep.headers).toEqual({ "x-team": "billing" });
           expect(ep.metadata).toEqual({ customerEmail: "a@b" });

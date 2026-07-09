@@ -517,14 +517,14 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
         const now = clock.now();
         const full: EndpointRecord = {
           ...rec,
-          filter: rec.filter ?? null,
+          filterFn: rec.filterFn ?? null,
           transform: rec.transform ?? null,
           createdAt: now,
           updatedAt: now,
         };
         const [text, values] = buildInsert("endpoints", encodeEndpointInsert(full, codec));
         await exec(opts).query(text, values);
-        registry.set(full.id, { filter: full.filter, transform: full.transform });
+        registry.set(full.id, { filterFn: full.filterFn, transform: full.transform });
         return full;
       },
       async update(id, patch, opts) {
@@ -538,6 +538,7 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
             state,
             types,
             channels,
+            filter,
             retry_policy,
             headers,
             signing,
@@ -551,15 +552,16 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
           } = encodeEndpointInsert(next, codec);
           await q.query(
             `UPDATE endpoints SET tenant_id = $1, url = $2, state = $3, types = $4, channels = $5,
-               retry_policy = $6, headers = $7, signing = $8, metadata = $9, allow_http = $10,
-               max_inflight = $11, http = $12, circuit_breaker = $13, auto_disable = $14,
-               updated_at = $15 WHERE id = $16`,
+               filter = $6, retry_policy = $7, headers = $8, signing = $9, metadata = $10,
+               allow_http = $11, max_inflight = $12, http = $13, circuit_breaker = $14,
+               auto_disable = $15, updated_at = $16 WHERE id = $17`,
             [
               tenant_id,
               url,
               state,
               types,
               channels,
+              filter,
               retry_policy,
               headers,
               signing,
@@ -573,9 +575,9 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
               id,
             ].map(normalize),
           );
-          if ("filter" in patch || "transform" in patch) {
+          if ("filterFn" in patch || "transform" in patch) {
             registry.applyPatch(id, {
-              ...("filter" in patch ? { filter: patch.filter ?? null } : {}),
+              ...("filterFn" in patch ? { filterFn: patch.filterFn ?? null } : {}),
               ...("transform" in patch ? { transform: patch.transform ?? null } : {}),
             });
           }

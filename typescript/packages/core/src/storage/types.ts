@@ -1,3 +1,4 @@
+import type { FilterEnvelope, StructuralFilter } from "../outbound.js";
 import type { CursorOptions, Page } from "../pagination.js";
 
 export type MessageId = string;
@@ -127,11 +128,14 @@ export interface EndpointRecord {
   readonly http: unknown | null;
   readonly circuitBreaker: unknown | null;
   readonly autoDisable: unknown | null;
-  // Code-side filter / transform callbacks. These are JS functions, not
+  // The structural filter is serializable data: a real, persisted column like
+  // any other JSON field above.
+  readonly filter: StructuralFilter | null;
+  // Code-side filterFn / transform callbacks. These are JS functions, not
   // serializable data — adapters that own a real DB (Postgres, SQLite, …)
   // hold them in a code-side registry keyed by endpoint id; the in-memory
   // adapter stores them directly on the row.
-  readonly filter: ((event: unknown) => boolean) | null;
+  readonly filterFn: ((event: FilterEnvelope) => boolean) | null;
   readonly transform: ((event: unknown) => unknown) | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -154,10 +158,15 @@ export interface EndpointWithSecrets {
   readonly secrets: ReadonlyArray<EndpointSecretRecord>;
 }
 
-// Insert shape for endpoints. `filter` / `transform` are optional code-side
+// Insert shape for endpoints. `filter` is regular optional-nullable data, same
+// as `types`/`channels`. `filterFn` / `transform` are optional code-side
 // callbacks; adapters default them to null when omitted.
-export type NewEndpoint = Omit<EndpointRecord, "createdAt" | "updatedAt" | "filter" | "transform"> &
-  Partial<Pick<EndpointRecord, "filter" | "transform">>;
+export type NewEndpoint = Omit<
+  EndpointRecord,
+  "createdAt" | "updatedAt" | "filter" | "filterFn" | "transform"
+> &
+  Pick<EndpointRecord, "filter"> &
+  Partial<Pick<EndpointRecord, "filterFn" | "transform">>;
 
 export interface ReserveBatchOpts {
   readonly workerId: WorkerId;

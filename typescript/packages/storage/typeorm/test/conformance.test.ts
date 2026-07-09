@@ -22,7 +22,7 @@ const RESET_TABLES = [
 let sqliteDs: DataSource | undefined;
 runStorageTests({
   name: "@postel/typeorm (better-sqlite3)",
-  expectedSchemaVersion: 4,
+  expectedSchemaVersion: 5,
   capabilities: { notify: false, txIsolation: false },
   async setup() {
     sqliteDs = new DataSource({ type: "better-sqlite3", database: ":memory:" });
@@ -61,7 +61,7 @@ if (process.env.POSTEL_MYSQL_TESTCONTAINERS || process.env.POSTEL_MYSQL_URL) {
 
   runStorageTests({
     name: "@postel/typeorm (mysql, testcontainers)",
-    expectedSchemaVersion: 4,
+    expectedSchemaVersion: 5,
     setupTimeoutMs: 120_000,
     capabilities: { notify: false, txIsolation: true },
     async setup() {

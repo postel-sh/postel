@@ -476,13 +476,13 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
         const now = clock.now();
         const full: EndpointRecord = {
           ...rec,
-          filter: rec.filter ?? null,
+          filterFn: rec.filterFn ?? null,
           transform: rec.transform ?? null,
           createdAt: now,
           updatedAt: now,
         };
         await insert(exec(opts), "endpoints", encodeEndpointInsert(full, codec));
-        registry.set(full.id, { filter: full.filter, transform: full.transform });
+        registry.set(full.id, { filterFn: full.filterFn, transform: full.transform });
         return full;
       },
       async update(id, patch, opts) {
@@ -497,9 +497,9 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
               .map((c) => sql`${sql.ref(c)} = ${bind(row[c])}`),
           );
           await sql`update endpoints set ${assignments} where id = ${id}`.execute(q);
-          if ("filter" in patch || "transform" in patch) {
+          if ("filterFn" in patch || "transform" in patch) {
             registry.applyPatch(id, {
-              ...("filter" in patch ? { filter: patch.filter ?? null } : {}),
+              ...("filterFn" in patch ? { filterFn: patch.filterFn ?? null } : {}),
               ...("transform" in patch ? { transform: patch.transform ?? null } : {}),
             });
           }

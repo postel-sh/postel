@@ -2,6 +2,7 @@ import type {
   EndpointId,
   EndpointRecord,
   EndpointSecretRecord,
+  FilterEnvelope,
   MessageId,
   MessageStatus,
   NewAttempt,
@@ -52,7 +53,7 @@ export const MYSQL_CAPABILITIES: StorageCapabilities = {
 // The schema version the current library is built against — kept in lockstep
 // with the latest forward-only migration in specs/db-schema/. A SQL adapter
 // compares this against `_postel_meta.schema_version` for the boot handshake.
-export const POSTEL_SCHEMA_VERSION = 4;
+export const POSTEL_SCHEMA_VERSION = 5;
 
 // --- Column codec ---------------------------------------------------------
 // Three dialect axes diverge at the column boundary: how timestamps and JSON
@@ -395,6 +396,7 @@ export function encodeEndpointInsert(endpoint: EndpointRecord, codec: ColumnCode
     state: endpoint.state,
     types: encodeJson(endpoint.types, codec),
     channels: encodeJson(endpoint.channels, codec),
+    filter: encodeJson(endpoint.filter, codec),
     retry_policy: encodeJson(endpoint.retryPolicy, codec),
     headers: encodeJson(endpoint.headers, codec),
     signing: encodeJson(endpoint.signing, codec),
@@ -409,9 +411,10 @@ export function encodeEndpointInsert(endpoint: EndpointRecord, codec: ColumnCode
   };
 }
 
-// Decodes the serializable columns into an EndpointRecord with null code-side
-// callbacks. Call `attachCallbacks` with the adapter's registry to restore the
-// live `filter` / `transform` functions.
+// Decodes the serializable columns (including the real, persisted `filter`)
+// into an EndpointRecord with null code-side callbacks. Call `attachCallbacks`
+// with the adapter's registry to restore the live `filterFn` / `transform`
+// functions.
 export function decodeEndpoint(row: Row, codec: ColumnCodec): EndpointRecord {
   const {
     id,
@@ -420,6 +423,7 @@ export function decodeEndpoint(row: Row, codec: ColumnCodec): EndpointRecord {
     state,
     types,
     channels,
+    filter,
     retry_policy,
     headers,
     signing,
@@ -439,6 +443,7 @@ export function decodeEndpoint(row: Row, codec: ColumnCodec): EndpointRecord {
     state: state as EndpointRecord["state"],
     types: decodeJson<ReadonlyArray<string>>(types, codec),
     channels: decodeJson<ReadonlyArray<string>>(channels, codec),
+    filter: decodeJson(filter, codec),
     retryPolicy: decodeJson(retry_policy, codec),
     headers: decodeJson(headers, codec),
     signing: decodeJson(signing, codec),
@@ -448,7 +453,7 @@ export function decodeEndpoint(row: Row, codec: ColumnCodec): EndpointRecord {
     http: decodeJson(http, codec),
     circuitBreaker: decodeJson(circuit_breaker, codec),
     autoDisable: decodeJson(auto_disable, codec),
-    filter: null,
+    filterFn: null,
     transform: null,
     createdAt: decodeTimestamp(created_at, codec) ?? new Date(0),
     updatedAt: decodeTimestamp(updated_at, codec) ?? new Date(0),
@@ -501,13 +506,15 @@ export function decodeSecret(row: Row, codec: ColumnCodec): EndpointSecretRecord
 }
 
 // --- Code-side callback registry -----------------------------------------
-// `filter` / `transform` are JS closures, not serializable. A SQL adapter keeps
-// them in this per-instance registry keyed by endpoint id and re-attaches them
-// on read. The registry is ephemeral: after a restart the host must re-register
-// endpoints (via create/update) for their callbacks to take effect again.
+// `filterFn` / `transform` are JS closures, not serializable. A SQL adapter
+// keeps them in this per-instance registry keyed by endpoint id and
+// re-attaches them on read. The registry is ephemeral: after a restart the
+// host must re-register endpoints (via create/update) for their callbacks to
+// take effect again. The structural `filter` is NOT part of this registry —
+// it is real, persisted data handled by `encodeEndpointInsert`/`decodeEndpoint`.
 
 export interface EndpointCallbacks {
-  readonly filter: ((event: unknown) => boolean) | null;
+  readonly filterFn: ((event: FilterEnvelope) => boolean) | null;
   readonly transform: ((event: unknown) => unknown) | null;
 }
 
@@ -523,19 +530,19 @@ export function createCallbackRegistry(): CallbackRegistry {
   return {
     set(id, callbacks) {
       map.set(id, {
-        filter: callbacks.filter ?? null,
+        filterFn: callbacks.filterFn ?? null,
         transform: callbacks.transform ?? null,
       });
     },
     applyPatch(id, patch) {
-      const current = map.get(id) ?? { filter: null, transform: null };
+      const current = map.get(id) ?? { filterFn: null, transform: null };
       map.set(id, {
-        filter: "filter" in patch ? (patch.filter ?? null) : current.filter,
+        filterFn: "filterFn" in patch ? (patch.filterFn ?? null) : current.filterFn,
         transform: "transform" in patch ? (patch.transform ?? null) : current.transform,
       });
     },
     get(id) {
-      return map.get(id) ?? { filter: null, transform: null };
+      return map.get(id) ?? { filterFn: null, transform: null };
     },
     delete(id) {
       map.delete(id);
@@ -547,6 +554,6 @@ export function attachCallbacks(
   endpoint: EndpointRecord,
   registry: CallbackRegistry,
 ): EndpointRecord {
-  const { filter, transform } = registry.get(endpoint.id);
-  return { ...endpoint, filter, transform };
+  const { filterFn, transform } = registry.get(endpoint.id);
+  return { ...endpoint, filterFn, transform };
 }

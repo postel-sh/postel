@@ -6,13 +6,13 @@ CRUD and lifecycle primitives for delivery endpoints. Covers URL / HTTPS / SSRF 
 ## Requirements
 ### Requirement: Endpoint CRUD
 
-The library SHALL expose `postel.endpoints.create`, `update`, `disable`, `delete`, `list`, `get`. Create accepts `{ url, types?, channels?, filter?, transform?, retryPolicy?, headers?, signing? }` and returns the created endpoint with a generated id. `list` returns a bounded, paginated page rather than an unbounded array (see *List endpoints (paginated)*).
+The library SHALL expose `postel.endpoints.create`, `update`, `disable`, `delete`, `list`, `get`. Create accepts `{ url, types?, channels?, filter?, filterFn?, transform?, retryPolicy?, headers?, signing? }` and returns the created endpoint with a generated id. `list` returns a bounded, paginated page rather than an unbounded array (see *List endpoints (paginated)*).
 
-The endpoint returned by `create`, `get`, `list`, and `update` SHALL round-trip every accepted serializable field: `url`, `state`, `types`, `channels`, `retryPolicy`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, `autoDisable`, `metadata`, `tenantId`, plus the record timestamps `createdAt` and `updatedAt`. `headers` SHALL be returned when (and only when) it was configured as a plain key/value record.
+The endpoint returned by `create`, `get`, `list`, and `update` SHALL round-trip every accepted serializable field: `url`, `state`, `types`, `channels`, `filter`, `retryPolicy`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, `autoDisable`, `metadata`, `tenantId`, plus the record timestamps `createdAt` and `updatedAt`. `headers` SHALL be returned when (and only when) it was configured as a plain key/value record.
 
 Function-shaped options are code-side JS values, not serializable data, and SHALL NOT appear on the public read shape — with identical results across storage adapters:
 
-- `filter` and `transform` are absent keys on the returned endpoint.
+- `filterFn` and `transform` are absent keys on the returned endpoint.
 - Callable `headers` read back as `null` (the key is present; only plain-record headers round-trip).
 - A `custom` retryPolicy carries a `compute` function and reads back as `null`; data-only strategies (`exponential`, `linear`) round-trip unchanged.
 - The returned `http` is the stored HTTP overrides minus the function-typed `fetch` key.
@@ -28,7 +28,7 @@ A read (`get`) or URL-affecting `update` targeting an id that does not exist SHA
 
 #### Scenario: Create round-trips every accepted serializable field
 
-- **WHEN** the host creates an endpoint with `types`, `channels`, a `retryPolicy`, plain-record `headers`, `metadata`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, and `autoDisable`
+- **WHEN** the host creates an endpoint with `types`, `channels`, a structural `filter`, a `retryPolicy`, plain-record `headers`, `metadata`, `allowHttp`, `maxInflight`, `http`, `circuitBreaker`, and `autoDisable`
 - **THEN** the returned endpoint carries each of those fields with the accepted values, together with `id`, `url`, `state`, `createdAt`, and `updatedAt`
 - **AND** `endpoints.get(id)` and `endpoints.list()` return the same field values
 
@@ -39,8 +39,8 @@ A read (`get`) or URL-affecting `update` targeting an id that does not exist SHA
 
 #### Scenario: Function-shaped options stay off the read shape
 
-- **WHEN** the host creates an endpoint with a `filter` predicate, a `transform`, callable `headers`, a `custom` retryPolicy, and an `http` override carrying a `fetch` implementation
-- **THEN** the returned endpoint exposes no `filter` or `transform` field
+- **WHEN** the host creates an endpoint with a `filterFn` predicate, a `transform`, callable `headers`, a `custom` retryPolicy, and an `http` override carrying a `fetch` implementation
+- **THEN** the returned endpoint exposes no `filterFn` or `transform` field
 - **AND** its `headers` and `retryPolicy` read back as `null`
 - **AND** its `http` carries the other stored HTTP overrides but no `fetch` key
 

@@ -21,7 +21,7 @@ const RESET_TABLES = [
 let sqliteOrm: MikroORM | undefined;
 runStorageTests({
   name: "@postel/mikro-orm (better-sqlite)",
-  expectedSchemaVersion: 4,
+  expectedSchemaVersion: 5,
   capabilities: { notify: false, txIsolation: false },
   async setup() {
     sqliteOrm = await MikroORM.init({
@@ -56,7 +56,7 @@ if (process.env.POSTEL_MYSQL_TESTCONTAINERS || process.env.POSTEL_MYSQL_URL) {
 
   runStorageTests({
     name: "@postel/mikro-orm (mysql, testcontainers)",
-    expectedSchemaVersion: 4,
+    expectedSchemaVersion: 5,
     setupTimeoutMs: 120_000,
     capabilities: { notify: false, txIsolation: true },
     async setup() {

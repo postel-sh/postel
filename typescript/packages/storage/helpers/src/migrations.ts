@@ -159,6 +159,15 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
   ON CONFLICT (key) DO UPDATE SET value = '4';
 `,
   },
+  {
+    version: 5,
+    name: "endpoint_structural_filter",
+    sql: `
+ALTER TABLE endpoints ADD COLUMN filter TEXT;
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '5')
+  ON CONFLICT (key) DO UPDATE SET value = '5';
+`,
+  },
 ];
 
 // Postgres dialect (>= 14). jsonb / timestamptz / bytea native. The
@@ -310,6 +319,15 @@ ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS circuit_breaker jsonb;
 ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS auto_disable jsonb;
 INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
   ON CONFLICT (key) DO UPDATE SET value = '4';
+`,
+  },
+  {
+    version: 5,
+    name: "endpoint_structural_filter",
+    sql: `
+ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS filter jsonb;
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '5')
+  ON CONFLICT (key) DO UPDATE SET value = '5';
 `,
   },
 ];
@@ -471,6 +489,15 @@ ALTER TABLE endpoints ADD COLUMN circuit_breaker JSON;
 ALTER TABLE endpoints ADD COLUMN auto_disable JSON;
 INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '4')
   ON DUPLICATE KEY UPDATE value = '4';
+`,
+  },
+  {
+    version: 5,
+    name: "endpoint_structural_filter",
+    sql: `
+ALTER TABLE endpoints ADD COLUMN filter JSON;
+INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '5')
+  ON DUPLICATE KEY UPDATE value = '5';
 `,
   },
 ];

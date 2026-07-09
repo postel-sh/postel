@@ -70,14 +70,8 @@ export function buildHttpDispatcher(deps: HttpDispatcherDeps): DispatchOne {
   ): Promise<DispatchOutcome> => {
     const startedAt = ctx.clock.now();
     const endpoint = endpointWithSecrets.endpoint;
-    const filterFn =
-      typeof endpoint.filter === "function"
-        ? (endpoint.filter as (event: unknown) => boolean)
-        : undefined;
-    const transformFn =
-      typeof endpoint.transform === "function"
-        ? (endpoint.transform as (event: unknown) => unknown)
-        : undefined;
+    const filterFn = endpoint.filterFn ?? undefined;
+    const transformFn = endpoint.transform ?? undefined;
     const filterResult = evaluateFilter(endpoint, msg, filterFn);
     if (filterResult.mode === "filtered") {
       return { status: "filtered", responseCode: null, latencyMs: 0, error: null };

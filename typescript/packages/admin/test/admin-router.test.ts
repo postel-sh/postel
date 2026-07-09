@@ -84,6 +84,24 @@ describe("Admin HTTP handlers", () => {
     expect(new Date(body.createdAt).getTime()).not.toBeNaN();
   });
 
+  it("a structural filter round-trips through create and get (admin-API-safe)", async () => {
+    const { router } = build(ALLOW);
+    const created = await router(
+      req("POST", "/admin/endpoints", {
+        url: "http://127.0.0.1:65535/hook",
+        allowHttp: true,
+        filter: { dataPath: "region", equals: "eu" },
+      }),
+    );
+    expect(created.status).toBe(201);
+    const createdBody = (await created.json()) as { id: string; filter: unknown };
+    expect(createdBody.filter).toEqual({ dataPath: "region", equals: "eu" });
+
+    const got = await router(req("GET", `/admin/endpoints/${createdBody.id}`));
+    const gotBody = (await got.json()) as { filter: unknown };
+    expect(gotBody.filter).toEqual({ dataPath: "region", equals: "eu" });
+  });
+
   it("a missing endpoint id maps to 404 (EndpointNotFound)", async () => {
     const { router } = build(ALLOW);
     const res = await router(req("GET", "/admin/endpoints/ep_does_not_exist"));

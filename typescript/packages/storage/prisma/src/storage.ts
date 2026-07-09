@@ -545,13 +545,13 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
         const now = clock.now();
         const full: EndpointRecord = {
           ...rec,
-          filter: rec.filter ?? null,
+          filterFn: rec.filterFn ?? null,
           transform: rec.transform ?? null,
           createdAt: now,
           updatedAt: now,
         };
         await insert(exec(opts), "endpoints", encodeEndpointInsert(full, codec));
-        registry.set(full.id, { filter: full.filter, transform: full.transform });
+        registry.set(full.id, { filterFn: full.filterFn, transform: full.transform });
         return full;
       },
       async update(id, patch, opts) {
@@ -566,9 +566,9 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
             .map((c) => `${quote(c)} = ${p.add(row[c])}`);
           const text = `update endpoints set ${assignments.join(", ")} where id = ${p.add(id)}`;
           await q.$executeRawUnsafe(text, ...p.values);
-          if ("filter" in patch || "transform" in patch) {
+          if ("filterFn" in patch || "transform" in patch) {
             registry.applyPatch(id, {
-              ...("filter" in patch ? { filter: patch.filter ?? null } : {}),
+              ...("filterFn" in patch ? { filterFn: patch.filterFn ?? null } : {}),
               ...("transform" in patch ? { transform: patch.transform ?? null } : {}),
             });
           }

@@ -78,7 +78,7 @@ const CAPABILITIES: StorageCapabilities = {
 // Canonical source: specs/db-schema/ (latest forward-only migration). The
 // in-memory adapter implements that current shape, so it reports the same
 // version a fully-migrated SQL adapter would.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 // Mirrors the DEFAULT_*_LIMIT constants in @postel/storage-helpers; kept local
 // because @postel/core takes no dependency on the helpers package.
@@ -620,6 +620,7 @@ export function InMemoryStorage(options: InMemoryStorageOptions = {}): Storage<I
         const full: EndpointRecord = {
           ...rec,
           filter: rec.filter ?? null,
+          filterFn: rec.filterFn ?? null,
           transform: rec.transform ?? null,
           createdAt: now,
           updatedAt: now,

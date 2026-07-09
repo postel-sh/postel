@@ -105,11 +105,42 @@ export interface SendOptions<TTx = unknown> {
   readonly tx?: TTx;
 }
 
+// A JSON-serializable value — what a structural filter clause's `equals` can
+// hold, and what round-trips through storage and the admin HTTP API.
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | ReadonlyArray<Json>
+  | { readonly [key: string]: Json };
+
+// A serializable filter clause: matches when the event's `data` at the
+// dot-separated `dataPath` deep-equals `equals`. An array of clauses is
+// evaluated as AND. This is the "common cases" filter — for anything a
+// structural clause can't express, use `filterFn`.
+export interface StructuralFilterClause {
+  readonly dataPath: string;
+  readonly equals: Json;
+}
+
+export type StructuralFilter = StructuralFilterClause | ReadonlyArray<StructuralFilterClause>;
+
+// What `filterFn`/`transform` receive at dispatch time — a concrete envelope
+// instead of `unknown`, so a predicate can narrow its shape without an `as` cast.
+export interface FilterEnvelope {
+  readonly type: string;
+  readonly data: unknown;
+  readonly channels?: ReadonlyArray<string>;
+  readonly timestamp?: string;
+}
+
 export interface EndpointCreateOptions {
   readonly url: string;
   readonly types?: ReadonlyArray<string>;
   readonly channels?: ReadonlyArray<string>;
-  readonly filter?: (event: unknown) => boolean;
+  readonly filter?: StructuralFilter;
+  readonly filterFn?: (event: FilterEnvelope) => boolean;
   readonly transform?: (event: unknown) => unknown;
   readonly retryPolicy?: RetryStrategy;
   readonly headers?:
@@ -130,10 +161,11 @@ export interface EndpointUpdateOptions extends Partial<EndpointCreateOptions> {}
 
 // The public read shape for endpoints: every accepted serializable field
 // round-trips through create/get/list/update, identically across storage
-// adapters. Function-shaped options are code-side JS values and stay off this
-// shape: `filter`/`transform` are absent keys, callable `headers` and `custom`
-// retry strategies (whose `compute` is a function) read back as null, and
-// `http` drops its function-typed `fetch` key. `signing` stays off because a
+// adapters. `filter` is serializable data and round-trips too. Function-shaped
+// options are code-side JS values and stay off this shape: `filterFn`/
+// `transform` are absent keys, callable `headers` and `custom` retry
+// strategies (whose `compute` is a function) read back as null, and `http`
+// drops its function-typed `fetch` key. `signing` stays off because a
 // strategy can carry key material.
 export type SerializableRetryStrategy = Exclude<RetryStrategy, { kind: "custom" }>;
 
@@ -145,6 +177,7 @@ export interface Endpoint {
   readonly state: "active" | "disabled" | "circuit-open";
   readonly types: ReadonlyArray<string> | null;
   readonly channels: ReadonlyArray<string> | null;
+  readonly filter: StructuralFilter | null;
   readonly retryPolicy: SerializableRetryStrategy | null;
   readonly headers: Readonly<Record<string, string>> | null;
   readonly allowHttp: boolean;

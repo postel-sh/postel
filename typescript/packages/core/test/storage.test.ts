@@ -73,7 +73,7 @@ describe("Schema is a fixed set of canonical tables", () => {
   it("Schema version handshake: schemaVersion returns the library-compatible value", async () => {
     const storage = InMemoryStorage();
     const v = await storage.schemaVersion();
-    expect(v).toBe(4);
+    expect(v).toBe(5);
   });
 });
 
@@ -185,6 +185,7 @@ describe("Host transaction passthrough", () => {
       state: "active",
       types: null,
       channels: null,
+      filter: null,
       retryPolicy: null,
       headers: null,
       signing: null,

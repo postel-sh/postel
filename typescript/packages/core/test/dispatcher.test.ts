@@ -1,6 +1,7 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
+import type { FilterEnvelope, StructuralFilter } from "../src/index.js";
 import {
   Custom,
   EndpointNotFound,
@@ -73,7 +74,8 @@ async function seedEndpoint(
     types?: string[];
     channels?: string[];
     transform?: (event: unknown) => unknown;
-    filter?: (event: unknown) => boolean;
+    filter?: StructuralFilter;
+    filterFn?: (event: FilterEnvelope) => boolean;
     http?: unknown;
   } = {},
 ): Promise<void> {
@@ -84,6 +86,7 @@ async function seedEndpoint(
     state: "active",
     types: opts.types ?? null,
     channels: opts.channels ?? null,
+    filter: opts.filter ?? null,
     retryPolicy: null,
     headers: null,
     signing: null,
@@ -94,7 +97,7 @@ async function seedEndpoint(
     circuitBreaker: null,
     autoDisable: null,
     ...(opts.transform !== undefined ? { transform: opts.transform } : {}),
-    ...(opts.filter !== undefined ? { filter: opts.filter } : {}),
+    ...(opts.filterFn !== undefined ? { filterFn: opts.filterFn } : {}),
   });
   await storage.secrets.insert({
     id: "sec_test",
@@ -149,6 +152,7 @@ describe("Per-endpoint custom HTTP headers", () => {
       state: "active",
       types: null,
       channels: null,
+      filter: null,
       retryPolicy: null,
       headers: ((ctx: { message: { id: string } }) => ({
         "x-trace": ctx.message.id,
@@ -261,7 +265,7 @@ describe("Endpoint CRUD", () => {
     expect(updated.retryPolicy).toEqual(retryPolicy);
   });
 
-  it("Function-shaped options stay off the read shape: filter/transform absent, callable headers and custom retryPolicy read back as null, http drops fetch", async () => {
+  it("Function-shaped options stay off the read shape: filterFn/transform absent, callable headers and custom retryPolicy read back as null, http drops fetch", async () => {
     const storage = InMemoryStorage();
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
@@ -269,7 +273,7 @@ describe("Endpoint CRUD", () => {
     const created = await postel.outbound.endpoints.create({
       url: "http://127.0.0.1:65535/hook",
       allowHttp: true,
-      filter: () => true,
+      filterFn: () => true,
       transform: (event) => event,
       headers: () => ({ "x-dynamic": "yes" }),
       retryPolicy: Custom({ compute: () => "5s", maxAttempts: 2 }),
@@ -277,7 +281,7 @@ describe("Endpoint CRUD", () => {
     });
     const fetched = await postel.outbound.endpoints.get(created.id);
     for (const ep of [created, fetched]) {
-      expect("filter" in ep).toBe(false);
+      expect("filterFn" in ep).toBe(false);
       expect("transform" in ep).toBe(false);
       expect(ep.headers).toBeNull();
       expect(ep.retryPolicy).toBeNull();
@@ -345,6 +349,7 @@ describe("SSRF protection on outbound delivery", () => {
       state: "active",
       types: null,
       channels: null,
+      filter: null,
       retryPolicy: null,
       headers: null,
       signing: null,
@@ -445,6 +450,109 @@ describe("Channel filter", () => {
   });
 });
 
+describe("Structural filter matches a data path", () => {
+  it("Single clause matches", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), { filter: { dataPath: "region", equals: "eu" } });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "order.created", data: { region: "eu" } });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(1);
+  });
+
+  it("Single clause mismatches", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), { filter: { dataPath: "region", equals: "eu" } });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "order.created", data: { region: "us" } });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(0);
+  });
+
+  it("Nested data path", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), {
+      filter: { dataPath: "order.status", equals: "paid" },
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "order.created", data: { order: { status: "paid" } } });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(1);
+  });
+
+  it("Array of clauses is ANDed", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), {
+      filter: [
+        { dataPath: "region", equals: "eu" },
+        { dataPath: "tier", equals: "gold" },
+      ],
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({
+      type: "order.created",
+      data: { region: "eu", tier: "silver" },
+    });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(0);
+  });
+
+  it("Missing data path does not match", async () => {
+    const server = await startMockServer();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), { filter: { dataPath: "region", equals: "eu" } });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    await postel.outbound.send({ type: "order.created", data: {} });
+    await postel.start();
+    await tick(300);
+    await postel.stop();
+    await server.close();
+    expect(server.requests().length).toBe(0);
+  });
+
+  it("filter round-trips through the read shape", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const structuralFilter: StructuralFilter = { dataPath: "region", equals: "eu" };
+    const created = await postel.outbound.endpoints.create({
+      url: "http://127.0.0.1:65535/hook",
+      allowHttp: true,
+      filter: structuralFilter,
+    });
+    expect(created.filter).toEqual(structuralFilter);
+    const fetched = await postel.outbound.endpoints.get(created.id);
+    expect(fetched.filter).toEqual(structuralFilter);
+  });
+});
+
 describe("Predicate filter", () => {
   it("Predicate accepts event: evaluator passes through when the predicate returns true", async () => {
     const server = await startMockServer();
@@ -514,11 +622,11 @@ describe("Filter and transform errors fail closed", () => {
     }
   });
 
-  it("Filter throws: nothing is delivered and the attempt is recorded as filtered (closed, not open)", async () => {
+  it("filterFn throws: nothing is delivered and the attempt is recorded as filtered (closed, not open)", async () => {
     const server = await startMockServer();
     const storage = InMemoryStorage();
     await seedEndpoint(storage, server.url(), {
-      filter: () => {
+      filterFn: () => {
         throw new Error("boom");
       },
     });
@@ -648,6 +756,7 @@ describe("Per-endpoint signing config", () => {
       state: "active",
       types: ["evt.x"],
       channels: null,
+      filter: null,
       retryPolicy: null,
       headers: null,
       signing: null,

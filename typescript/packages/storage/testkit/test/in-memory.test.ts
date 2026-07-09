@@ -8,7 +8,7 @@ import { makeFakeClock, runStorageTests } from "../src/index.js";
 // scenarios are skipped here.
 runStorageTests({
   name: "in-memory (reference)",
-  expectedSchemaVersion: 4,
+  expectedSchemaVersion: 5,
   capabilities: { notify: true, txIsolation: true },
   async create() {
     const clock = makeFakeClock();
