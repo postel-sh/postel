@@ -41,9 +41,10 @@ export async function sendImpl(
     expiresAt = new Date(createdAt.getTime() + ms);
   }
   let data = event.data ?? null;
-  const schema = ctx.events?.[event.type];
+  const schema =
+    ctx.events && Object.hasOwn(ctx.events, event.type) ? ctx.events[event.type] : undefined;
   if (schema) {
-    const out = await schema["~standard"].validate(data);
+    const out = await schema["~standard"].validate(event.data);
     if (out.issues) throw new EventValidation(out.issues);
     data = out.value ?? null;
   }

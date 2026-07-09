@@ -79,6 +79,31 @@ describe("Per-type event schema validation on send", () => {
     expect(message?.data).toEqual({ id: 123 });
   });
 
+  it("a type name colliding with an Object.prototype key is not mistaken for a registered schema", async () => {
+    const { postel } = setup();
+    const untypedSend = (event: { readonly type: string; readonly data?: unknown }) =>
+      postel.outbound.send(event);
+    const { id } = await untypedSend({ type: "toString", data: { anything: true } });
+
+    const message = await postel.outbound.messages.get(id);
+    expect(message?.data).toEqual({ anything: true });
+  });
+
+  it("omitted data validates as undefined, not null, against an optional schema", async () => {
+    const storage = InMemoryStorage({});
+    const postel = Postel({
+      outbound: {
+        storage,
+        // `.optional()` accepts `undefined` but rejects `null` — a call that
+        // coerces missing `data` to `null` before validating would reject this.
+        events: { "user.created": z.object({ id: z.string() }).optional() },
+      },
+    });
+    await expect(postel.outbound.send({ type: "user.created" })).resolves.toMatchObject({
+      reused: false,
+    });
+  });
+
   it("explicit send<TData> generic still compiles and runs for an unregistered type", async () => {
     const { postel } = setup();
     interface OrderCreated {
