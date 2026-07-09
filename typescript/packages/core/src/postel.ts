@@ -139,8 +139,7 @@ export function Postel<const C extends PostelConfig>(config: C): PostelInstance<
       }
       if (thresholds?.maxOldestPendingAge !== undefined && depth.oldestPendingAge !== undefined) {
         const configured = thresholds.maxOldestPendingAge;
-        const maxMs =
-          (typeof configured === "string" ? ttlToSeconds(configured) : configured) * 1000;
+        const maxMs = ttlToSeconds(configured) * 1000;
         if (depth.oldestPendingAge > maxMs) {
           return {
             ok: false,
