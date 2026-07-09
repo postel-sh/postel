@@ -32,6 +32,56 @@ const PAYLOAD = {
   data: { id: "order_42", amount_cents: 1999 },
 } as const;
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i] as number);
+  return btoa(binary);
+}
+
+async function signEd25519(privateKey: CryptoKey, message: Uint8Array): Promise<string> {
+  const sig = new Uint8Array(
+    await crypto.subtle.sign({ name: "Ed25519" }, privateKey, message as BufferSource),
+  );
+  return bytesToBase64(sig);
+}
+
+// Mirrors verify-keyset.test.ts's fixture builder — a real Ed25519 keypair,
+// a v1a-signed payload, and the matching public JWK for a mocked JWKS fetch.
+async function buildEd25519Fixture(kid: string, timestamp: Date) {
+  const keypair = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const publicJwk = (await crypto.subtle.exportKey("jwk", keypair.publicKey)) as {
+    kty: string;
+    crv: string;
+    x: string;
+  };
+  const messageId = `msg_${kid}_test`;
+  const timestampSeconds = Math.floor(timestamp.getTime() / 1000).toString();
+  const body = JSON.stringify(PAYLOAD);
+  const canonical = new TextEncoder().encode(`${messageId}.${timestampSeconds}.${body}`);
+  const signatureB64 = await signEd25519(keypair.privateKey, canonical);
+  return {
+    body,
+    headers: {
+      "webhook-id": messageId,
+      "webhook-timestamp": timestampSeconds,
+      "webhook-signature": `v1a,${signatureB64}`,
+      "webhook-key-id": kid,
+    },
+    publicJwk: { ...publicJwk, kid, alg: "EdDSA" },
+  };
+}
+
+function jwksFetcher(jwks: { keys: Array<Record<string, unknown>> }): typeof globalThis.fetch {
+  return async () =>
+    new Response(JSON.stringify(jwks), {
+      status: 200,
+      headers: { "content-type": "application/jwk-set+json" },
+    });
+}
+
 describe("Postel factory returns the library instance", () => {
   it("Type inference for the outbound surface", () => {
     const postel = Postel({
@@ -313,17 +363,25 @@ describe("Verifier strategy composition", () => {
   });
 
   it("Named-map verifier composes with cross-scheme migration", async () => {
+    const fixture = await buildEd25519Fixture("k-alpha", FIXED_NOW);
     const postel = Postel({
       inbound: {
         api: {
           verify: {
             hmac: Secret(TEST_SECRET_A),
-            jwks: Keyset({ jwksUri: "https://example.test/.well-known/jwks.json" }),
+            jwks: Keyset({
+              jwksUri: "https://example.test/.well-known/jwks.json",
+              fetch: jwksFetcher({ keys: [fixture.publicJwk] }),
+            }),
           },
+          clock: fixedClock(FIXED_NOW),
         },
       },
     });
-    expect(typeof postel.inbound.api.verify).toBe("function");
+    const result = await postel.inbound.api.verify(fixture.body, fixture.headers);
+    expect(result.matchedVerifier).toBe("jwks");
+    expect(result.matchedVerifierIndex).toBe(1);
+    expect(result.event.type).toBe("order.created");
   });
 
   it("Array and single-verifier forms carry no matchedVerifier key", async () => {
