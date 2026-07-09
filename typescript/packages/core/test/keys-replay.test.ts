@@ -607,29 +607,38 @@ describe("Naming convention for tenant scoping", () => {
   });
 });
 
+function catchSync(fn: () => unknown): unknown {
+  try {
+    fn();
+    throw new Error("expected fn to throw");
+  } catch (err) {
+    return err;
+  }
+}
+
 describe("Adapter mode for external job queues", () => {
   it("External(adapter) fails fast with NotImplementedError — in-process is the only worker runtime in this release", () => {
     // The strategy slot exists in OutboundConfig.workers, but there is no
     // external/bullmq/pg-boss dispatch path yet, so configuring one must throw
     // rather than silently fall back to the in-process pool.
     const storage = InMemoryStorage();
-    expect(() => Postel({ outbound: { storage, workers: External({}) } })).toThrow(
-      NotImplementedError,
-    );
+    const err = catchSync(() => Postel({ outbound: { storage, workers: External({}) } }));
+    expect(err).toBeInstanceOf(NotImplementedError);
+    expect((err as NotImplementedError).code).toBe("NOT_IMPLEMENTED");
   });
 
   it("BullMQ(queue) fails fast with NotImplementedError — same interim contract as External", () => {
     const storage = InMemoryStorage();
-    expect(() => Postel({ outbound: { storage, workers: BullMQ({}) } })).toThrow(
-      NotImplementedError,
-    );
+    const err = catchSync(() => Postel({ outbound: { storage, workers: BullMQ({}) } }));
+    expect(err).toBeInstanceOf(NotImplementedError);
+    expect((err as NotImplementedError).code).toBe("NOT_IMPLEMENTED");
   });
 
   it("PgBoss(boss) fails fast with NotImplementedError — same interim contract as External", () => {
     const storage = InMemoryStorage();
-    expect(() => Postel({ outbound: { storage, workers: PgBoss({}) } })).toThrow(
-      NotImplementedError,
-    );
+    const err = catchSync(() => Postel({ outbound: { storage, workers: PgBoss({}) } }));
+    expect(err).toBeInstanceOf(NotImplementedError);
+    expect((err as NotImplementedError).code).toBe("NOT_IMPLEMENTED");
   });
 });
 

@@ -324,7 +324,7 @@ The slots that fail fast in the current TypeScript port are:
 
 #### Scenario: Non-in-process worker strategies fail fast
 
-- **WHEN** a caller constructs `Postel({ outbound: { storage, workers: BullMQ(queue) } })`, `PgBoss(boss)`, or `External(adapter)`
+- **WHEN** a caller constructs `Postel({ outbound: { storage, workers: BullMQ(queue) } })`, `Postel({ outbound: { storage, workers: PgBoss(boss) } })`, or `Postel({ outbound: { storage, workers: External(adapter) } })`
 - **THEN** construction throws `NotImplementedError` for all three
 - **AND** `err.code === 'NOT_IMPLEMENTED'`
 - **AND** no queue/adapter code path is silently exercised in-process instead
