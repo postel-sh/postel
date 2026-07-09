@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  BullMQ,
   type Clock,
   External,
   InMemoryStorage,
   NotImplementedError,
+  PgBoss,
   Postel,
 } from "../src/index.js";
 import { CircuitBreakerRegistry } from "../src/sender/retry/circuit.js";
@@ -612,6 +614,20 @@ describe("Adapter mode for external job queues", () => {
     // rather than silently fall back to the in-process pool.
     const storage = InMemoryStorage();
     expect(() => Postel({ outbound: { storage, workers: External({}) } })).toThrow(
+      NotImplementedError,
+    );
+  });
+
+  it("BullMQ(queue) fails fast with NotImplementedError — same interim contract as External", () => {
+    const storage = InMemoryStorage();
+    expect(() => Postel({ outbound: { storage, workers: BullMQ({}) } })).toThrow(
+      NotImplementedError,
+    );
+  });
+
+  it("PgBoss(boss) fails fast with NotImplementedError — same interim contract as External", () => {
+    const storage = InMemoryStorage();
+    expect(() => Postel({ outbound: { storage, workers: PgBoss({}) } })).toThrow(
       NotImplementedError,
     );
   });
