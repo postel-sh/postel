@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import type { DedupAdapter, DedupRecordOptions, Verifier } from "../src/index.js";
 import {
@@ -84,6 +85,42 @@ describe("Public function signatures match Standard Webhooks event shape", () =>
       data: { id: "order_42", amount_cents: 1999 },
     });
     expect(id).toMatch(/^msg_/);
+  });
+});
+
+describe("Outbound event schema registry", () => {
+  it("Registered event type is typed and validated: data is checked against the schema output type", async () => {
+    const postel = Postel({
+      outbound: {
+        storage: InMemoryStorage(),
+        events: { "user.created": z.object({ id: z.string() }) },
+      },
+    });
+    const { id } = await postel.outbound.send({ type: "user.created", data: { id: "u_1" } });
+    expect(id).toMatch(/^msg_/);
+    // Compile-time proof: `data` is checked against the registered schema's
+    // output type for this literal `type` — if `EventDataOf` resolved to
+    // `unknown`, the mismatched shape below would type-check.
+    // @ts-expect-error — "user.created" is registered as { id: string }; total isn't a field
+    postel.outbound.send({ type: "user.created", data: { total: 42 } }).catch(() => {});
+  });
+
+  it("send<TData> explicit override still compiles for a registered key", async () => {
+    interface CustomShape {
+      readonly custom: true;
+    }
+    const postel = Postel({
+      outbound: {
+        storage: InMemoryStorage(),
+        events: { "user.created": z.object({ id: z.string() }) },
+      },
+    });
+    // Explicit override bypasses the registry's static typing, but runtime
+    // validation still runs by `event.type`, independent of the generic used —
+    // `custom` doesn't satisfy the registered schema, so this still rejects.
+    await expect(
+      postel.outbound.send<CustomShape>({ type: "user.created", data: { custom: true } }),
+    ).rejects.toThrow();
   });
 });
 

@@ -1,7 +1,9 @@
 import { type InboundApi, type InboundSource, buildInboundApi } from "./inbound.js";
 import {
+  type NoEventsRegistered,
   type OutboundApi,
   type OutboundConfig,
+  type OutboundEventRegistry,
   type OutboundRuntime,
   buildOutboundRuntime,
 } from "./outbound.js";
@@ -75,10 +77,19 @@ export interface PostelConfig<
   readonly inbound?: TInbound;
 }
 
+// The outbound event registry a config declares: the literal `events` map
+// when present, otherwise the permissive default. Mirrors `EventOf<S>` on the
+// inbound side.
+export type EventsOf<OC> = OC extends { readonly events?: infer E }
+  ? E extends OutboundEventRegistry
+    ? E
+    : NoEventsRegistered
+  : NoEventsRegistered;
+
 export type WithOutbound<C> = C extends {
   readonly outbound: { readonly storage: Storage<infer TTx> };
 }
-  ? { outbound: OutboundApi<TTx> }
+  ? { outbound: OutboundApi<TTx, EventsOf<C["outbound"]>> }
   : C extends { readonly outbound: OutboundConfig }
     ? { outbound: OutboundApi }
     : object;
