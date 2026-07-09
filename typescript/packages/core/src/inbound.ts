@@ -19,8 +19,13 @@ import type {
   WebhookHeaders,
 } from "./types.js";
 
+// A verify slot keyed by a stable name instead of a positional index — so
+// "which verifier matched" survives config reordering. See `matchedVerifier`
+// on `ComposedVerifyResult`.
+export type VerifierMap = Record<string, Verifier>;
+
 export interface InboundSource<TData = unknown> {
-  readonly verify: Verifier | ReadonlyArray<Verifier>;
+  readonly verify: Verifier | ReadonlyArray<Verifier> | VerifierMap;
   /**
    * Optional Standard Schema (zod, valibot, …) describing the event `data`
    * payload. When present, `verify()` validates `event.data` against it after
@@ -38,6 +43,10 @@ export interface InboundSource<TData = unknown> {
 
 export interface ComposedVerifyResult<TData = unknown> extends VerifyResult<TData> {
   readonly matchedVerifierIndex: number;
+  // Present only when the source's `verify` slot is a named map — the key of
+  // the verifier that matched. Absent (not `undefined`-valued) for the
+  // `Verifier` and array forms, which have no names to report.
+  readonly matchedVerifier?: string;
 }
 
 export interface InboundDedupOptions {
@@ -74,12 +83,34 @@ async function attempt<TData>(
   return (await v.verify(rawBody, headers, options)) as VerifyResult<TData>;
 }
 
+interface NamedVerifier {
+  readonly name?: string;
+  readonly verifier: Verifier;
+}
+
+function isVerifierArray(v: InboundSource["verify"]): v is ReadonlyArray<Verifier> {
+  return Array.isArray(v);
+}
+
+function isVerifier(v: Verifier | VerifierMap): v is Verifier {
+  return typeof (v as Verifier).verify === "function";
+}
+
+// Normalizes all three `verify` shapes into an ordered list, preserving each
+// form's own ordering: an array's element order, or a map's `Object.entries`
+// (insertion) order. Only the map form carries a `name`.
+function normalizeVerifiers(verify: InboundSource["verify"]): ReadonlyArray<NamedVerifier> {
+  if (isVerifierArray(verify)) return verify.map((verifier) => ({ verifier }));
+  if (isVerifier(verify)) return [{ verifier: verify }];
+  return Object.entries(verify).map(([name, verifier]) => ({ name, verifier }));
+}
+
 async function verifySource<TData>(
   source: InboundSource,
   rawBody: ArrayBuffer | Uint8Array | string,
   headers: WebhookHeaders,
 ): Promise<ComposedVerifyResult<TData>> {
-  const verifiers = Array.isArray(source.verify) ? source.verify : [source.verify];
+  const verifiers = normalizeVerifiers(source.verify);
   if (verifiers.length === 0) {
     throw new ConfigurationError("inbound source has no verifiers configured");
   }
@@ -98,10 +129,14 @@ async function verifySource<TData>(
   let matched: ComposedVerifyResult<TData> | undefined;
   const failures: VerifierFailure[] = [];
   for (let i = 0; i < verifiers.length; i++) {
-    const v = verifiers[i] as Verifier;
+    const { name, verifier: v } = verifiers[i] as NamedVerifier;
     try {
       const result = await attempt<TData>(v, rawBody, headers, options);
-      matched = { ...result, matchedVerifierIndex: i };
+      matched = {
+        ...result,
+        matchedVerifierIndex: i,
+        ...(name !== undefined ? { matchedVerifier: name } : {}),
+      };
       break;
     } catch (err) {
       if (err instanceof TimestampTooOld || err instanceof ConfigurationError) {

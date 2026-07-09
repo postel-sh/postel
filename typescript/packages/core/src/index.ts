@@ -28,6 +28,7 @@ export type {
   InboundDedupOptions,
   InboundSource,
   InboundSourceApi,
+  VerifierMap,
 } from "./inbound.js";
 
 export type {

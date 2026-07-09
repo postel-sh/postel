@@ -291,6 +291,86 @@ describe("Verifier strategy composition", () => {
       postel.inbound.vendor.verify(fixture.body, fixture.headers),
     ).rejects.toBeInstanceOf(ConfigurationError);
   });
+
+  it("Named-map verifier reports the matched name", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_B,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const postel = Postel({
+      inbound: {
+        vendor: {
+          verify: { current: Secret(TEST_SECRET_A), legacy: Secret(TEST_SECRET_B) },
+          tolerance: 600,
+          clock: fixedClock(FIXED_NOW),
+        },
+      },
+    });
+    const result = await postel.inbound.vendor.verify(fixture.body, fixture.headers);
+    expect(result.matchedVerifier).toBe("legacy");
+    expect(result.matchedVerifierIndex).toBe(1);
+  });
+
+  it("Named-map verifier composes with cross-scheme migration", async () => {
+    const postel = Postel({
+      inbound: {
+        api: {
+          verify: {
+            hmac: Secret(TEST_SECRET_A),
+            jwks: Keyset({ jwksUri: "https://example.test/.well-known/jwks.json" }),
+          },
+        },
+      },
+    });
+    expect(typeof postel.inbound.api.verify).toBe("function");
+  });
+
+  it("Array and single-verifier forms carry no matchedVerifier key", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_A,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const arrayPostel = Postel({
+      inbound: {
+        vendor: { verify: [Secret(TEST_SECRET_A)], tolerance: 600, clock: fixedClock(FIXED_NOW) },
+      },
+    });
+    const arrayResult = await arrayPostel.inbound.vendor.verify(fixture.body, fixture.headers);
+    expect("matchedVerifier" in arrayResult).toBe(false);
+
+    const singlePostel = Postel({
+      inbound: {
+        vendor: { verify: Secret(TEST_SECRET_A), tolerance: 600, clock: fixedClock(FIXED_NOW) },
+      },
+    });
+    const singleResult = await singlePostel.inbound.vendor.verify(fixture.body, fixture.headers);
+    expect("matchedVerifier" in singleResult).toBe(false);
+  });
+
+  it("Named-map ConfigurationError rethrow", async () => {
+    const fixture = await signFixture({
+      secret: TEST_SECRET_A,
+      payload: PAYLOAD,
+      timestamp: FIXED_NOW,
+    });
+    const misconfiguredVerifier: Verifier = {
+      verify: (rawBody, headers, options) => verify(rawBody, headers, [], options),
+    };
+    const postel = Postel({
+      inbound: {
+        vendor: {
+          verify: { broken: misconfiguredVerifier },
+          tolerance: 600,
+          clock: fixedClock(FIXED_NOW),
+        },
+      },
+    });
+    await expect(
+      postel.inbound.vendor.verify(fixture.body, fixture.headers),
+    ).rejects.toBeInstanceOf(ConfigurationError);
+  });
 });
 
 describe("Conditional optionality of outbound and inbound", () => {

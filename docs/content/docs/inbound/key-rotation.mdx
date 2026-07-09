@@ -35,6 +35,31 @@ if (matchedVerifierIndex > 0) {
 
 `matchedVerifierIndex` tells you which one matched. Watch the metric: when legacy-verifier hits drop to zero across all producers, remove the entry and finalize the rotation.
 
+### Naming verifiers instead of counting on index
+
+A positional index loses its meaning the moment the array is reordered — add a third secret ahead of the other two, and `matchedVerifierIndex` for the old entries silently shifts. Pass a named map instead, and the result reports `matchedVerifier` by name:
+
+```ts
+const postel = Postel({
+  inbound: {
+    vendor: {
+      verify: {
+        current: Secret(config.webhookSecretCurrent),
+        legacy: Secret(config.webhookSecretPrevious),
+      },
+    },
+  },
+});
+
+const { matchedVerifier } = await postel.inbound.vendor.verify(body, headers);
+
+if (matchedVerifier === "legacy") {
+  metrics.increment("postel.verify.legacy_verifier_hit");
+}
+```
+
+`matchedVerifierIndex` is still reported alongside `matchedVerifier` (the map's insertion order); only the array and single-`Verifier` forms omit `matchedVerifier` entirely, since there's no name to give. This is purely additive — the array form keeps working exactly as above.
+
 ### Safe rotation playbook
 
 1. **Issue the new secret.** Add it to your secrets store. Configure the source with `verify: [Secret(NEW), Secret(OLD)]`. Deploy.
