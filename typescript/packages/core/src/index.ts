@@ -9,6 +9,7 @@ export type {
   ObservabilityConfig,
   PostelConfig,
   PostelInstance,
+  EventsOf,
   WithInbound,
   WithOutbound,
 } from "./postel.js";
@@ -40,6 +41,7 @@ export type {
   EndpointListOptions,
   EndpointUpdateOptions,
   EphemeralKeysDefaults,
+  EventDataOf,
   FilterEnvelope,
   HttpDefaults,
   Json,
@@ -48,6 +50,7 @@ export type {
   MessageListOptions,
   OutboundApi,
   OutboundConfig,
+  OutboundEventRegistry,
   ReconcileOptions,
   ReplayDefaults,
   ReplayOptions,

@@ -12,6 +12,7 @@ import { reconcileImpl, replayImpl } from "./sender/replay/replay.js";
 import { buildRetryDispatcher } from "./sender/retry/orchestrator.js";
 import { sendImpl } from "./sender/send.js";
 import { WorkerPool } from "./sender/worker/pool.js";
+import type { StandardSchemaV1 } from "./standard-schema.js";
 import type {
   AttemptStatus,
   MessageId,
@@ -30,8 +31,34 @@ import type { SigningStrategy } from "./strategies/signing.js";
 import type { WorkerStrategy } from "./strategies/workers.js";
 import type { Jwk, Jwks } from "./types.js";
 
-export interface OutboundConfig<TTx = unknown> {
+// A registry mapping event `type` strings to the Standard Schema (zod,
+// valibot, …) describing that type's `data` payload — the send-side mirror of
+// `InboundSource.schema`. Reuses the same inlined Standard Schema v1 interface;
+// no new runtime dependency.
+export type OutboundEventRegistry = Record<string, StandardSchemaV1<unknown, unknown>>;
+
+// The default when no `events` registry is configured. Deliberately shaped as
+// a key-less mapped type (not `Record<string, X>`) so `keyof` resolves to
+// `never` rather than `string | number` — that keeps `EventDataOf` and the
+// unregistered-type overload's exclusion check from misfiring when there is
+// no registry to check against.
+export type NoEventsRegistered = { readonly [K in never]: StandardSchemaV1<unknown, unknown> };
+
+// The `data` type for a given literal event `type`: the registered schema's
+// output when `T` is a registered key, otherwise `unknown`. Drives `send()`'s
+// default `TData`, mirroring inbound's `EventOf<S>`.
+export type EventDataOf<E extends OutboundEventRegistry, T extends string> = T extends keyof E
+  ? E[T] extends StandardSchemaV1<unknown, infer D>
+    ? D
+    : unknown
+  : unknown;
+
+export interface OutboundConfig<
+  TTx = unknown,
+  TEvents extends OutboundEventRegistry = NoEventsRegistered,
+> {
   readonly storage: Storage<TTx>;
+  readonly events?: TEvents;
   readonly signing?: SigningStrategy;
   readonly retryPolicy?: RetryStrategy;
   readonly workers?: WorkerStrategy;
@@ -301,8 +328,25 @@ export interface TenantListOptions extends CursorOptions {}
 
 export type TenantPage = Page<Tenant>;
 
-export interface OutboundApi<TTx = unknown> {
-  send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>): Promise<SendResult>;
+export interface OutboundApi<
+  TTx = unknown,
+  TEvents extends OutboundEventRegistry = NoEventsRegistered,
+> {
+  // Registry-driven overload, tried first: when the call site's literal `type`
+  // matches a registered key, `data` is typed as (and validated against) that
+  // schema's output.
+  send<T extends string>(
+    event: SendEvent<EventDataOf<TEvents, T>> & { readonly type: T },
+    options?: SendOptions<TTx>,
+  ): Promise<SendResult>;
+  // Explicit-override / unregistered-type fallback. `type` excludes registered
+  // keys, so a registered type's `data` can only be typed via the overload
+  // above — this overload can't silently swallow a shape mismatch that
+  // overload was meant to catch.
+  send<TData = unknown, T extends string = string>(
+    event: SendEvent<TData> & { readonly type: Exclude<T, keyof TEvents> },
+    options?: SendOptions<TTx>,
+  ): Promise<SendResult>;
   endpoints: {
     create(opts: EndpointCreateOptions & { tx?: TTx }): Promise<Endpoint>;
     update(id: string, opts: EndpointUpdateOptions & { tx?: TTx }): Promise<Endpoint>;
@@ -332,8 +376,11 @@ export interface OutboundApi<TTx = unknown> {
   };
 }
 
-export interface OutboundRuntime<TTx = unknown> {
-  readonly api: OutboundApi<TTx>;
+export interface OutboundRuntime<
+  TTx = unknown,
+  TEvents extends OutboundEventRegistry = NoEventsRegistered,
+> {
+  readonly api: OutboundApi<TTx, TEvents>;
   readonly pool: WorkerPool;
   readonly storage: Storage<TTx>;
   readonly clock: Clock;
@@ -377,9 +424,10 @@ function toTenant(rec: TenantRecord): Tenant {
   };
 }
 
-export function buildOutboundRuntime<TTx = unknown>(
-  config: OutboundConfig<TTx>,
-): OutboundRuntime<TTx> {
+export function buildOutboundRuntime<
+  TTx = unknown,
+  TEvents extends OutboundEventRegistry = NoEventsRegistered,
+>(config: OutboundConfig<TTx, TEvents>): OutboundRuntime<TTx, TEvents> {
   const clock: Clock = config.clock ?? systemClock;
   const emitter = new PostelEventEmitter();
   if (config.workers && config.workers.kind !== "in-process") {
@@ -439,10 +487,15 @@ export function buildOutboundRuntime<TTx = unknown>(
       : {}),
     ...(config.signing !== undefined ? { signing: config.signing } : {}),
   });
-  const api: OutboundApi<TTx> = {
-    async send<TData = unknown>(event: SendEvent<TData>, options?: SendOptions<TTx>) {
+  const api: OutboundApi<TTx, TEvents> = {
+    async send(event: SendEvent<unknown> & { readonly type: string }, options?: SendOptions<TTx>) {
       return sendImpl(
-        { storage: config.storage, clock, defaultTenantId: config.defaultTenantId ?? null },
+        {
+          storage: config.storage,
+          clock,
+          defaultTenantId: config.defaultTenantId ?? null,
+          ...(config.events !== undefined ? { events: config.events } : {}),
+        },
         event,
         options,
       );

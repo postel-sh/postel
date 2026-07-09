@@ -1,4 +1,6 @@
 import type { Clock } from "../clock.js";
+import { EventValidation } from "../errors.js";
+import type { OutboundEventRegistry } from "../outbound.js";
 import type { SendResult } from "../outbound.js";
 import type { NewMessage, Storage } from "../storage/types.js";
 import { durationToMs } from "./internal/duration.js";
@@ -19,6 +21,7 @@ export interface SendContext {
   readonly storage: Storage;
   readonly clock: Clock;
   readonly defaultTenantId?: string | null;
+  readonly events?: OutboundEventRegistry;
 }
 
 export async function sendImpl(
@@ -37,12 +40,20 @@ export async function sendImpl(
     ttlSeconds = Math.max(0, Math.floor(ms / 1000));
     expiresAt = new Date(createdAt.getTime() + ms);
   }
+  let data = event.data ?? null;
+  const schema =
+    ctx.events && Object.hasOwn(ctx.events, event.type) ? ctx.events[event.type] : undefined;
+  if (schema) {
+    const out = await schema["~standard"].validate(event.data);
+    if (out.issues) throw new EventValidation(out.issues);
+    data = out.value ?? null;
+  }
   const id = newMessageId();
   const row: NewMessage = {
     id,
     tenantId,
     type: event.type,
-    data: event.data ?? null,
+    data,
     channels: event.channels ?? null,
     idempotencyKey: event.idempotencyKey ?? null,
     version: event.version ?? null,

@@ -63,6 +63,29 @@ await postel.outbound.endpoints.create({
 
 Filter strings support globs and (for advanced cases) a custom `filter: (event) => boolean` predicate. See [Endpoints](/docs/outbound/endpoints).
 
+## Validating what you send
+
+Attach a [Standard Schema](https://github.com/standard-schema/standard-schema) — a zod (≥3.24), valibot, or arktype schema — to an event `type` in `outbound.events`, and `send()` validates and types `data` for that type end to end. This mirrors the inbound side's `schema` (see [Validating the payload](/docs/inbound/verify#validating-the-payload)): `@postel/core` takes no dependency on the schema library.
+
+```ts title="lib/postel.ts"
+import { Postel, InMemoryStorage } from "@postel/core";
+import { z } from "zod";
+
+export const postel = Postel({
+  outbound: {
+    storage: InMemoryStorage(),
+    events: {
+      "user.created": z.object({ id: z.string() }),
+    },
+  },
+});
+
+// data is typed { id: string } — inferred from the registered schema.
+await postel.outbound.send({ type: "user.created", data: { id: "u_1" } });
+```
+
+If `data` doesn't satisfy the registered schema, `send()` throws `EventValidation` (code `EVENT_VALIDATION`) and does not write an outbox row — the same class and code the inbound side throws, so a single catch handles both directions. Event types not present in `events` stay exactly as permissive as `send()` is without an `events` registry configured at all: `data` is `unknown`, no validation runs. This is additive — leave `events` unset and nothing changes.
+
 ## What about idempotency on send?
 
 `SendEvent` accepts an optional `idempotencyKey`. If the caller provides one, the outbox uses a unique constraint on `(idempotencyKey)` to enforce at-most-once *enqueuing* — a repeated call with the same key resolves to the existing message's `id` with `reused: true` instead of inserting a second row. That flag is how you tell "accepted" from "deduplicated"; sends without a key always report `reused: false`.

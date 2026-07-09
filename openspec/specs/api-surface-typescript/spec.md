@@ -79,7 +79,7 @@ The canonical class ↔ code mapping is:
 | `EndpointValidation` | `ENDPOINT_VALIDATION` |
 | `SsrfBlocked` | `SSRF_BLOCKED` |
 
-`EventValidation` additionally carries the failing schema's `issues` (a `ReadonlyArray<StandardSchemaV1.Issue>`).
+`EventValidation` additionally carries the failing schema's `issues` (a `ReadonlyArray<StandardSchemaV1.Issue>`). `EventValidation` is thrown from two sites — the receiver's `verify()` (per-source `schema` mismatch) and the sender's `send()` (per-type `events` registry mismatch, per `sender`'s "Per-type event schema validation on send") — with the same class and code in both directions.
 
 Adding a new error class MUST add both names atomically. The `receiver` capability's error-code list and this table are synchronized — drift between the two is treated as a bug.
 
@@ -102,6 +102,12 @@ Adding a new error class MUST add both names atomically. The `receiver` capabili
 - **WHEN** a verified payload fails its source's `schema`
 - **THEN** the thrown error satisfies `err instanceof EventValidation` AND `err.code === 'EVENT_VALIDATION'`
 - **AND** `err.issues` lists the schema validation issues
+
+#### Scenario: EventValidation on the send path uses the same class and code
+
+- **WHEN** `send()` rejects a message because its `data` fails the registered schema for its `type`
+- **THEN** the thrown error satisfies `err instanceof EventValidation` AND `err.code === 'EVENT_VALIDATION'`
+- **AND** `err.issues` lists the schema validation issues, identical in shape to the receiver-side throw
 
 #### Scenario: Cross-port code parity
 
@@ -412,4 +418,34 @@ Annotating a config with the `PostelConfig` type before passing it to `Postel(..
 - **WHEN** a consumer writes `const config = definePostelConfig({ inbound: { github: { verify: Secret(s) } } })` and `const postel = Postel(config)`
 - **THEN** `postel.inbound.github.verify(body, headers)` type-checks exactly as it would for an inlined config
 - **AND** the same holds for a `definePostelConfig({ outbound: { storage } })` config and `postel.outbound`
+
+### Requirement: Outbound event schema registry
+
+`createPostel`'s outbound config MAY declare `events`: a map from event `type` string literal to a schema implementing the [Standard Schema](https://github.com/standard-schema/standard-schema) v1 interface — the same interface `api-surface-typescript`'s "Per-source event schema validation" requirement already defines for inbound sources. `@postel/core` SHALL reuse the existing inlined Standard Schema v1 interface and SHALL NOT take a new runtime dependency.
+
+When `outbound.events` registers a schema for a given `type`:
+
+- `send()` SHALL validate `event.data` against it and SHALL throw `EventValidation` (code `EVENT_VALIDATION`) on mismatch — see `sender`.
+- `send()`'s `TData` SHALL be inferred from the registered schema's output type when the call site's `type` is a literal matching a registered key, mirroring inbound's `EventOf<S>` inference.
+
+When `type` does not match any registered key, `send()` behaves exactly as it does without a registry: no validation is attempted and `TData` defaults to `unknown`.
+
+**Conformance**: the validation OUTCOME and the non-breaking fallback for unregistered types are CONTRACT, shared with `sender`. The registry config shape and the schema-output type inference are TypeScript-port mechanisms; other ports MAY surface per-type send validation through their own idioms.
+
+#### Scenario: Registered event type is typed and validated
+
+- **WHEN** `outbound.events` registers `"user.created": z.object({ id: z.string() })` and a caller invokes `postel.outbound.send({ type: "user.created", data })`
+- **THEN** `data` is typed as `{ id: string }` at the call site
+- **AND** `send()` validates `data` against the schema before persisting the outbox row
+
+#### Scenario: Invalid data throws EventValidation before persistence
+
+- **WHEN** `send()` is called with a registered `type` and `data` that does not satisfy its schema
+- **THEN** `send()` throws `EventValidation` (code `EVENT_VALIDATION`) carrying the schema issues
+- **AND** no outbox row is persisted for the rejected message
+
+#### Scenario: Unregistered type stays permissive
+
+- **WHEN** no schema is registered for the call site's `type`
+- **THEN** `data` is typed `unknown` (or the caller's explicit `TData` generic) and no validation is attempted, identical to `send()`'s behavior with no `events` registry configured
 
