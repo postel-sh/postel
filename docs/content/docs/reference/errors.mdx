@@ -17,7 +17,7 @@ Error
     ├── SignatureInvalid             code: "SIGNATURE_INVALID"           (inbound)
     ├── UnknownKeyId                 code: "UNKNOWN_KEY_ID"              (inbound)
     ├── RawBytesMismatchDetected     code: "RAW_BYTES_MISMATCH_DETECTED" (inbound)
-    ├── EventValidation              code: "EVENT_VALIDATION"            (inbound)
+    ├── EventValidation              code: "EVENT_VALIDATION"            (inbound + outbound)
     ├── EndpointValidation           code: "ENDPOINT_VALIDATION"         (outbound)
     ├── SsrfBlocked                  code: "SSRF_BLOCKED"                (outbound)
     ├── IdempotencyKeyConflict       code: "IDEMPOTENCY_KEY_CONFLICT"    (reserved)
@@ -94,10 +94,10 @@ if (err instanceof SignatureInvalid) {
 ### `EventValidation`
 
 **Code:** `EVENT_VALIDATION`
-**Thrown by:** `postel.inbound.<source>.verify` — after the signature check, when the source declares a `schema`.
-**When:** The verified `event.data` fails the source's [Standard Schema](https://github.com/standard-schema/standard-schema) (zod / valibot / arktype). Carries the schema's `issues` (`err.issues`).
+**Thrown by:** `postel.inbound.<source>.verify` — after the signature check, when the source declares a `schema`. Also thrown by `postel.outbound.send` when the call site's `type` is registered in `outbound.events` and `data` fails that schema.
+**When:** The event's `data` fails the configured [Standard Schema](https://github.com/standard-schema/standard-schema) (zod / valibot / arktype). Carries the schema's `issues` (`err.issues`).
 
-**Recovery:** `422 Unprocessable Entity` — the framework gate maps `EVENT_VALIDATION` there automatically. The signature was valid but the payload shape was not, so retrying the same body won't help.
+**Recovery:** Inbound: `422 Unprocessable Entity` — the framework gate maps `EVENT_VALIDATION` there automatically. The signature was valid but the payload shape was not, so retrying the same body won't help. Outbound: the `send()` call rejects and no outbox row is written — fix the `data` shape and call again.
 
 ```ts
 if (err instanceof EventValidation) {
