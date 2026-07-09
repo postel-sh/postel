@@ -138,15 +138,14 @@ export function Postel<const C extends PostelConfig>(config: C): PostelInstance<
         };
       }
       if (thresholds?.maxOldestPendingAge !== undefined && depth.oldestPendingAge !== undefined) {
+        const configured = thresholds.maxOldestPendingAge;
         const maxMs =
-          (typeof thresholds.maxOldestPendingAge === "string"
-            ? ttlToSeconds(thresholds.maxOldestPendingAge)
-            : thresholds.maxOldestPendingAge) * 1000;
+          (typeof configured === "string" ? ttlToSeconds(configured) : configured) * 1000;
         if (depth.oldestPendingAge > maxMs) {
           return {
             ok: false,
             ...observed,
-            reason: `oldest pending age ${depth.oldestPendingAge}ms exceeds maxOldestPendingAge ${maxMs}ms`,
+            reason: `oldest pending age ${depth.oldestPendingAge}ms exceeds maxOldestPendingAge ${configured} (${maxMs}ms)`,
           };
         }
       }

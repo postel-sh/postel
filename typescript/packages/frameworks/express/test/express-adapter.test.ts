@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from "@postel/core";
 import { InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
-import express from "express";
+import express, { type ErrorRequestHandler } from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 
@@ -122,6 +122,12 @@ describe("Consumed raw body surfaces a descriptive configuration error [PORT-SPE
     ExpressWebAdapter(vendor(), app).inbound.vendor.post("/webhooks/vendor", (_req, res) => {
       res.json({ ok: true });
     });
+    // Surface the thrown error's message deterministically, independent of the
+    // env-dependent default Express error page.
+    const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+      res.status(500).json({ error: (err as Error).message });
+    };
+    app.use(errorHandler);
 
     const sig = await signed("order.created", "o_1");
     const res = await request(app)
@@ -131,8 +137,8 @@ describe("Consumed raw body surfaces a descriptive configuration error [PORT-SPE
       .send(sig.body);
 
     expect(res.status).toBe(500);
-    expect(res.text).toMatch(/body-parsing middleware/);
-    expect(res.text).not.toContain("SIGNATURE_INVALID");
+    expect(res.body.error).toMatch(/body-parsing middleware/);
+    expect(JSON.stringify(res.body)).not.toContain("SIGNATURE_INVALID");
   });
 });
 
