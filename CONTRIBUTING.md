@@ -11,7 +11,8 @@ postel/
 ├── specs/                # shared: wire format, DB schema, compliance contract
 ├── openspec/             # spec-driven dev spine (active changes + main specs)
 ├── decisions/            # ADRs
-├── compliance/           # executable test suite every port must pass (planned)
+├── compliance/           # executable test suite every port must pass (vectors + Go runner)
+├── docs/                 # Fumadocs / Next.js docs site (postel.dev); standalone Node install
 ├── typescript/           # TS port root (pnpm workspace; toolchain in ADR 0010)
 │   ├── packages/
 │   │   ├── core/  edge/
@@ -121,4 +122,4 @@ If you discover the spec is incomplete or wrong: stop, open an OpenSpec change t
 
 ## When in doubt
 
-Re-read the relevant capability spec. If the answer isn't there, the spec needs an update — open an OpenSpec change. For per-language idioms, also consult `<lang>/AGENTS.md` (once each language root exists).
+Re-read the relevant capability spec. If the answer isn't there, the spec needs an update — open an OpenSpec change. For per-language idioms, also consult `<lang>/AGENTS.md` (e.g. `typescript/AGENTS.md`).

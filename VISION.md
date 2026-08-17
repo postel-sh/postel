@@ -80,7 +80,7 @@ If any of those are required, Svix or Hookdeck Outpost is the right tool.
 
 ## 5. Operational principles
 
-- **OSS license**: MIT or Apache-2.0 (decided before 1.0).
+- **OSS license**: MIT.
 - **Single-vendor friendly governance**: maintainer-led with clear contribution guidelines.
 - **No "open-core"**: every feature in the capability specs ships in OSS, forever.
 - **Standard Webhooks consortium engagement**: pursue official "delivery layer" reference implementation status.
