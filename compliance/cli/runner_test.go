@@ -286,6 +286,153 @@ expected:
 	}
 }
 
+// TestRun_SkippedVectorsReportOwnStatus covers the "skipped vectors are
+// reported as their own status" bug fix: a mode-mismatched vector must not
+// count as a pass, and the exit code must reflect only executed vectors.
+func TestRun_SkippedVectorsReportOwnStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	vectorsDir := t.TempDir()
+	bodyB64 := base64.StdEncoding.EncodeToString([]byte(`{}`))
+	mustWrite(t, filepath.Join(vectorsDir, "receiver-accept.yaml"), fmt.Sprintf(`id: smoke/receiver-accept
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: receiver-mode vector executed against --target
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_x
+    webhook-timestamp: "1735689600"
+    webhook-signature: v1,YWJj
+  body_b64: %s
+secrets: []
+signature_mode: static
+expected:
+  outcome: accept
+`, bodyB64))
+	mustWrite(t, filepath.Join(vectorsDir, "sender-skip.yaml"), `id: sender/smoke/skip-check
+mode: sender
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: sender-mode vector with no --sender-control supplied
+triggers:
+  - op: register_endpoint
+expected:
+  outcome: accept
+`)
+
+	opts := &cliOpts{target: srv.URL, format: "json", now: time.Now().UTC(), vectorsDir: vectorsDir, schemaDir: canonicalSchemaDir(t)}
+	buf := &bytes.Buffer{}
+	code, err := run(opts, buf)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0 (the only executed vector passes)\n%s", code, buf.String())
+	}
+	var suite SuiteRun
+	if err := json.Unmarshal(buf.Bytes(), &suite); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(suite.Results) != 2 {
+		t.Fatalf("results: got %d, want 2", len(suite.Results))
+	}
+	var receiverResult, senderResult *TestResult
+	for i := range suite.Results {
+		r := &suite.Results[i]
+		if r.VectorID == "smoke/receiver-accept" {
+			receiverResult = r
+		}
+		if r.VectorID == "sender/smoke/skip-check" {
+			senderResult = r
+		}
+	}
+	if receiverResult == nil || senderResult == nil {
+		t.Fatalf("expected both vectors in results: %+v", suite.Results)
+	}
+	if receiverResult.Skipped || !receiverResult.Pass {
+		t.Errorf("receiver vector: got skipped=%v pass=%v, want skipped=false pass=true", receiverResult.Skipped, receiverResult.Pass)
+	}
+	if !senderResult.Skipped {
+		t.Errorf("sender vector: got skipped=false, want skipped=true (no --sender-control)")
+	}
+	if senderResult.Pass {
+		t.Errorf("sender vector: got pass=true, a skipped vector must never report pass")
+	}
+	pass, fail, skip := suite.Summary()
+	if pass != 1 || fail != 0 || skip != 1 {
+		t.Errorf("summary: got pass=%d fail=%d skip=%d, want pass=1 fail=0 skip=1", pass, fail, skip)
+	}
+}
+
+// TestRun_OnlyFilterRestrictsWhichVectorsRun covers the spec-mandated
+// "Categorization filters in CLI" scenario: --only <pattern> excludes
+// non-matching vectors from the run entirely (not merely marks them).
+func TestRun_OnlyFilterRestrictsWhichVectorsRun(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	vectorsDir := t.TempDir()
+	bodyB64 := base64.StdEncoding.EncodeToString([]byte(`{}`))
+	writeAcceptVector := func(relPath, id, capability string) {
+		mustWrite(t, filepath.Join(vectorsDir, relPath), fmt.Sprintf(`id: %s
+requirement:
+  capability: %s
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: for --only filter test
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_x
+    webhook-timestamp: "1735689600"
+    webhook-signature: v1,YWJj
+  body_b64: %s
+secrets: []
+signature_mode: static
+expected:
+  outcome: accept
+`, id, capability, bodyB64))
+	}
+	writeAcceptVector("signature-v1/valid.yaml", "signature-v1/valid", "standard-webhooks-compliance")
+	writeAcceptVector("signature-v1a/valid.yaml", "signature-v1a/valid", "standard-webhooks-compliance")
+
+	opts := &cliOpts{
+		target:     srv.URL,
+		format:     "json",
+		now:        time.Now().UTC(),
+		vectorsDir: vectorsDir,
+		schemaDir:  canonicalSchemaDir(t),
+		only:       "standard-webhooks-compliance/signature-v1/*",
+	}
+	buf := &bytes.Buffer{}
+	code, err := run(opts, buf)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0\n%s", code, buf.String())
+	}
+	var suite SuiteRun
+	if err := json.Unmarshal(buf.Bytes(), &suite); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(suite.Results) != 1 {
+		t.Fatalf("results: got %d, want 1 (only signature-v1/valid matches the filter)", len(suite.Results))
+	}
+	if suite.Results[0].VectorID != "signature-v1/valid" {
+		t.Errorf("filtered result: got %q, want %q", suite.Results[0].VectorID, "signature-v1/valid")
+	}
+}
+
 func TestRun_EmptyVectorsDirExitsZero(t *testing.T) {
 	vectorsDir := t.TempDir()
 	opts := &cliOpts{target: "http://nowhere.invalid", format: "json", now: time.Now().UTC(), vectorsDir: vectorsDir, schemaDir: canonicalSchemaDir(t)}

@@ -62,6 +62,32 @@ func TestParseFlags_NowRejectsBadFormat(t *testing.T) {
 	}
 }
 
+func TestParseFlags_OnlyAcceptsPattern(t *testing.T) {
+	opts, err := parseFlags("compliance", []string{
+		"--target", "http://x",
+		"--only", "standard-webhooks-compliance/signature-v1/*",
+	}, os.Stderr)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if opts.only != "standard-webhooks-compliance/signature-v1/*" {
+		t.Errorf("only: got %q", opts.only)
+	}
+}
+
+func TestParseFlags_OnlyRejectsBadPattern(t *testing.T) {
+	_, err := parseFlags("compliance", []string{
+		"--target", "http://x",
+		"--only", "[",
+	}, os.Stderr)
+	if err == nil {
+		t.Fatalf("expected error for malformed --only pattern")
+	}
+	if !strings.Contains(err.Error(), "--only") {
+		t.Errorf("error should mention --only: %v", err)
+	}
+}
+
 func TestParseFlags_DefaultFormatIsText(t *testing.T) {
 	buf := &bytes.Buffer{}
 	_ = buf

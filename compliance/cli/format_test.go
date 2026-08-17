@@ -39,6 +39,121 @@ func sampleSuite() *SuiteRun {
 	}
 }
 
+func sampleSuiteWithSkip() *SuiteRun {
+	s := sampleSuite()
+	s.Results = append(s.Results, TestResult{
+		VectorID:    "sender/wire-output/hmac-v1-byte-stable",
+		Capability:  "standard-webhooks-compliance",
+		Requirement: "Compliant headers, signatures, payload structure, and prefixes by default",
+		Description: "sender-mode vector run without --sender-control",
+		Expected:    VectorExpected{Outcome: "accept"},
+		Skipped:     true,
+		Error:       "skipped: sender-mode vector requires --sender-control",
+		DurationMs:  0,
+	})
+	return s
+}
+
+func TestWriteText_SkippedNeverReportsAsPassOrFail(t *testing.T) {
+	buf := &bytes.Buffer{}
+	if err := WriteFormatted(buf, "text", sampleSuiteWithSkip()); err != nil {
+		t.Fatalf("WriteFormatted: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "SKIP  sender/wire-output/hmac-v1-byte-stable") {
+		t.Errorf("missing SKIP line: %s", out)
+	}
+	if !strings.Contains(out, "1 pass / 1 fail / 1 skipped — 2 executed, 3 total") {
+		t.Errorf("missing honest summary line: %s", out)
+	}
+}
+
+func TestWriteJSON_SkippedFieldAndSummary(t *testing.T) {
+	buf := &bytes.Buffer{}
+	if err := WriteFormatted(buf, "json", sampleSuiteWithSkip()); err != nil {
+		t.Fatalf("WriteFormatted: %v", err)
+	}
+	var got struct {
+		Results []TestResult `json:"results"`
+		Summary struct {
+			Total    int `json:"total"`
+			Executed int `json:"executed"`
+			Pass     int `json:"pass"`
+			Fail     int `json:"fail"`
+			Skipped  int `json:"skipped"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if got.Summary.Total != 3 || got.Summary.Executed != 2 || got.Summary.Pass != 1 || got.Summary.Fail != 1 || got.Summary.Skipped != 1 {
+		t.Errorf("summary: got %+v", got.Summary)
+	}
+	var sawSkipped bool
+	for _, r := range got.Results {
+		if r.VectorID == "sender/wire-output/hmac-v1-byte-stable" {
+			sawSkipped = true
+			if !r.Skipped || r.Pass {
+				t.Errorf("skipped result: got skipped=%v pass=%v, want skipped=true pass=false", r.Skipped, r.Pass)
+			}
+		}
+	}
+	if !sawSkipped {
+		t.Fatalf("skipped vector missing from JSON results")
+	}
+}
+
+func TestWriteTAP_SkippedUsesSkipDirective(t *testing.T) {
+	buf := &bytes.Buffer{}
+	if err := WriteFormatted(buf, "tap", sampleSuiteWithSkip()); err != nil {
+		t.Fatalf("WriteFormatted: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "ok 3 sender/wire-output/hmac-v1-byte-stable") || !strings.Contains(out, "# SKIP skipped: sender-mode vector requires --sender-control") {
+		t.Errorf("missing TAP skip directive: %s", out)
+	}
+	if !strings.Contains(out, "# 2 executed (1 pass, 1 fail), 1 skipped") {
+		t.Errorf("missing TAP summary trailer: %s", out)
+	}
+}
+
+func TestWriteJUnit_SkippedElementAndAttribute(t *testing.T) {
+	buf := &bytes.Buffer{}
+	if err := WriteFormatted(buf, "junit", sampleSuiteWithSkip()); err != nil {
+		t.Fatalf("WriteFormatted: %v", err)
+	}
+	out := buf.String()
+	var parsed struct {
+		Tests    int `xml:"tests,attr"`
+		Failures int `xml:"failures,attr"`
+		Skipped  int `xml:"skipped,attr"`
+		Cases    []struct {
+			Name    string `xml:"name,attr"`
+			Skipped *struct {
+				Message string `xml:"message,attr"`
+			} `xml:"skipped"`
+		} `xml:"testcase"`
+	}
+	if err := xml.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("xml unmarshal: %v\n%s", err, out)
+	}
+	if parsed.Tests != 3 || parsed.Failures != 1 || parsed.Skipped != 1 {
+		t.Errorf("counts: got tests=%d failures=%d skipped=%d, want 3/1/1", parsed.Tests, parsed.Failures, parsed.Skipped)
+	}
+	var found bool
+	for _, c := range parsed.Cases {
+		if c.Name == "sender/wire-output/hmac-v1-byte-stable" {
+			found = true
+			if c.Skipped == nil {
+				t.Errorf("skipped testcase missing <skipped> element")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("skipped testcase missing from JUnit output")
+	}
+}
+
 func TestWriteText_PassFailFormatting(t *testing.T) {
 	buf := &bytes.Buffer{}
 	if err := WriteFormatted(buf, "text", sampleSuite()); err != nil {

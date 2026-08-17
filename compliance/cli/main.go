@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path"
 	"time"
 )
 
@@ -16,6 +17,7 @@ type cliOpts struct {
 	now               time.Time
 	vectorsDir        string
 	schemaDir         string
+	only              string
 }
 
 func parseFlags(progName string, args []string, errOut *os.File) (*cliOpts, error) {
@@ -39,8 +41,14 @@ openspec/specs/compliance/spec.md "CLI surface" requirement.
 	nowStr := fs.String("now", "", "Baseline ISO-8601 timestamp for {{now±duration}} resolution (default: wall-clock at run start)")
 	vectorsDir := fs.String("vectors", "./vectors", "Directory containing vector YAML files (relative to current working directory)")
 	schemaDir := fs.String("schema-dir", "", "Directory containing vector.schema.json + key-fixture.schema.json (default: <vectors-dir>/../schema/)")
+	only := fs.String("only", "", "Glob pattern restricting which vectors run, matched against <capability>/<sub-category>/<vector-id> (e.g. standard-webhooks-compliance/signature-v1/*)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
+	}
+	if *only != "" {
+		if _, err := path.Match(*only, ""); err != nil {
+			return nil, fmt.Errorf("--only: %w", err)
+		}
 	}
 	if *target == "" && *senderControl == "" {
 		fs.Usage()
@@ -74,6 +82,7 @@ openspec/specs/compliance/spec.md "CLI surface" requirement.
 		now:              now,
 		vectorsDir:       *vectorsDir,
 		schemaDir:        *schemaDir,
+		only:             *only,
 	}, nil
 }
 
