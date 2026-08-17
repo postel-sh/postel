@@ -393,6 +393,110 @@ describe("At-least-once delivery guarantee", () => {
   });
 });
 
+describe("At-least-once delivery guarantee: cross-endpoint fanout with exhaustion", () => {
+  async function seedEndpointWithId(
+    storage: ReturnType<typeof InMemoryStorage>,
+    id: string,
+    url: string,
+    retryPolicy: unknown,
+  ): Promise<string> {
+    const endpoint = await storage.endpoints.create({
+      id,
+      tenantId: null,
+      url,
+      state: "active",
+      types: null,
+      channels: null,
+      filter: null,
+      retryPolicy,
+      headers: null,
+      signing: null,
+      metadata: null,
+      allowHttp: true,
+      maxInflight: null,
+      http: null,
+      circuitBreaker: null,
+      autoDisable: null,
+    });
+    await storage.secrets.insert({
+      id: `sec_${id}`,
+      endpointId: endpoint.id,
+      algorithm: "v1",
+      status: "primary",
+      priority: 0,
+      encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+      notAfter: null,
+    });
+    return endpoint.id;
+  }
+
+  async function runFanoutExhaustion(registerFastFirst: boolean): Promise<{
+    storage: ReturnType<typeof InMemoryStorage>;
+    messageId: string;
+    slowEndpointId: string;
+    fastEndpointId: string;
+  }> {
+    const slowServer = await startServerWithSequence([500]);
+    const fastServer = await startServerWithSequence([500]);
+    const storage = InMemoryStorage();
+    const slowPolicy = ExponentialBackoff({
+      schedule: ["15ms", "15ms", "15ms"],
+      maxAttempts: 3,
+      jitter: 0,
+    });
+    const fastPolicy = ExponentialBackoff({ schedule: ["15ms"], maxAttempts: 1, jitter: 0 });
+
+    let fastEndpointId: string;
+    let slowEndpointId: string;
+    if (registerFastFirst) {
+      fastEndpointId = await seedEndpointWithId(storage, "ep_fast", fastServer.url(), fastPolicy);
+      slowEndpointId = await seedEndpointWithId(storage, "ep_slow", slowServer.url(), slowPolicy);
+    } else {
+      slowEndpointId = await seedEndpointWithId(storage, "ep_slow", slowServer.url(), slowPolicy);
+      fastEndpointId = await seedEndpointWithId(storage, "ep_fast", fastServer.url(), fastPolicy);
+    }
+
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(600);
+    await postel.stop();
+    await slowServer.close();
+    await fastServer.close();
+    return { storage, messageId: id, slowEndpointId, fastEndpointId };
+  }
+
+  it("Endpoint order [slow, fast]: fast endpoint's exhaustion does not cancel slow endpoint's remaining retries", async () => {
+    const { storage, messageId, slowEndpointId, fastEndpointId } = await runFanoutExhaustion(false);
+    const attempts = await storage.attempts.latestForMessage(messageId);
+    const slowAttempts = attempts.filter((a) => a.endpointId === slowEndpointId);
+    const fastAttempts = attempts.filter((a) => a.endpointId === fastEndpointId);
+    expect(
+      slowAttempts.filter((a) => a.status === "failed" || a.status === "dead-letter"),
+    ).toHaveLength(3);
+    expect(slowAttempts.some((a) => a.status === "dead-letter")).toBe(true);
+    expect(fastAttempts.some((a) => a.status === "dead-letter")).toBe(true);
+    const message = await storage.getMessage(messageId);
+    expect(message?.status).toBe("dispatched");
+  });
+
+  it("Endpoint order [fast, slow]: fast endpoint's exhaustion does not cancel slow endpoint's remaining retries", async () => {
+    const { storage, messageId, slowEndpointId, fastEndpointId } = await runFanoutExhaustion(true);
+    const attempts = await storage.attempts.latestForMessage(messageId);
+    const slowAttempts = attempts.filter((a) => a.endpointId === slowEndpointId);
+    const fastAttempts = attempts.filter((a) => a.endpointId === fastEndpointId);
+    expect(
+      slowAttempts.filter((a) => a.status === "failed" || a.status === "dead-letter"),
+    ).toHaveLength(3);
+    expect(slowAttempts.some((a) => a.status === "dead-letter")).toBe(true);
+    expect(fastAttempts.some((a) => a.status === "dead-letter")).toBe(true);
+    const message = await storage.getMessage(messageId);
+    expect(message?.status).toBe("dispatched");
+  });
+});
+
 describe("Endpoint auto-disable", () => {
   it("Default threshold triggers auto-disable: 100% failure rate over the window with >= minAttempts transitions to disabled", async () => {
     const server = await startServerWithSequence([500]);
