@@ -13,7 +13,7 @@ This change introduces the framework-agnostic core every adapter binds to (`@pos
   - `statusForError(err) / errorBody(err)` — the canonical `PostelError` → HTTP-status policy, in ONE place.
 - **`receiver`** — ADD *Framework adapters gate verification and map protocol errors to HTTP status* (the status table; non-`PostelError` bubbles as 5xx) and *Framework adapters offer optional dedup-acknowledgement* (verify-then-dedup; `2xx` + `X-Postel-Dedup-Result: duplicate`; handler skipped on duplicate).
 - **`distribution-packaging-typescript`** — MODIFIED *Package map* (add `@postel/http`); ADD *Framework adapters share a framework-agnostic HTTP core* (every adapter depends on `@postel/http` for the one error→status policy); MODIFIED *Tree-shakeability* (the core is importable with no framework pulled in).
-- **ADR 0014** records the pattern: framework-agnostic Fetch/outcome core + thin per-framework gate bindings.
+- **ADR 0017** (originally filed and merged as ADR 0014; renumbered 2026-08-17 to resolve a duplicate ADR number) records the pattern: framework-agnostic Fetch/outcome core + thin per-framework gate bindings.
 
 ## Capabilities
 
@@ -36,5 +36,5 @@ DB-schema: unchanged.
 - New `typescript/packages/http/` package (src + tests); depends only on `@postel/core`.
 - `openspec/specs/receiver/spec.md` — two requirements added.
 - `openspec/specs/distribution-packaging-typescript/spec.md` — Package map + Tree-shakeability modified, one requirement added.
-- `decisions/0014-framework-adapter-pattern.md` — new ADR.
+- `decisions/0017-framework-adapter-pattern.md` — new ADR (filed as `0014-framework-adapter-pattern.md`; renumbered 2026-08-17).
 - `scripts/spec-drift-deferred.txt` — add the new packaging-policy requirement, consistent with the other `distribution-packaging-typescript` entries already deferred there.

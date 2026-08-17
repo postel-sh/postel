@@ -3,6 +3,7 @@
 - **Status**: accepted
 - **Date**: 2026-06-02
 - **Decision drivers**: the compliance suite leads and ports follow at their own pace (VISION §8 / the `compliance` capability spec); two ecosystems ship on independent cadences (a Go binary + npm packages); single-vendor team at pre-1.0; the repo is mise-orchestrated with Conventional Commits and OpenSpec as the canonical change record; "never publish from a working tree" (AGENTS.md)
+- **Amendment (2026-08-17)**: the first-release package set (point 5) is widened from 4 to the 16 packages that now ship real code: `@postel/core`, `@postel/http`, `@postel/admin`, `@postel/hono`, `@postel/express`, `@postel/fastify`, `@postel/nestjs`, `@postel/pg`, `@postel/sqlite`, `@postel/mysql`, `@postel/kysely`, `@postel/drizzle`, `@postel/prisma`, `@postel/typeorm`, `@postel/mikro-orm`, `@postel/storage-helpers`. The rule itself is unchanged — un-privating a package adds it to the train — only the count is updated to match the packages actually un-privated since this ADR was written.
 
 ## Context
 
@@ -26,7 +27,7 @@ The compliance suite ships as a versioned binary (ADR 0011), not a registry arti
 
 4. **The suite carries no PATCH.** The compliance track validates that its tag is `MAJOR.MINOR` (no third component) and refuses otherwise. Suite-side fixes re-publish the same `MAJOR.MINOR` or bump MINOR/MAJOR if warranted.
 
-5. **Narrow first-release package set.** Only packages with real code publish: `@postel/core`, `@postel/hono`, `@postel/pg`, `@postel/sqlite`. The scaffold packages and `@postel/compliance-driver` are `"private": true` until they have code; un-privating a package adds it to the train.
+5. **Narrow first-release package set.** Only packages with real code publish. **Resolved (Amendment 2026-08-17): 16 packages now qualify** — `@postel/core`, `@postel/http`, `@postel/admin`, `@postel/hono`, `@postel/express`, `@postel/fastify`, `@postel/nestjs`, `@postel/pg`, `@postel/sqlite`, `@postel/mysql`, `@postel/kysely`, `@postel/drizzle`, `@postel/prisma`, `@postel/typeorm`, `@postel/mikro-orm`, `@postel/storage-helpers` — up from the original 4 (`@postel/core`, `@postel/hono`, `@postel/pg`, `@postel/sqlite`). The scaffold packages (`@postel/cli`, `@postel/effect`, `@postel/nextjs`, `@postel/bun`) and test/driver-only packages (`@postel/compliance-driver`, `@postel/test`, `@postel/storage-testkit`) remain `"private": true` until they have real code; un-privating a package adds it to the train.
 
 6. **No release framework yet.** Changesets and release-please are deferred. The decoupled, GitHub-Release-driven flow is less machinery while one language port exists; revisit (release-please's per-component `linked-versions` is the natural fit) when a second independently-maintained port lands.
 

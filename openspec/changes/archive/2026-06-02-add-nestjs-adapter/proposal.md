@@ -1,6 +1,6 @@
 ## Why
 
-The framework-adapter rework (ADR 0014) now covers Hono, Express, and Fastify on the shared `@postel/http` gate. NestJS — a DI-first framework with a large adopter base — has no Postel adapter, and it is the one mainstream framework whose idiom (guards + decorators) differs enough that the raw middleware/preHandler patterns don't apply. NestJS is also absent from the `receiver` adapter list entirely.
+The framework-adapter rework (ADR 0017, filed as ADR 0014) now covers Hono, Express, and Fastify on the shared `@postel/http` gate. NestJS — a DI-first framework with a large adopter base — has no Postel adapter, and it is the one mainstream framework whose idiom (guards + decorators) differs enough that the raw middleware/preHandler patterns don't apply. NestJS is also absent from the `receiver` adapter list entirely.
 
 ## What Changes
 

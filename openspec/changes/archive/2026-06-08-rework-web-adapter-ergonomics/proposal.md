@@ -27,7 +27,7 @@ No change to `receiver` (its gate/raw-bytes scenarios describe behavior, not fac
 
 ## Wire-format / DB-schema impact
 
-Wire-format: unchanged. DB-schema: unchanged. This is a PORT-SPECIFIC TypeScript ergonomics + naming change permitted by [ADR 0014](../../../decisions/0014-framework-adapter-pattern.md); the verify-to-HTTP wire behavior stays in `@postel/http`.
+Wire-format: unchanged. DB-schema: unchanged. This is a PORT-SPECIFIC TypeScript ergonomics + naming change permitted by [ADR 0017](../../../decisions/0017-framework-adapter-pattern.md) (filed as ADR 0014); the verify-to-HTTP wire behavior stays in `@postel/http`.
 
 ## Impact
 

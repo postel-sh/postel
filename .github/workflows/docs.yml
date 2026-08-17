@@ -4,13 +4,13 @@ on:
   pull_request:
     paths:
       - "docs/**"
-      - "typescript/packages/edge/src/**"
+      - "typescript/packages/core/src/**"
       - ".github/workflows/docs.yml"
   push:
     branches: [main]
     paths:
       - "docs/**"
-      - "typescript/packages/edge/src/**"
+      - "typescript/packages/core/src/**"
       - ".github/workflows/docs.yml"
 
 permissions:
