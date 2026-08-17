@@ -9,7 +9,7 @@ Postel has two independent halves. This page gets each one working from scratch 
 
 ## Receive a webhook
 
-Verify a Standard Webhooks-signed request from Stripe, GitHub, or any compliant producer.
+Verify a Standard Webhooks-signed request from `acme` — a stand-in for any producer that signs with the Standard Webhooks header scheme (`webhook-id` / `webhook-timestamp` / `webhook-signature`). Producers with their own scheme — GitHub's `X-Hub-Signature-256`, Stripe's `Stripe-Signature` — don't match those headers; verify them with a small [custom `Verifier`](/docs/inbound/verify#custom-verifiers) instead, the built-ins only speak Standard Webhooks.
 
 <Steps>
 
@@ -18,6 +18,10 @@ Verify a Standard Webhooks-signed request from Stripe, GitHub, or any compliant 
 ### Install
 
 <Install packages="@postel/core" />
+
+<Callout title="Nothing is on npm yet" type="warn">
+Every `@postel/*` package sits at `0.0.0` with no release tag, so this install fails until the first release ships. Clone [the repo](https://github.com/postel-sh/postel) and build from `typescript/` instead.
+</Callout>
 
 Zero runtime dependencies. If you use a web framework, add its adapter too — `@postel/hono`, `@postel/express`, `@postel/fastify`, `@postel/nestjs`, or `@postel/http` for any Fetch runtime.
 
@@ -35,13 +39,12 @@ import { config } from "./config.js";
 
 export const postel = Postel({
   inbound: {
-    github: { verify: Secret(config.githubWebhookSecret) },
-    // stripe: { verify: Secret(config.stripeWebhookSecret) },
+    acme: { verify: Secret(config.acmeWebhookSecret) },
   },
 });
 ```
 
-`Secret(...)` is a *verifier strategy* — swap in `Keyset({ jwksUri })` for JWKS, or pass an array for [key rotation](/docs/inbound/key-rotation). `postel.inbound.github` is fully typed; sources you didn't configure don't exist on the type.
+`Secret(...)` is a *verifier strategy* — swap in `Keyset({ jwksUri })` for JWKS, or pass an array for [key rotation](/docs/inbound/key-rotation). `postel.inbound.acme` is fully typed; sources you didn't configure don't exist on the type.
 
 <Callout title="Declaring the config separately? Keep the literal.">
 
@@ -51,10 +54,10 @@ export const postel = Postel({
 import { definePostelConfig, Postel, Secret } from "@postel/core";
 
 const config = definePostelConfig({
-  inbound: { github: { verify: Secret(process.env.GH_SECRET!) } },
+  inbound: { acme: { verify: Secret(process.env.ACME_SECRET!) } },
 });
 
-export const postel = Postel(config); // postel.inbound.github is still typed
+export const postel = Postel(config); // postel.inbound.acme is still typed
 ```
 
 </Callout>
@@ -73,11 +76,11 @@ The verifier runs over the **exact received bytes** — never re-parse and re-se
 
 Any Fetch runtime — Next.js Route Handlers, Bun, Deno:
 
-```ts title="app/api/webhooks/github/route.ts"
+```ts title="app/api/webhooks/acme/route.ts"
 import { fetchWebhook } from "@postel/http";
 import { postel } from "@/lib/postel";
 
-const handler = fetchWebhook(postel.inbound.github, {
+const handler = fetchWebhook(postel.inbound.acme, {
   onVerified: async ({ event }) => {
     console.log("received:", event.type, event.data);
   },
@@ -97,7 +100,7 @@ import { postel } from "./lib/postel";
 
 const app = new Hono();
 
-app.post("/webhooks/github", verifyWebhook(postel.inbound.github), (c) => {
+app.post("/webhooks/acme", verifyWebhook(postel.inbound.acme), (c) => {
   const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · raw bytes intact
   return c.json({ ok: true, type: event.type });
 });
@@ -115,7 +118,7 @@ import { postel } from "./lib/postel";
 const app = express();
 
 // verifyWebhook mounts express.raw() + the gate — don't put express.json() ahead of it
-app.post("/webhooks/github", verifyWebhook(postel.inbound.github), (req, res) => {
+app.post("/webhooks/acme", verifyWebhook(postel.inbound.acme), (req, res) => {
   res.json({ ok: true, type: req.postel?.event.type });
 });
 ```
@@ -133,8 +136,8 @@ const app = Fastify();
 await app.register(fastifyPostel); // raw-body parser; register on a webhook-only scope
 
 app.post(
-  "/webhooks/github",
-  { preHandler: verifyWebhook(postel.inbound.github) },
+  "/webhooks/acme",
+  { preHandler: verifyWebhook(postel.inbound.acme) },
   async (req) => ({ ok: true, type: req.postel?.event.type }),
 );
 ```
@@ -152,8 +155,8 @@ import type { WebhookEvent } from "@postel/core";
 
 @Controller("webhooks")
 export class WebhooksController {
-  @Post("github")
-  @UseGuards(WebhookGuard("github"))
+  @Post("acme")
+  @UseGuards(WebhookGuard("acme"))
   handle(@Event() event: WebhookEvent) {
     return { ok: true, type: event.type };
   }
@@ -179,11 +182,11 @@ import { signFixture } from "@postel/core";
 import { config } from "../lib/config.js";
 
 const fixture = await signFixture({
-  secret: config.githubWebhookSecret,
+  secret: config.acmeWebhookSecret,
   payload: { type: "issue.opened", data: { id: 42 } },
 });
 
-const res = await fetch("http://localhost:3000/webhooks/github", {
+const res = await fetch("http://localhost:3000/webhooks/acme", {
   method: "POST",
   headers: fixture.headers,
   body: fixture.body,
@@ -220,9 +223,17 @@ export const postel = Postel({
     retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
   },
 });
+
+await postel.start(); // starts the worker pool — nothing is delivered until this runs
 ```
 
 For durable delivery, swap `InMemoryStorage()` for a [storage adapter](/docs/storage) — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql`, or your existing Kysely / Drizzle / Prisma / TypeORM / MikroORM instance.
+
+<Callout title="send() queues, start() delivers">
+
+`send()` only writes an outbox row; a worker delivers it. That worker doesn't exist until `postel.start()` runs — call it once, right after configuring, or messages sit in the outbox forever. Call `await postel.stop()` on graceful shutdown to let in-flight attempts finish.
+
+</Callout>
 
 </Step>
 

@@ -19,6 +19,8 @@ const postel = Postel({
   },
 });
 
+await postel.start(); // starts the worker pool; call postel.stop() on shutdown
+
 // Inside a transaction:
 await db.tx(async (tx) => {
   await db.orders.insert({ id: "ord_123", status: "paid" }, { tx });

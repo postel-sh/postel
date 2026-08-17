@@ -122,12 +122,13 @@ import { config } from "./config.js";
 
 export const postel = Postel({
   inbound: {
-    stripe: {
-      verify: Secret(config.stripeSecret),
+    // any producer signing with the Standard Webhooks header scheme
+    acme: {
+      verify: Secret(config.acmeSecret),
     },
     // rotate keys with zero downtime — accept either during the window
-    github: {
-      verify: [Secret(config.githubSecretNew), Secret(config.githubSecretOld)],
+    billing: {
+      verify: [Secret(config.billingSecretNew), Secret(config.billingSecretOld)],
     },
     // or verify asymmetric signatures straight from a JWKS endpoint
     partner: {
@@ -144,7 +145,9 @@ export const postel = Postel({
     signing: HmacV1(), // or Ed25519V1a() for asymmetric + JWKS
     retryPolicy: ExponentialBackoff({ maxAttempts: 8 }),
   },
-});`;
+});
+
+await postel.start(); // starts the worker pool — required before anything delivers`;
 
 const shikiOptions = {
   lang: "typescript",
@@ -187,7 +190,7 @@ const personas: ReadonlyArray<Persona> = [
   {
     icon: <ArrowDownToLineIcon className="size-5" />,
     title: "I'm receiving webhooks",
-    body: "Verify signed requests from Stripe, GitHub, or any Standard Webhooks producer — correctly, the first time.",
+    body: "Verify signed requests from any Standard Webhooks producer, or bring a small custom verifier for GitHub, Stripe, and other proprietary schemes — correctly, the first time.",
     href: "/docs/inbound",
   },
   {
@@ -333,6 +336,13 @@ export default async function HomePage() {
             </div>
             <div className="mt-6 max-w-sm">
               <Install packages="@postel/core" />
+              <p className="text-fd-muted-foreground mt-2 text-xs">
+                Nothing&apos;s on npm yet — clone{" "}
+                <a href="https://github.com/postel-sh/postel" className="underline">
+                  the repo
+                </a>{" "}
+                and build from <code>typescript/</code> instead.
+              </p>
             </div>
           </div>
 
