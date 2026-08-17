@@ -10,6 +10,7 @@ import {
   type Type,
   createParamDecorator,
 } from "@nestjs/common";
+import { ConfigurationError } from "@postel/core";
 import type {
   ComposedVerifyResult,
   InboundApi,
@@ -52,7 +53,18 @@ Module({})(PostelModule);
 function toBytes(body: unknown): Uint8Array {
   if (body instanceof Uint8Array) return body;
   if (typeof body === "string") return new TextEncoder().encode(body);
-  return new Uint8Array(0);
+  // A bodyless request never populates `req.rawBody`/`req.body`; let verification
+  // reject it as a malformed/missing-header 400 rather than blaming the integrator.
+  if (body === undefined || body === null) return new Uint8Array(0);
+  // Anything else — a parsed object — means the Nest app's global body parser
+  // consumed the raw bytes before the guard ran (no `rawBody: true` at bootstrap).
+  throw new ConfigurationError(
+    "Postel's WebhookGuard received an already-parsed request body. NestJS's body parser " +
+      "consumed the raw bytes before the guard ran, so the signature cannot be verified against " +
+      "the original payload. Bootstrap the Nest app with `rawBody: true` (e.g. " +
+      "`NestFactory.create(AppModule, { rawBody: true })`) so `req.rawBody` carries the " +
+      "untouched bytes.",
+  );
 }
 
 export function WebhookGuard(key: string, opts?: WebhookHandlerOptions): Type<CanActivate> {

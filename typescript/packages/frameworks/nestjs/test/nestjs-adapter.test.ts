@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { type ExecutionContext, HttpException } from "@nestjs/common";
-import { NotImplementedError, Postel, Secret, signFixture } from "@postel/core";
+import { ConfigurationError, NotImplementedError, Postel, Secret, signFixture } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
 import { NestjsWebAdapter, WebhookGuard } from "../src/index.js";
@@ -76,6 +76,25 @@ describe("Framework adapters preserve raw bytes", () => {
     const guard = new Guard(fakePostel as never);
     const req = { rawBody: "{}", headers: {}, method: "POST" };
     await expect(guard.canActivate(ctx(req))).rejects.toBeInstanceOf(NotImplementedError);
+  });
+});
+
+describe("Consumed raw body surfaces a descriptive configuration error [PORT-SPECIFIC]", () => {
+  it("NestJS WebhookGuard without rawBody enabled", async () => {
+    const Guard = WebhookGuard("vendor");
+    const guard = new Guard(vendor());
+    const sig = await signed("order.created", "o_1");
+    // No `rawBody: true` at bootstrap: `req.rawBody` is absent and `req.body`
+    // is the already-parsed body from Nest's global body parser.
+    const req = { body: JSON.parse(sig.body), headers: { ...sig.headers }, method: "POST" };
+    let caught: unknown;
+    try {
+      await guard.canActivate(ctx(req));
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ConfigurationError);
+    expect((caught as Error).message).toMatch(/rawBody/);
   });
 });
 

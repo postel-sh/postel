@@ -1,4 +1,5 @@
 import { type AdminRouterOptions, adminRouter } from "@postel/admin";
+import { ConfigurationError } from "@postel/core";
 import type {
   ComposedVerifyResult,
   EventOf,
@@ -80,7 +81,19 @@ export const fastifyPostel: FastifyPluginAsync = fp(
 );
 
 function rawBuffer(body: unknown): Uint8Array {
-  return body instanceof Uint8Array ? body : new Uint8Array(0);
+  if (body instanceof Uint8Array) return body;
+  // A bodyless request never populates `req.body`; let verification reject it as
+  // a malformed/missing-header 400 rather than blaming the integrator.
+  if (body === undefined || body === null) return new Uint8Array(0);
+  // Anything else means Fastify's built-in content-type parser (e.g. the default
+  // application/json parser) parsed the raw bytes before the gate ran.
+  throw new ConfigurationError(
+    "Postel's webhook gate received an already-parsed request body. Fastify's built-in " +
+      "content-type parser consumed the raw bytes before the gate ran, so the signature cannot " +
+      "be verified against the original payload. Register the `fastifyPostel` plugin (which " +
+      "installs a raw-buffer content-type parser) before wiring `verifyWebhook` — or use " +
+      "`FastifyWebAdapter`, which installs it automatically.",
+  );
 }
 
 function sendOutcome(
