@@ -59,6 +59,8 @@ const postel = Postel({
   },
 });
 
+await postel.start(); // starts the in-process worker pool that delivers queued webhooks
+
 // Inside a transaction:
 await db.tx(async (tx) => {
   await db.orders.insert({ id: "ord_123", /* ... */ }, { tx });
@@ -69,7 +71,7 @@ await db.tx(async (tx) => {
 });
 ```
 
-The key insight: `send()` is just an outbox INSERT under the hood. It commits or rolls back atomically with your business write. A separate worker picks the outbox row up and does the HTTP delivery — but you, the application author, never block on the network inside your transaction.
+The key insight: `send()` is just an outbox INSERT under the hood. It commits or rolls back atomically with your business write. A separate worker picks the outbox row up and does the HTTP delivery — but you, the application author, never block on the network inside your transaction. That worker only runs between `postel.start()` and `postel.stop()`; skip `start()` and messages queue forever with no delivery and no error.
 
 ## What's available, and what's next
 
