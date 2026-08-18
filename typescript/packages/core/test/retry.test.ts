@@ -305,7 +305,12 @@ describe("Typed lifecycle event emitter [PORT-SPECIFIC]", () => {
     const off = postel.on("dead-letter", (p) => {
       // Compile-time proof the payload is DeadLetterPayload, not `unknown`.
       const finalError: string = p.finalError;
-      seen.push({ messageId: p.messageId, endpointId: p.endpointId, finalError });
+      seen.push({
+        messageId: p.messageId,
+        endpointId: p.endpointId,
+        tenantId: p.tenantId,
+        finalError,
+      });
     });
     expect(typeof off).toBe("function");
     const { id } = await postel.outbound.send({ type: "evt.x" });

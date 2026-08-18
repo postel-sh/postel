@@ -96,7 +96,9 @@ export function buildRetryDispatcher(
     deps.emitter.emit("attempt", {
       messageId: msg.id,
       endpointId: endpoint.id,
+      tenantId: msg.tenantId,
       status: outcome.status,
+      latencyMs: outcome.latencyMs,
     });
 
     let finalOutcome: DispatchOutcome = outcome;
@@ -117,6 +119,7 @@ export function buildRetryDispatcher(
         deps.emitter.emit("dead-letter", {
           messageId: msg.id,
           endpointId: endpoint.id,
+          tenantId: msg.tenantId,
           finalError: outcome.error ?? "retries exhausted",
         });
         finalOutcome = { ...outcome, status: "dead-letter" };

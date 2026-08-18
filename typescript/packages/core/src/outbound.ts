@@ -2,6 +2,7 @@ import { type Clock, systemClock } from "./clock.js";
 import { NotImplementedError } from "./errors.js";
 import { assertHttpWired } from "./internal/config-guards.js";
 import { ed25519Jwk, ed25519Kid } from "./internal/jwk.js";
+import { MetricsRegistry } from "./observability/metrics.js";
 import { spanAttributes, traceDispatchOne, withSpan } from "./observability/tracing.js";
 import type { CursorOptions, Page } from "./pagination.js";
 import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
@@ -389,6 +390,7 @@ export interface OutboundRuntime<
   readonly storage: Storage<TTx>;
   readonly clock: Clock;
   readonly emitter: PostelEventEmitter;
+  readonly metrics: MetricsRegistry;
 }
 
 function notImplemented(symbol: string): never {
@@ -423,6 +425,9 @@ export function buildOutboundRuntime<
 >(config: OutboundConfig<TTx, TEvents>): OutboundRuntime<TTx, TEvents> {
   const clock: Clock = config.clock ?? systemClock;
   const emitter = new PostelEventEmitter();
+  const metrics = new MetricsRegistry();
+  emitter.on("attempt", (payload) => metrics.recordAttempt(payload));
+  emitter.on("dead-letter", (payload) => metrics.recordDeadLetter(payload));
   if (config.workers && config.workers.kind !== "in-process") {
     // Only the in-process worker pool ships in this release. BullMQ / PgBoss /
     // external-adapter strategies are tagged config slots with no runtime yet —
@@ -504,6 +509,7 @@ export function buildOutboundRuntime<
             options,
           );
           span.setAttribute("postel.message.id", result.id);
+          metrics.recordSend(event.tenantId ?? config.defaultTenantId ?? null, event.type);
           return result;
         },
       );
@@ -665,7 +671,7 @@ export function buildOutboundRuntime<
       },
     },
   };
-  return { api, pool, storage: config.storage, clock, emitter };
+  return { api, pool, storage: config.storage, clock, emitter, metrics };
 }
 
 export function buildOutboundApi<TTx = unknown>(config: OutboundConfig<TTx>): OutboundApi<TTx> {

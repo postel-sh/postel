@@ -1,6 +1,13 @@
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { describe, expect, it } from "vitest";
+import { context, trace } from "@opentelemetry/api";
+import { AsyncHooksContextManager } from "@opentelemetry/context-async-hooks";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   AwsKms,
   ExponentialBackoff,
@@ -234,6 +241,70 @@ describe("Logger pass-through for runtime events [PORT-SPECIFIC]", () => {
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);
     expect(attempts.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Structured JSON logs with trace correlation", () => {
+  it("No active trace omits the field: the forwarded log entry carries no trace_id field", async () => {
+    const server = await start200Server();
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url());
+    const entries: LogEvent[] = [];
+    const postel = Postel({
+      observability: { logger: (e) => entries.push(e) },
+      outbound: { storage, http: LOOPBACK },
+    });
+    await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await waitFor(() => entries.some((e) => e.event === "attempt"), { timeoutMs: 2000 });
+    await postel.stop();
+    await server.close();
+    const attempt = entries.find((e) => e.event === "attempt");
+    expect(attempt).toBeDefined();
+    expect(attempt && "trace_id" in attempt).toBe(false);
+  });
+
+  describe("with an OTel tracer provider registered", () => {
+    const exporter = new InMemorySpanExporter();
+    const contextManager = new AsyncHooksContextManager().enable();
+
+    beforeAll(() => {
+      const provider = new BasicTracerProvider({
+        spanProcessors: [new SimpleSpanProcessor(exporter)],
+      });
+      trace.setGlobalTracerProvider(provider);
+      context.setGlobalContextManager(contextManager);
+    });
+
+    afterAll(() => {
+      trace.disable();
+      context.disable();
+      contextManager.disable();
+    });
+
+    beforeEach(() => {
+      exporter.reset();
+    });
+
+    it("Trace id in log line: the resulting log line contains a trace_id field matching the OTel span", async () => {
+      const server = await start200Server();
+      const storage = InMemoryStorage();
+      await seedEndpoint(storage, server.url());
+      const entries: LogEvent[] = [];
+      const postel = Postel({
+        observability: { logger: (e) => entries.push(e) },
+        outbound: { storage, http: LOOPBACK },
+      });
+      await postel.outbound.send({ type: "evt.x" });
+      await postel.start();
+      await waitFor(() => entries.some((e) => e.event === "attempt"), { timeoutMs: 2000 });
+      await postel.stop();
+      await server.close();
+      const attempt = entries.find((e) => e.event === "attempt");
+      const attemptSpan = exporter.getFinishedSpans().find((s) => s.name === "postel.attempt");
+      expect(attempt?.trace_id).toBeDefined();
+      expect(attempt?.trace_id).toBe(attemptSpan?.spanContext().traceId);
+    });
   });
 });
 

@@ -1,4 +1,6 @@
 import { type InboundApi, type InboundSource, buildInboundApi } from "./inbound.js";
+import { EMPTY_METRICS_SNAPSHOT, type MetricsSnapshot } from "./observability/metrics.js";
+import { getActiveTraceId } from "./observability/tracing.js";
 import {
   type NoEventsRegistered,
   type OutboundApi,
@@ -21,19 +23,35 @@ import { type Duration, ttlToSeconds } from "./ttl.js";
 // A forwarded runtime event. The library forwards the same events surfaced by
 // `postel.on(...)` to `observability.logger` with a severity level. See
 // `Logger pass-through for runtime events` in openspec/specs/observability/spec.md.
+// `trace_id` (the OTel active-span trace id at the moment the event was
+// forwarded) is present only when a trace is actually active — see
+// `Structured JSON logs with trace correlation` in
+// openspec/specs/observability/spec.md.
 export type LogEvent =
-  | { readonly event: "attempt"; readonly level: "debug"; readonly data: AttemptPayload }
+  | {
+      readonly event: "attempt";
+      readonly level: "debug";
+      readonly data: AttemptPayload;
+      readonly trace_id?: string;
+    }
   | {
       readonly event: "circuit-open";
       readonly level: "warn";
       readonly data: CircuitTransitionPayload;
+      readonly trace_id?: string;
     }
   | {
       readonly event: "circuit-close";
       readonly level: "info";
       readonly data: CircuitTransitionPayload;
+      readonly trace_id?: string;
     }
-  | { readonly event: "dead-letter"; readonly level: "error"; readonly data: DeadLetterPayload };
+  | {
+      readonly event: "dead-letter";
+      readonly level: "error";
+      readonly data: DeadLetterPayload;
+      readonly trace_id?: string;
+    };
 
 // Derived from LogEvent so the two can't drift as events/levels are added.
 export type LogLevel = LogEvent["level"];
@@ -65,6 +83,7 @@ export interface LifecycleApi {
   start(): Promise<void>;
   stop(): Promise<void>;
   health(): Promise<HealthStatus>;
+  metrics(): Promise<MetricsSnapshot>;
   on<E extends PostelEvent>(event: E, handler: EventHandler<E>): Unsubscribe;
   off<E extends PostelEvent>(event: E, handler: EventHandler<E>): void;
 }
@@ -112,10 +131,24 @@ export function Postel<const C extends PostelConfig>(config: C): PostelInstance<
 
   const logger = config.observability?.logger;
   if (logger) {
-    emitter.on("attempt", (data) => logger({ event: "attempt", level: "debug", data }));
-    emitter.on("circuit-open", (data) => logger({ event: "circuit-open", level: "warn", data }));
-    emitter.on("circuit-close", (data) => logger({ event: "circuit-close", level: "info", data }));
-    emitter.on("dead-letter", (data) => logger({ event: "dead-letter", level: "error", data }));
+    // `trace_id` is spread in only when a trace is active, so an entry
+    // forwarded with no active trace carries no `trace_id` key at all.
+    const traceId = (): { trace_id?: string } => {
+      const id = getActiveTraceId();
+      return id !== undefined ? { trace_id: id } : {};
+    };
+    emitter.on("attempt", (data) =>
+      logger({ event: "attempt", level: "debug", data, ...traceId() }),
+    );
+    emitter.on("circuit-open", (data) =>
+      logger({ event: "circuit-open", level: "warn", data, ...traceId() }),
+    );
+    emitter.on("circuit-close", (data) =>
+      logger({ event: "circuit-close", level: "info", data, ...traceId() }),
+    );
+    emitter.on("dead-letter", (data) =>
+      logger({ event: "dead-letter", level: "error", data, ...traceId() }),
+    );
   }
 
   const lifecycle: LifecycleApi = {
@@ -160,6 +193,10 @@ export function Postel<const C extends PostelConfig>(config: C): PostelInstance<
         }
       }
       return { ok: true, ...observed };
+    },
+    async metrics() {
+      if (!outboundRuntime) return EMPTY_METRICS_SNAPSHOT;
+      return outboundRuntime.metrics.snapshot(outboundRuntime.storage);
     },
     on(event, handler) {
       return emitter.on(event, handler);

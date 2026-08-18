@@ -12,14 +12,32 @@ import type { EndpointWithSecrets, ReservedMessage } from "../storage/types.js";
 // below degrades to calling straight through with no tracing overhead.
 let otelPromise: Promise<typeof OtelApi | undefined> | undefined;
 
+// Mirrors `otelPromise`'s resolution so `getActiveTraceId()` below can read
+// the module synchronously once `loadOtel()` has resolved at least once —
+// every span helper already awaits `loadOtel()` before running its callback,
+// so by the time a callback is executing, this is populated whenever an OTel
+// provider is actually installed.
+let resolvedOtel: typeof OtelApi | undefined;
+
 function loadOtel(): Promise<typeof OtelApi | undefined> {
   if (otelPromise === undefined) {
     otelPromise = import("@opentelemetry/api").then(
-      (mod) => mod,
+      (mod) => {
+        resolvedOtel = mod;
+        return mod;
+      },
       () => undefined,
     );
   }
   return otelPromise;
+}
+
+// The active span's trace id, when `@opentelemetry/api` is installed, a
+// provider is registered, and a span is currently active. Used to correlate
+// forwarded `LogEvent`s with the active trace (see `Structured JSON logs with
+// trace correlation` in openspec/specs/observability/spec.md).
+export function getActiveTraceId(): string | undefined {
+  return resolvedOtel?.trace.getActiveSpan()?.spanContext().traceId;
 }
 
 const TRACER_NAME = "@postel/core";

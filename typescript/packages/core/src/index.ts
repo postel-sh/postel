@@ -22,6 +22,8 @@ export type {
   PostelEventMap,
 } from "./sender/events.js";
 
+export type { HistogramSample, MetricSample, MetricsSnapshot } from "./observability/metrics.js";
+
 export type {
   ComposedVerifyResult,
   EventOf,
