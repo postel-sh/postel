@@ -1,0 +1,40 @@
+---
+title: "@postel/admin"
+description: adminRouter() — the default-deny Fetch handler behind every adapter's bindAdminRoutes, and the options it takes.
+---
+
+`@postel/admin` exports one factory. The narrative page — routes, auth model, tenant scoping, pagination convention — is [Operations → Admin API](/docs/operations/admin); this page is the API shape.
+
+## adminRouter
+
+```ts nocheck
+function adminRouter(
+  host: AdminHost,
+  opts?: AdminRouterOptions,
+): (req: Request) => Promise<Response>;
+
+interface AdminHost {
+  readonly outbound: OutboundApi;
+  readonly health?: () => Promise<HealthStatus>;
+}
+
+interface AdminRouterOptions {
+  readonly authorize?: (req: Request) => boolean | AuthDecision | Promise<boolean | AuthDecision>;
+  readonly resolveTenant?: (req: Request) => string | undefined;
+}
+
+interface AuthDecision {
+  readonly ok: boolean;
+  readonly tenantId?: string;
+}
+```
+
+- **`host`** — anything carrying the `OutboundApi`; a `PostelInstance` with outbound configured satisfies it. Pass `health` to serve `GET /health`.
+- **`authorize`** — the gate. **Default-deny**: with no `authorize`, every request is `403`. Return `true`/`false`, or an `AuthDecision` whose `tenantId` scopes every route to that tenant ([scoping rules](/docs/operations/admin)).
+- **`resolveTenant`** — derive a tenant scope from the request (header, path) when `authorize` doesn't carry one.
+
+The returned handler is Fetch-native (`Request → Response`), so it mounts anywhere: each web adapter's `admin.bindAdminRoutes(...)` wraps exactly this, and `fetchToExpress` / `fetchToFastify` bridge it onto Node frameworks.
+
+## Error mapping
+
+Route handlers map [`PostelError`s](/docs/reference/errors) with the standard policy plus admin-specific codes: `INVALID_QUERY` → 400, `MESSAGE_NOT_FOUND` / `TENANT_NOT_FOUND` → 404, `MIGRATION_REQUIRED` → 503, unauthorized → 403. Bodies are `{ error: { code, message } }`.

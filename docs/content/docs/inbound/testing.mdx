@@ -1,0 +1,144 @@
+---
+title: Testing webhooks
+icon: shield-check
+description: signFixture() mints correctly-signed Standard Webhooks requests — test a verifier, a gated route, or dedup behavior without a real producer.
+---
+
+You can't test a webhook receiver by POSTing JSON at it — the gate (correctly) rejects anything unsigned. `signFixture` mints a request signed exactly the way a Standard Webhooks producer would, from any `whsec_`-prefixed HMAC secret:
+
+```ts
+import { signFixture } from "@postel/core";
+
+const fixture = await signFixture({
+  secret: "whsec_dGVzdC1zZWNyZXQtZm9yLXlvdXItc3VpdGU=",
+  payload: { type: "order.created", data: { id: "ord_1" } },
+  // optional — defaults: random messageId, now()
+  messageId: "msg_fixed_for_dedup_tests",
+  timestamp: new Date("2026-01-01T00:00:00Z"),
+});
+
+fixture.headers; // { "webhook-id", "webhook-timestamp", "webhook-signature" }
+fixture.body;    // the exact string that was signed — send THESE bytes
+```
+
+Two rules make every test below work:
+
+- **Send `fixture.body` verbatim.** It's the signed byte sequence; re-stringifying your own object breaks the signature (that's [the raw-bytes lesson](/docs/concepts/raw-bytes) working as intended, and a good negative test).
+- **Pin the clock.** Pass `timestamp` to `signFixture` and a matching `clock` to the source config, or signatures start failing when your fixtures age past the ±5-minute window.
+
+```ts title="test/setup.ts"
+import { Postel, Secret } from "@postel/core";
+
+const NOW = new Date("2026-01-01T00:00:00Z");
+const fixedClock = { now: () => NOW, sleep: () => Promise.resolve() };
+
+export const postel = Postel({
+  inbound: {
+    vendor: { verify: Secret(SECRET), clock: fixedClock },
+  },
+});
+```
+
+## Testing a gated route
+
+<Tabs items={["Hono", "Express", "Fastify", "Next.js"]}>
+
+<Tab value="Hono">
+
+```ts title="test/webhook.test.ts"
+const sig = await signFixture({ secret: SECRET, payload: { type: "order.created", data: {} }, timestamp: NOW });
+
+const res = await app.request("/webhooks/vendor", {
+  method: "POST",
+  headers: { ...sig.headers, "content-type": "application/json" },
+  body: sig.body,
+});
+expect(res.status).toBe(200);
+```
+
+</Tab>
+
+<Tab value="Express">
+
+With [supertest](https://github.com/forwardemail/supertest):
+
+```ts title="test/webhook.test.ts"
+const sig = await signFixture({ secret: SECRET, payload: { type: "order.created", data: {} }, timestamp: NOW });
+
+const res = await request(app)
+  .post("/webhooks/vendor")
+  .set(sig.headers)
+  .set("content-type", "application/json")
+  .send(sig.body);
+expect(res.status).toBe(200);
+```
+
+</Tab>
+
+<Tab value="Fastify">
+
+```ts title="test/webhook.test.ts"
+const sig = await signFixture({ secret: SECRET, payload: { type: "order.created", data: {} }, timestamp: NOW });
+
+const res = await app.inject({
+  method: "POST",
+  url: "/webhooks/vendor",
+  headers: { ...sig.headers, "content-type": "application/json" },
+  payload: sig.body,
+});
+expect(res.statusCode).toBe(200);
+```
+
+</Tab>
+
+<Tab value="Next.js">
+
+Route Handlers are plain functions — call them with a `Request`:
+
+```ts title="test/webhook.test.ts"
+const sig = await signFixture({ secret: SECRET, payload: { type: "order.created", data: {} }, timestamp: NOW });
+
+const res = await POST(
+  new Request("http://test/api/webhooks/vendor", {
+    method: "POST",
+    headers: { ...sig.headers, "content-type": "application/json" },
+    body: sig.body,
+  }),
+);
+expect(res.status).toBe(200);
+```
+
+</Tab>
+
+</Tabs>
+
+## The negative tests worth having
+
+```ts
+// Tampered body → 400 (the raw-bytes property, asserted)
+const tampered = JSON.stringify(JSON.parse(sig.body), null, 2);
+
+// Stale timestamp → 400 (replay window)
+const stale = await signFixture({ secret: SECRET, payload, timestamp: new Date(NOW.getTime() - 10 * 60_000) });
+
+// Duplicate webhook-id on a dedup-enabled gate → 2xx + x-postel-dedup-result: duplicate,
+// and the handler must NOT have run a second time (pass a fixed messageId and send twice)
+```
+
+## Sending against a live dev server
+
+The same fixture works over the network — this is the quickstart's "try it locally" step:
+
+```ts title="scripts/send-fixture.ts"
+const fixture = await signFixture({ secret: process.env.VENDOR_SECRET!, payload: { type: "order.created", data: { id: 42 } } });
+
+await fetch("http://localhost:3000/webhooks/vendor", {
+  method: "POST",
+  headers: { ...fixture.headers, "content-type": "application/json" },
+  body: fixture.body,
+});
+```
+
+## Limits
+
+`signFixture` speaks Standard Webhooks HMAC (`v1`) only — it can't fabricate Stripe/GitHub/Shopify/Twilio/Slack signatures (each [provider page](/docs/inbound/providers) names that provider's local-testing route) and doesn't sign `v1a`/Ed25519. Production signing is the [sender's](/docs/outbound) job; the fixture exists so your receiver tests never need a real producer.

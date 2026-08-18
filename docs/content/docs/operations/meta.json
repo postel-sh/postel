@@ -1,6 +1,12 @@
 {
   "title": "Operations",
   "icon": "shield-check",
-  "description": "Run Postel in production — serverless delivery, the admin API, and observability.",
-  "pages": ["serverless", "admin", "observability"]
+  "description": "Run Postel in production \u2014 serverless delivery, the admin API, and observability.",
+  "pages": [
+    "production-checklist",
+    "migrations",
+    "serverless",
+    "admin",
+    "observability"
+  ]
 }

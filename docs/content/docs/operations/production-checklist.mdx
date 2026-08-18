@@ -1,0 +1,40 @@
+---
+title: Production checklist
+description: The dozen decisions between "works on my machine" and a receiver-and-sender you can page someone about.
+---
+
+Everything on this page is covered in depth elsewhere — this is the pass you make once, before real traffic, with links into the details.
+
+## Storage & schema
+
+- [ ] **Swap `InMemoryStorage()` for a [database adapter](/docs/storage).** In-memory loses the outbox on restart and can't coordinate multiple instances.
+- [ ] **Set `autoMigrate: false` and run [`postel migrate`](/docs/operations/migrations) in your deploy step**, so app boot never runs DDL and N instances never race to migrate. The [version handshake](/docs/operations/migrations#the-version-handshake) turns a forgotten migration into a loud boot failure.
+- [ ] **Treat the database as your secret boundary.** Until KMS lands, signing secrets are stored plaintext in `endpoint_secrets.material` — same posture as any secret store without a KMS in front.
+
+## Lifecycle
+
+- [ ] **Call `postel.start()` once at boot** — `send()` only queues; without a worker nothing delivers, silently. On serverless hosts, use [`drain()`](/docs/operations/serverless) on a cron instead.
+- [ ] **Call `await postel.stop()` on graceful shutdown** (SIGTERM handler), so in-flight attempts finish and leases release cleanly.
+- [ ] **Wire `postel.health()` into your readiness probe** — it reports `ok: false` on storage failure or when a configured `observability.health` threshold (`maxOutboxDepth`, `maxOldestPendingAge`) is breached. Also served as `GET /health` by the [admin router](/docs/operations/admin).
+
+## Delivery policy
+
+- [ ] **Choose a [retry schedule](/docs/outbound/retries) deliberately.** The default spans 5s→3d over 9 attempts; a strict SLA customer may deserve a per-endpoint override.
+- [ ] **Leave the circuit breaker and auto-disable on** — one dead endpoint must not saturate the pool. Decide who re-enables a disabled endpoint (a human via the [admin API](/docs/operations/admin), or a reconciliation job).
+- [ ] **Have a dead-letter policy**: alert on the `dead-letter` event (the [alerting recipe](/docs/operations/observability#recipe-dead-letter-alerting)), and know that recovery is one [`replay()`](/docs/outbound/replay) call.
+
+## Security
+
+- [ ] **Receivers: no `Noop()` outside a trusted boundary**, and keep dedup on for non-idempotent handlers — the [delivery guarantees](/docs/concepts/delivery-guarantees) page states exactly what at-least-once means for you.
+- [ ] **Senders: plan [key rotation](/docs/inbound/key-rotation) before you need it** — `rotateSecret({ keepPreviousFor })` gives receivers an overlap window; asymmetric (`Ed25519V1a` + [JWKS](/docs/inbound/key-rotation#jwks--asymmetric-rotation-without-secret-sharing)) means receivers never hold your signing material.
+- [ ] **Lock down the [admin router](/docs/operations/admin)** — it's default-deny (`authorize` required), but it's still your control plane: mount it behind your ops auth, never on a public path.
+- [ ] **SSRF defense stays on.** Endpoint URLs are validated at create time and re-checked at dispatch (`SsrfBlocked`); only set `allowHttp` for endpoints you control.
+
+## Observability
+
+- [ ] **Forward `observability.logger` into your log pipeline** — every delivery and circuit event, with `trace_id` correlation when OTel is active.
+- [ ] **Scrape `postel.metrics()`** (Prometheus-named counters/histograms/gauges) and alert on `webhook_dead_letter_total` and `webhook_outbox_depth` at minimum — the [observability page](/docs/operations/observability) has the export recipe.
+
+## Multi-instance notes
+
+Multiple app instances each running `postel.start()` is the supported topology — workers coordinate through row leases (`FOR UPDATE SKIP LOCKED`), no extra configuration. SQLite is the exception: single-writer semantics make it a one-process deployment.
