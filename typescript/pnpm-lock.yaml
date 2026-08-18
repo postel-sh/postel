@@ -77,7 +77,45 @@ importers:
         specifier: 20.17.10
         version: 20.17.10
 
-  packages/cli: {}
+  packages/cli:
+    dependencies:
+      '@postel/mysql':
+        specifier: workspace:*
+        version: link:../storage/mysql
+      '@postel/pg':
+        specifier: workspace:*
+        version: link:../storage/pg
+      '@postel/sqlite':
+        specifier: workspace:*
+        version: link:../storage/sqlite
+      better-sqlite3:
+        specifier: 12.10.0
+        version: 12.10.0
+      mysql2:
+        specifier: 3.11.5
+        version: 3.11.5
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
+    devDependencies:
+      '@postel/storage-testkit':
+        specifier: workspace:*
+        version: link:../storage/testkit
+      '@testcontainers/mysql':
+        specifier: 10.13.2
+        version: 10.13.2
+      '@testcontainers/postgresql':
+        specifier: 10.13.2
+        version: 10.13.2
+      '@types/better-sqlite3':
+        specifier: 7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: 20.17.10
+        version: 20.17.10
+      '@types/pg':
+        specifier: 8.20.0
+        version: 8.20.0
 
   packages/compliance-driver:
     dependencies:
