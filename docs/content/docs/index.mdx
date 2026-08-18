@@ -36,6 +36,8 @@ The `Postel({ inbound, outbound })` factory composes both — but everywhere els
   <Card icon={<DatabaseIcon />} title="Storage" href="/docs/storage" description="pg / sqlite / mysql, or your Kysely, Drizzle, Prisma, TypeORM, MikroORM instance." />
 </Cards>
 
+On an Effect-TS stack? [`@postel/effect`](/docs/reference/effect) wraps the whole API — Layer-managed lifecycle, typed error channel, Effect-wrapped `send`/`verify`. Want to see it running first? The [nextjs-prisma example](/docs/get-started/examples) round-trips a webhook offline, crash demo included.
+
 ## Where the project stands
 
 Both halves are implemented and exercised end-to-end by the [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) suite. Three things to know before you build on it:

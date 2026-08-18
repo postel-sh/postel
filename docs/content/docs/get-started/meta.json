@@ -2,5 +2,9 @@
   "title": "Get started",
   "icon": "rocket",
   "description": "Install Postel and verify your first webhook.",
-  "pages": ["quickstart", "is-postel-for-me"]
+  "pages": [
+    "quickstart",
+    "examples",
+    "is-postel-for-me"
+  ]
 }

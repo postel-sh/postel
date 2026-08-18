@@ -289,6 +289,7 @@ That's the [transactional outbox](/docs/outbound/send) — no broker, no dispatc
 **Receiving** — the things that bite every integration eventually:
 
 - [Raw bytes](/docs/concepts/raw-bytes) — the single most common silent failure. Read this before you ship.
+- [Testing webhooks](/docs/inbound/testing) — `signFixture` recipes for every framework, plus the negative tests worth having.
 - [Key rotation](/docs/inbound/key-rotation) — rotate secrets with zero downtime.
 - [Deduplication](/docs/inbound/deduplication) — webhooks are at-least-once; here's the atomic helper.
 
@@ -298,4 +299,4 @@ That's the [transactional outbox](/docs/outbound/send) — no broker, no dispatc
 - [Retries & backoff](/docs/outbound/retries) — circuit breaker, dead-letter, auto-disable.
 - [Replay](/docs/outbound/replay) — re-emit historical messages by id, endpoint, or filter.
 
-Not sure Postel fits your stack? Run the [six-line filter](/docs/get-started/is-postel-for-me).
+Prefer to read working code? The [nextjs-prisma example](/docs/get-started/examples) does everything above in one runnable app, crash demo included. Not sure Postel fits your stack? Run the [six-line filter](/docs/get-started/is-postel-for-me).
