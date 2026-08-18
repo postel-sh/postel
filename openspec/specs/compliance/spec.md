@@ -67,15 +67,17 @@ A vector file SHALL declare the following fields:
 - `requirement` — the CONTRACT requirement this vector covers, as `{ capability, title }`. Both fields verbatim-match a `### Requirement: <title>` block in `openspec/specs/<capability>/spec.md`.
 - `description` — human-readable one-line summary.
 - `mode` — OPTIONAL discriminator. Either `"receiver"` (default) or `"sender"`. Absent is equivalent to `"receiver"` to keep v0.1.0 vectors backward-compatible.
-- **Receiver mode (`mode: "receiver"` or omitted)** — REQUIRED `input` and `signature_mode` fields as previously defined: `input.method`, `input.url`, `input.headers`, `input.body_b64`; `signature_mode` is `"static" | "computed"`; `secrets[]` references key fixtures.
+- **Receiver mode (`mode: "receiver"` or omitted)** — REQUIRED `input` and `signature_mode` fields as previously defined: `input.method`, `input.url`, `input.headers`, `input.body_b64`; `signature_mode` is `"static" | "computed"`; `secrets[]` references key fixtures. OPTIONAL `concurrency` (integer ≥ 2): when present, the runner fires the same signed `input` request `concurrency` times concurrently against the target and collects one observed verdict per response, instead of the single-request flow.
 - **Sender mode (`mode: "sender"`)** — REQUIRED `triggers[]`, OPTIONAL `mock_receiver{}`, OPTIONAL `expected_requests[]`. `triggers[]` is an ordered list of control-plane operations: `register_endpoint`, `send`, `start_workers`, `advance_clock`, `wait_for`. `mock_receiver.scripted_responses[]` programs per-request HTTP responses from the embedded mock receiver. `expected_requests[]` is a length-exact list of asserted outgoing HTTP requests (matching headers, body, signature verification against a fixture, optional timing assertion via `arrived_within_ms`, optional `attempt_status` assertion read back via `/control/messages/:id`).
-- `expected` — for sender vectors, `outcome: "accept"` means all expected_requests matched; `outcome: "reject"` means the control-plane call itself rejected (e.g., `EndpointValidation`); receiver-mode semantics are unchanged.
+- `expected` — for sender vectors, `outcome: "accept"` means all expected_requests matched; `outcome: "reject"` means the control-plane call itself rejected (e.g., `EndpointValidation`); receiver-mode semantics are unchanged except for two additive, orthogonal fields:
+  - `response_body_schema` — OPTIONAL, receiver mode only. An embedded JSON Schema (draft 2020-12 subset). When present, the runner parses the observed response body as JSON and validates it against this schema, independently of and in addition to the `outcome`/`error_code` verdict check. A vector MAY use this to assert response-body shape (e.g., "no field named `d` or `k` anywhere in this JWKS document") without inventing a bespoke verdict outcome for it.
+  - `outcomes` — OPTIONAL, receiver mode only, REQUIRED (replacing `outcome`/`error_code`) exactly when the vector's top-level `concurrency` is set. An array of the same length as `concurrency`, naming the unordered multiset of verdict outcomes (`"accept" | "reject" | "duplicate"`, no `error_code`) the runner MUST observe across the `concurrency` concurrent responses, order-independent. This exists because some verdicts (e.g., dedup atomicity: "exactly one of two identical concurrent requests is a duplicate") are only meaningful under a genuine race, which a single `input`/`outcome` pair cannot express.
 
 **YAML safe subset** unchanged.
 
 **Time templating** — sender vectors MAY use `{{now±duration}}` templates inside trigger fields; resolved against `--now`. The `advance_clock` trigger drives the sender's virtual clock independently of `--now`.
 
-**Signature material** — sender vectors with `signing: { fixture_id }` in a `register_endpoint` trigger have the runner load the fixture key from `compliance/vectors/_keys/<fixture>.yaml`, ship it to the sender via `/control/keys/install` or `register_endpoint` directly, and verify outgoing `webhook-signature` headers against the same fixture in `expected_requests[].signature_verifies`.
+**Signature material** — sender vectors with `signing: { fixture_id }` in a `register_endpoint` trigger have the runner load the fixture key from `compliance/vectors/_keys/<fixture>.yaml`, ship it to the sender via `/control/keys/install` or `register_endpoint` directly, and verify outgoing `webhook-signature` headers against the same fixture in `expected_requests[].signature_verifies`. A `concurrency`-bearing receiver-mode vector signs `input` once (same `webhook-id`/`webhook-timestamp`/body across all copies — the point is a true duplicate, not `concurrency` distinct messages) and replays the identical signed request `concurrency` times.
 
 #### Scenario: Sender vector declares mode: sender
 
@@ -160,6 +162,18 @@ A vector file SHALL declare the following fields:
 
 - **WHEN** a vector's `requirement.title` does not match any `### Requirement:` block in `openspec/specs/<requirement.capability>/spec.md`
 - **THEN** the suite's CI check fails with a clear message naming the orphan vector
+
+#### Scenario: response_body_schema validates the observed body independently of outcome
+
+- **WHEN** a receiver-mode vector declares `expected.response_body_schema`
+- **THEN** the runner parses the observed HTTP response body as JSON and validates it against the embedded schema
+- **AND** the vector fails if either the `outcome`/`error_code` verdict mismatches OR the body fails schema validation, with both checks reported independently
+
+#### Scenario: Concurrency fires the same signed request N times and checks the outcome multiset
+
+- **WHEN** a receiver-mode vector declares `concurrency: 2` and `expected.outcomes: [accept, duplicate]`
+- **THEN** the runner signs `input` once and sends it twice concurrently (not sequentially) against the target
+- **AND** the vector passes if and only if the two observed outcomes, compared as an unordered multiset, equal `[accept, duplicate]`
 
 ### Requirement: CLI surface
 
@@ -433,7 +447,7 @@ Some CONTRACT requirements from capability specs SHALL be deferred from the curr
 - `observability` — entire chapter deferred.
 - `standard-webhooks-compliance` — Wraps the official signing library (upstream-vector interop, easy v0.3 candidate), Versioning extension via `webhook-version` header (full sender-side emission test deferred to v0.3), IETF-alignment compatibility mode on the receiver.
 - `key-management` — Encryption at rest with KMS adapter (library-API surface), Ephemeral keys via auto-rotation (full coverage).
-- `storage-layer` — Postgres / SQLite adapter matrix CONTRACTs (gated by adapter packages, not in the v0.2 TS sender plan).
+- `storage-layer` — the full per-adapter *behavioral* vector matrix (fanout, retry, fairness, etc. re-run once per storage adapter) remains deferred, gated by adapter packages. **Partially in scope as of this change**: a CI-only tier runs the existing v0.2 sender corpus against `@postel/pg` (real Postgres via testcontainers) and asserts the resulting rows' column shape and enum-valued columns conform to `specs/db-schema/0001_init.sql` plus its migrations — proving the DB-schema half of AGENTS.md's cross-port claim for the TS port, without duplicating the whole behavioral corpus per adapter.
 
 These tests SHALL land in subsequent MINOR (or MAJOR) releases. The current change does NOT prescribe their architecture.
 
@@ -448,6 +462,12 @@ These tests SHALL land in subsequent MINOR (or MAJOR) releases. The current chan
 - **WHEN** a future MINOR's vectors cover one of the deferred items
 - **THEN** the corresponding line in the `Out-of-scope behaviors at the current MINOR` body is removed in the same OpenSpec change that adds the vectors
 - **AND** the CHANGELOG records both the addition and the now-in-scope notice
+
+#### Scenario: Pg schema-conformance CI tier proves DB-schema shape, not adapter behavior
+
+- **WHEN** the pg schema-conformance CI tier runs the sender corpus against `@postel/pg`
+- **THEN** it asserts the shape of the resulting `tenants`, `endpoints`, `endpoint_secrets`, `messages`, `attempts`, `endpoint_state_transitions`, and `postel_received_messages` rows (column presence, enum-valued column vocabularies) against `specs/db-schema/`
+- **AND** it does NOT assert per-adapter behavioral parity beyond what the existing sender corpus already exercises through the control plane — that full matrix stays in the deferred set above
 
 ### Requirement: Sender-side compliance driver mechanism
 

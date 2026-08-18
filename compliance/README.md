@@ -58,7 +58,7 @@ v0.1.0 covers 11 CONTRACT requirements from `standard-webhooks-compliance`, `rec
 
 Implementation-level: ~33 vectors across 8 sub-categories — wire-format headers (5), signature v1 HMAC matrix (8), signature v1a Ed25519 matrix (8), multi-secret rotation (2), timestamp window (2), raw-bytes preservation (2), JWKS basics (3), dedup atomicity (3).
 
-**Sender-side tests** (retry, replay, lease, fanout, outbox semantics, endpoint state machine) are **explicitly out of v0.1.0**. They require sender code to drive against, which doesn't exist yet. Deferred to subsequent MINOR / MAJOR releases under the lockstep model.
+**Sender-side tests** (retry, replay, lease, fanout, outbox semantics, endpoint state machine) were **explicitly out of v0.1.0** — they require sender code to drive against. They landed in `0.2.0` via the `@postel/compliance-driver` HTTP control-plane mechanism (see `compliance:sender:ts`); see `compliance/CHANGELOG.md`'s `[Unreleased — 0.2.0]` entry for the current sender-mode scope, including the pg schema-conformance CI tier (`compliance:sender:pg:ts`) that proves DB-schema conformance against real Postgres, not just `InMemoryStorage`.
 
 **Suite-untestable** (CONTRACT but gated by other CI checks, never enter the suite): constant-time signature comparison, latency budgets, payload-logging defaults, library-API surfaces (key generation, encryption-at-rest), test fixtures.
 
