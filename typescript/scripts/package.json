@@ -5,9 +5,16 @@
   "type": "module",
   "description": "Internal scripts for the TypeScript port — reference receiver, smoke tests, compliance wiring. Not published.",
   "scripts": {
-    "smoke:receiver": "node scripts/smoke-receiver.mjs"
+    "smoke:receiver": "node scripts/smoke-receiver.mjs",
+    "bench": "node scripts/bench.mjs"
   },
   "dependencies": {
-    "@postel/core": "workspace:*"
+    "@postel/core": "workspace:*",
+    "@postel/pg": "workspace:*",
+    "pg": "8.20.0"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "10.13.2",
+    "@types/pg": "8.20.0"
   }
 }

@@ -53,6 +53,16 @@ description = "Build all TS packages (ESM + CJS + types) via tsup (delegates to 
 dir = "typescript"
 run = "pnpm build"
 
+# Sender benchmark harness (issue #143) — testcontainers Postgres + 4
+# in-process workers + a local mock receiver. Requires Docker. Publishes
+# deliveries/sec and send() latency percentiles; see docs/content/docs/reference/benchmarks.mdx.
+
+[tasks."bench"]
+description = "Run the sender benchmark harness (testcontainers Postgres, 4 in-process workers)"
+depends = ["build"]
+dir = "typescript"
+run = "node scripts/bench.mjs"
+
 # Compliance suite (Go runner) — thin delegations into compliance/cli/.
 # Tooling rationale: decisions/0011-compliance-suite-tooling.md.
 
