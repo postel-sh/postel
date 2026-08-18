@@ -310,7 +310,6 @@ JWKS discovery extension :: JWKS exposes not_after
 # jwks-handler.test.ts:46 "preserves the optional not_after field on each JWK"
 
 # storage-layer — adapter matrix / outbox
-Worker throughput target
 Configurable retention with automatic pruning
 
 # Genuinely untested — no test asserts DDL shape or column presence directly
