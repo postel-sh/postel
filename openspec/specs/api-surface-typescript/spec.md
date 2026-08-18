@@ -149,17 +149,6 @@ Public error contracts SHALL be discriminated by class identity or a stable type
 - **WHEN** a consumer reads `err.code` on a thrown `PostelError`
 - **THEN** the value is a stable enum-like string documented in the API reference
 
-### Requirement: Effect-TS layer
-
-The library SHALL provide an Effect-TS adapter (`@postel/effect`) exposing every public API as an `Effect`. The adapter MUST be a first-class layer, not a callback-style afterthought.
-
-**Interim (TypeScript port):** the adapter has not shipped. `@postel/effect` is a pre-alpha placeholder today — it exports only `__postelPackage`, is `private`, and is not part of the 1.0 published package set, so adopters cannot install an empty package and mistake it for the layer. See *Empty placeholder packages are pre-alpha and unpublished* in `distribution-packaging-typescript`. The name is reserved so the layer lands under `@postel/effect` when it ships.
-
-#### Scenario: Effect program composes
-
-- **WHEN** an Effect-TS user writes `pipe(postelEffect.send(...), Effect.flatMap(...))`
-- **THEN** the program type-checks and runs without bridging utilities
-
 ### Requirement: All writes accept an optional transaction parameter
 
 Every TS write API (e.g., `outbound.send`, `outbound.endpoints.create`, `outbound.endpoints.update`, `outbound.tenants.delete`, `inbound.<source>.dedup`) SHALL accept an optional `tx` (transaction) parameter so the operation can participate in a host transaction. The parameter name is `tx` everywhere; the value type is whatever transaction handle the configured storage adapter accepts.
@@ -481,4 +470,36 @@ When `type` does not match any registered key, `send()` behaves exactly as it do
 
 - **WHEN** no schema is registered for the call site's `type`
 - **THEN** `data` is typed `unknown` (or the caller's explicit `TData` generic) and no validation is attempted, identical to `send()`'s behavior with no `events` registry configured
+
+### Requirement: Effect-TS layer [PORT-SPECIFIC]
+
+The library SHALL provide an Effect-TS adapter (`@postel/effect`) that is a first-class layer, not a callback-style afterthought:
+
+- `PostelLive(config)` builds a scoped `Layer` — acquiring it constructs the Postel instance and starts its outbound worker pool (`instance.start()`); releasing the layer's `Scope` gracefully stops it (`instance.stop()`). An Effect program never calls the Promise-based `start`/`stop` lifecycle methods directly.
+- `PostelTag()` identifies the Effect-wrapped service in `Context`, so it is acquired via `Effect.gen`/`Layer.provide` rather than constructed directly.
+- `send`, `replay`, `messages.get`/`messages.attempts`/`messages.list`, and each configured inbound source's `verify` are exposed as `Effect`-returning methods (`PostelEffectApi`) instead of Promise-returning ones.
+- `PostelError` subclasses, `ConfigurationError`, and `NotImplementedError` are the adapter's typed error channel (`PostelErrors`): these fail the `Effect` rather than rejecting a `Promise`. An error outside that set (a programmer mistake, not a Postel business error) surfaces as an `Effect` defect instead of being folded into the typed channel.
+
+**Conformance**: PORT-SPECIFIC. Effect-TS is a TypeScript-ecosystem concept with no cross-port analogue; other language ports have no equivalent requirement. The behaviors the layer wraps (send/verify/replay/message-introspection semantics, error codes) remain CONTRACT under `sender`/`receiver`/`message-introspection` — this requirement only governs how the TypeScript port exposes them idiomatically to Effect-TS consumers.
+
+#### Scenario: Effect program composes
+
+- **WHEN** an Effect-TS user writes `pipe(postelEffect.send(...), Effect.flatMap(...))`
+- **THEN** the program type-checks and runs without bridging utilities
+
+#### Scenario: Acquiring the layer starts the worker pool; releasing stops it
+
+- **WHEN** an Effect program runs with `PostelLive(config)` provided and the scope subsequently closes
+- **THEN** the outbound worker pool is running for the lifetime of the scope
+- **AND** it is stopped once the scope closes, with no further dispatch attempts afterward
+
+#### Scenario: PostelError surfaces through the typed error channel
+
+- **WHEN** `verify` rejects with a `SignatureInvalid` on the Promise-based `@postel/core` API
+- **THEN** the Effect-wrapped `verify` fails the `Effect` with that same `SignatureInvalid` instance, satisfying `Effect.catchTag`/`Effect.catchAll` on the typed channel, rather than throwing or rejecting
+
+#### Scenario: An Effect user never touches the Promise API
+
+- **WHEN** an Effect-TS user acquires Postel via `PostelLive` and drives `send`, `inbound.<source>.verify`, `messages.list`, and `replay` entirely through the returned `PostelEffectApi`
+- **THEN** the program never calls `.then`/`await` against a `@postel/core` Promise-returning method
 

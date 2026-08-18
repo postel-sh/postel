@@ -6,6 +6,7 @@
     "index",
     "packages",
     "http",
+    "effect",
     "errors",
     "specs",
     "benchmarks"

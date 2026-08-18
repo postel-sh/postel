@@ -46,12 +46,7 @@ describe("Empty placeholder packages are pre-alpha and unpublished [PORT-SPECIFI
   const placeholderNames = placeholders.map((p) => p.name).sort();
 
   it("the detected placeholder set is exactly the reserved names", () => {
-    expect(placeholderNames).toEqual([
-      "@postel/bun",
-      "@postel/cli",
-      "@postel/effect",
-      "@postel/test",
-    ]);
+    expect(placeholderNames).toEqual(["@postel/bun", "@postel/cli", "@postel/test"]);
   });
 
   it("every placeholder package is private (excluded from the published set)", () => {

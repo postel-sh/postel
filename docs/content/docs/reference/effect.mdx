@@ -1,0 +1,72 @@
+---
+title: "@postel/effect"
+description: A first-class Effect-TS layer over Postel — Layer-managed worker lifecycle, a typed PostelError channel, and Effect-wrapped send/verify/messages/replay.
+---
+
+`@postel/effect` wraps the Postel core API for Effect-TS: no callbacks bolted onto a Promise API, and no manual lifecycle management. Acquiring the `Layer` starts the outbound worker pool; releasing its `Scope` stops it gracefully.
+
+## Install
+
+```sh
+npm install @postel/core @postel/effect effect
+```
+
+`effect` is a peer dependency — bring your own version (`^3.10` or later).
+
+## PostelLive and PostelTag
+
+```ts
+import { PostelLive, PostelTag } from "@postel/effect";
+import { InMemoryStorage, Secret } from "@postel/core";
+import { Effect } from "effect";
+
+const config = {
+  outbound: { storage: InMemoryStorage() },
+  inbound: { github: { verify: Secret(process.env.GITHUB_WEBHOOK_SECRET!) } },
+} as const;
+
+const Postel = PostelTag<typeof config>();
+
+const program = Effect.gen(function* () {
+  const postel = yield* Postel;
+  const { id } = yield* postel.outbound.send({ type: "order.created", data: { id: "o_1" } });
+  return id;
+});
+
+await Effect.runPromise(program.pipe(Effect.provide(PostelLive(config))));
+```
+
+`PostelLive(config)` builds a scoped `Layer<PostelEffectApi<typeof config>>`: acquiring it constructs the Postel instance and calls `start()`; when the layer's `Scope` closes (the effect it was provided to finishes, in the example above), `stop()` runs. Nothing in the program above touches the Promise-based `postel.start()` / `postel.stop()` directly.
+
+`PostelTag<C>()` identifies the service in `Context`. Pass the same config type at both `PostelTag<typeof config>()` and `PostelLive(config)` so the two sides agree on which `outbound`/`inbound` slots are configured — exactly like `PostelInstance<C>` in `@postel/core`.
+
+## Effect-wrapped surfaces
+
+`postel.outbound.send`, `postel.outbound.replay`, `postel.outbound.messages.{get,attempts,list}`, and each configured source's `postel.inbound.<source>.verify` return `Effect`s instead of `Promise`s:
+
+```ts
+const program = Effect.gen(function* () {
+  const postel = yield* Postel;
+  const result = yield* postel.inbound.github.verify(rawBody, headers);
+  const page = yield* postel.outbound.messages.list({ limit: 20 });
+  yield* postel.outbound.replay({ messageId: result.event.type, freshWebhookId: true });
+});
+```
+
+These compose with the rest of the Effect ecosystem with no bridging utilities — `pipe(postel.outbound.send(...), Effect.flatMap(...))`, `Effect.retry`, `Effect.timeout`, and so on all work as they would over any other `Effect`.
+
+## The typed error channel
+
+`PostelErrors` (`PostelError | ConfigurationError | NotImplementedError`) is the failure type on every wrapped method. A `SignatureInvalid` thrown by the Promise-based `@postel/core` `verify()` fails the `Effect` with that same error instance — catchable via `Effect.catchTag("SignatureInvalid", ...)` or `Effect.catchAll`:
+
+```ts
+const verified = postel.inbound.github.verify(rawBody, headers).pipe(
+  Effect.catchTag("SignatureInvalid", () => Effect.succeed(null)),
+);
+```
+
+An error outside that set (a programmer mistake — e.g. the `RangeError` a non-positive `limit` raises) is **not** folded into `PostelErrors`; it surfaces as an Effect defect instead, since it isn't a recoverable webhook-protocol outcome.
+
+## Scope
+
+This is a TypeScript-port ergonomic: `send` / `replay` / `messages` / `verify` themselves behave identically to their `@postel/core` counterparts (see [Outbound](/docs/outbound) and [Inbound](/docs/inbound)) — `@postel/effect` only changes how you call them. Endpoint/tenant/key management and the raw lifecycle (`health`, `metrics`, `on`/`off`) stay on the underlying `@postel/core` instance for now; reach for the Promise API there if you need them.

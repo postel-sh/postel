@@ -17,6 +17,7 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/nestjs`** | [NestJS](/docs/web-adapters/nestjs) framework adapter | `NestjsWebAdapter(postel)` (type-checked `WebhookGuard`) + `PostelModule.forRoot(postel)` + `WebhookGuard(key)` guard + `@Event()` / `@WebhookResult()` decorators. |
 | **`@postel/nextjs`** | [Next.js](/docs/web-adapters/nextjs) framework adapter | `NextjsWebAdapter(postel)` Route Handler bindings (`inbound.<source>.post`, `outbound.bindJwks`, `admin.bindAdminRoutes`, each returning `{ METHOD: handler }`) + low-level `withWebhook()`. |
 | **`@postel/admin`** | [Admin control plane](/docs/outbound/admin) over the outbound sender | `adminRouter(postel, { authorize })` Fetch router (endpoint CRUD, replay, keys, message/attempt reads, tenant reads) with default-deny auth + tenant scoping; mount via Hono / `fetchToExpress` / `fetchToFastify`. |
+| **`@postel/effect`** | [Effect-TS layer](/docs/reference/effect) over the core API | `PostelLive(config)` / `PostelTag()` — a Scope-managed `Layer`; `send`/`replay`/`messages.{get,attempts,list}`/`inbound.<source>.verify` return `Effect`s with `PostelError` as the typed failure channel. Peer-depends on `effect`. |
 | **`@postel/sqlite`** | [SQLite storage adapter](/docs/storage/sqlite) | Standalone — Postel owns the SQLite database (`SqliteStorage`). Full outbound `Storage`; also exports `SqliteDedup` for inbound dedup. |
 | **`@postel/pg`** | [Postgres storage adapter](/docs/storage/pg) | Standalone — `PgStorage({ connectionString })`. Full outbound `Storage` (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`); also exports `PgDedup` for inbound dedup. |
 | **`@postel/mysql`** | [MySQL storage adapter](/docs/storage/mysql) | Standalone — `MysqlStorage({ connectionString })` on `mysql2` (`FOR UPDATE SKIP LOCKED`, polling). Full outbound `Storage`; also exports `MysqlDedup` for inbound dedup. |
@@ -32,7 +33,6 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | Package | Will be | Status |
 |---|---|---|
 | `@postel/bun` | Bun.serve adapter | Planned |
-| `@postel/effect` | Effect-TS layer over the core API | Planned |
 | `@postel/cli` | `postel` CLI (migrate, sign, verify, replay, simulate) | Planned |
 
 Each "stub" package exports only `__postelPackage` today, is marked `private`, and is **not part of the published 1.0 set** — a guard test fails CI if a name-only package is ever made publishable. Don't depend on them in production yet — the framework-agnostic [factory recipe](/docs/inbound/verify) works directly against each runtime's native `Request`.

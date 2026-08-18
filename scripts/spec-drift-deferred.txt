@@ -43,9 +43,6 @@
 # is ~17 receiver / key-management / standard-webhooks-compliance items.
 # Everything else is listed below.
 
-# api-surface-typescript
-Effect-TS layer
-
 # Genuinely untested: no test proves the outbound tenant-read surface is
 # well-typed on the Postel instance, or exercises send() with only `type` set.
 Postel factory returns the library instance :: Outbound tenant read surface is present
