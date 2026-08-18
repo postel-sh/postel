@@ -1,5 +1,6 @@
 import { ttlToSeconds } from "@postel/core";
 import type { DedupAdapter, DedupResult } from "@postel/core";
+import { CANONICAL_DEDUP_COLUMNS } from "@postel/storage-testkit";
 import { describe, expect, it } from "vitest";
 
 import { MysqlDedup, type MysqlDedupClient } from "../src/index.js";
@@ -118,6 +119,22 @@ describe("Idempotency dedup helper", () => {
     const adapter = MysqlDedup({ client, autoMigrate: false });
     await dedup("x", { ttl: 60, adapter });
     expect(client.ddlCalls).toBe(0);
+  });
+
+  it("creates exactly the canonical postel_received_messages columns (message_id, expires_at)", async () => {
+    const client = new MockMysqlClient();
+    const adapter = MysqlDedup({ client });
+    await dedup("msg_canonical_mysql", { ttl: 60, adapter });
+    const ddl = client.queries.find((q) => q.sql.includes("CREATE TABLE"))?.sql ?? "";
+    const columnList = ddl
+      .replace(/^[^(]*\(/u, "")
+      .replace(/\)[^)]*$/u, "")
+      .split(/,\s*(?:INDEX|KEY)\b/iu)[0] as string;
+    const columns = columnList
+      .split(",")
+      .map((line) => line.trim().split(/\s+/u)[0]?.replace(/`/gu, ""))
+      .filter((name): name is string => !!name);
+    expect(columns).toEqual([...CANONICAL_DEDUP_COLUMNS]);
   });
 
   it("release() undoes a record so the id is treated as unseen again (MySQL)", async () => {

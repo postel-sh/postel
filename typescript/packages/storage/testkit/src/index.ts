@@ -1,6 +1,12 @@
 import type { Clock, EndpointRecord, NewMessage, ReservedMessage, Storage } from "@postel/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+// Canonical column set for postel_received_messages (specs/db-schema/
+// 0007_received_messages_dedup_table.sql). The single source of truth the pg,
+// sqlite, and mysql dedup test suites assert their ad-hoc DDL against, so the
+// three backends can't silently drift from the documented shape again.
+export const CANONICAL_DEDUP_COLUMNS = ["message_id", "expires_at"] as const;
+
 // A clock the battery can wind forward deterministically. SQL adapters take the
 // same `{ clock }` and write timestamps explicitly, so lease / TTL math is
 // identical to the in-memory reference regardless of backend.

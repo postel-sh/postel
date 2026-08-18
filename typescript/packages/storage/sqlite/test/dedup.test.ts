@@ -1,5 +1,6 @@
 import { ttlToSeconds } from "@postel/core";
 import type { DedupAdapter, DedupResult } from "@postel/core";
+import { CANONICAL_DEDUP_COLUMNS } from "@postel/storage-testkit";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -77,6 +78,14 @@ describe("Idempotency dedup helper", () => {
     expect(await dedup("msg_release_sqlite", { ttl: "1h", adapter })).toEqual({
       duplicate: false,
     });
+  });
+
+  it("creates exactly the canonical postel_received_messages columns (message_id, expires_at)", () => {
+    SqliteDedup({ db });
+    const columns = db.prepare("PRAGMA table_info(postel_received_messages)").all() as Array<{
+      name: string;
+    }>;
+    expect(columns.map((c) => c.name)).toEqual([...CANONICAL_DEDUP_COLUMNS]);
   });
 
   it("creates the dedup table with the configured name", () => {
