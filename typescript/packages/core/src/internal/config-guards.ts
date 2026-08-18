@@ -14,3 +14,13 @@ export function assertHttpWired(http: HttpDefaults | undefined, where: string): 
     throw new NotImplementedError(`${where}.http.dns (DNS resolution pinning is not wired)`);
   }
 }
+
+// Same rationale as `assertHttpWired`: `maxInflight` is accepted and persisted
+// on the endpoint record, but no dispatcher or worker reads it yet — reject at
+// create/update time rather than silently ignoring the cap.
+export function assertMaxInflightWired(maxInflight: number | undefined, where: string): void {
+  if (maxInflight === undefined) return;
+  throw new NotImplementedError(
+    `${where}.maxInflight (per-endpoint concurrency caps are not wired)`,
+  );
+}

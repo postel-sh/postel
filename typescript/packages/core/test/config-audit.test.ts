@@ -110,6 +110,8 @@ const CONFIG_FIELD_MAP: Record<string, Disposition> = {
   "http.fetch": { kind: "consumer", readBy: "outbound.ts — fetchImpl" },
   "http.tls.verify": { kind: "fails-fast" },
   "http.dns.pinResolution": { kind: "fails-fast" },
+  // Endpoint-level options (endpoints.create / endpoints.update)
+  "endpoint.maxInflight": { kind: "fails-fast" },
   // CircuitBreakerDefaults (outbound.circuitBreaker.*)
   "circuitBreaker.threshold": { kind: "consumer", readBy: "circuit.ts — threshold" },
   "circuitBreaker.cooldown": { kind: "consumer", readBy: "circuit.ts — cooldown" },
@@ -188,11 +190,22 @@ describe("Unimplemented config slots fail fast at construction [PORT-SPECIFIC]",
     ).rejects.toBeInstanceOf(NotImplementedError);
   });
 
+  it("Endpoint maxInflight fails fast: create and update throw NotImplementedError", async () => {
+    const postel = Postel({ outbound: { storage: storage(), http: LOOPBACK } });
+    await expect(
+      postel.outbound.endpoints.create({ url: "https://h.example.com", maxInflight: 5 }),
+    ).rejects.toBeInstanceOf(NotImplementedError);
+    await expect(
+      postel.outbound.endpoints.update("ep_x", { maxInflight: 5 }),
+    ).rejects.toBeInstanceOf(NotImplementedError);
+  });
+
   it("every config field maps to a live consumer or fails fast (#78 audit)", () => {
     // The fails-fast rows are the only honest non-consumer disposition; assert
     // each one actually rejects so the table can't silently rot.
     const failsFast = Object.entries(CONFIG_FIELD_MAP).filter(([, d]) => d.kind === "fails-fast");
     expect(failsFast.map(([k]) => k).sort()).toEqual([
+      "endpoint.maxInflight",
       "ephemeralKeys.rotateEvery",
       "http.dns.pinResolution",
       "http.tls.verify",

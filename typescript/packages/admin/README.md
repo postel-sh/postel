@@ -27,7 +27,7 @@ app.all("/admin/*", (c) => router(c.req.raw));
 
 `GET/POST /endpoints` · `GET/PATCH/DELETE /endpoints/:id` · `POST /endpoints/:id/disable` · `POST /endpoints/:id/rotate-secret` · `POST /replay` · `POST /reconcile` · `POST /tenants/:id/rate-limit` · `DELETE /tenants/:id` · `POST /keys/{symmetric,asymmetric}`.
 
-Errors map by `PostelError.code` (`ENDPOINT_NOT_FOUND`→404, `ENDPOINT_VALIDATION`→422, `ENDPOINT_DISABLED`/`IDEMPOTENCY_KEY_CONFLICT`→409, `MIGRATION_REQUIRED`→503); the JSON body carries `{ errorCode, error }`. Function-shaped endpoint options (`filter` / `transform` / callable `headers`) are code-only and not accepted over HTTP.
+Errors map by `PostelError.code` (`ENDPOINT_NOT_FOUND`→404, `ENDPOINT_VALIDATION`→422, `ENDPOINT_DISABLED`→409, `MIGRATION_REQUIRED`→503); the JSON body carries `{ errorCode, error }`. Function-shaped endpoint options (`filter` / `transform` / callable `headers`) are code-only and not accepted over HTTP.
 
 ## License
 

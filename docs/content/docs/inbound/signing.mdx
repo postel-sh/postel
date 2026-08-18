@@ -113,7 +113,6 @@ import {
   TimestampTooOld,
   MalformedHeader,
   UnknownKeyId,
-  RawBytesMismatchDetected,
 } from "@postel/core";
 
 try {
@@ -123,7 +122,6 @@ try {
   else if (err instanceof TimestampTooOld)    // outside the window — replay or clock skew
   else if (err instanceof MalformedHeader)    // a required header is missing
   else if (err instanceof UnknownKeyId)       // JWKS: kid not in the keyset
-  else if (err instanceof RawBytesMismatchDetected)  // framework adapter detected mutation
 }
 ```
 
