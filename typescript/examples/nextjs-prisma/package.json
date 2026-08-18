@@ -9,6 +9,7 @@
     "dev": "next dev",
     "prebuild": "prisma generate",
     "build": "next build",
+    "pretypecheck": "prisma generate",
     "typecheck": "tsc --noEmit",
     "demo:crash": "node scripts/crash-demo.mjs",
     "demo:happy-path": "node scripts/happy-path.mjs"
