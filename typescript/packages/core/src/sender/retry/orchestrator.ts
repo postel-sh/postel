@@ -107,7 +107,10 @@ export function buildRetryDispatcher(
         deps.jitterRng ?? Math.random,
       );
       if (decision.exhausted) {
-        await deps.storage.markMessageFinal(msg.id, "dispatched");
+        // Do NOT finalize the message here: a sibling endpoint dispatched in
+        // the same fanout may still have retryable work. dispatchMessage's
+        // `anyRetryable` aggregation (dispatch.ts) is the sole authority for
+        // finalizing the message, once every endpoint's outcome is known.
         deps.emitter.emit("dead-letter", {
           messageId: msg.id,
           endpointId: endpoint.id,

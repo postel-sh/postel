@@ -1,0 +1,44 @@
+id: sender/fanout/fanout-with-exhaustion
+mode: sender
+requirement:
+  capability: sender
+  title: At-least-once delivery guarantee
+description: One endpoint exhausting its retry schedule does not cancel a sibling endpoint's remaining scheduled retries.
+secrets:
+  - id: primary
+    fixture: hmac_primary.yaml
+mock_receiver:
+  default_response: { status: 500 }
+triggers:
+  - op: register_endpoint
+    as: ep_slow
+    endpoint:
+      url: "{{mock_receiver_url}}/slow"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["50ms", "50ms", "50ms"], jitter: 0, maxAttempts: 3 }
+      signing: { fixture_id: hmac_primary }
+  - op: register_endpoint
+    as: ep_fast
+    endpoint:
+      url: "{{mock_receiver_url}}/fast"
+      types: ["evt.x"]
+      retryPolicy: { schedule: ["50ms"], jitter: 0, maxAttempts: 1 }
+      signing: { fixture_id: hmac_primary }
+  - op: start_workers
+    concurrency: 2
+  - op: send
+    event: { type: evt.x }
+  - op: wait_for
+    request_count: 4
+    timeout_ms: 5000
+expected_requests:
+  - endpoint: ep_slow
+    attempt_status: failed
+  - endpoint: ep_slow
+    attempt_status: failed
+  - endpoint: ep_slow
+    attempt_status: dead-letter
+  - endpoint: ep_fast
+    attempt_status: dead-letter
+expected:
+  outcome: accept
