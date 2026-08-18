@@ -1,5 +1,5 @@
 import type { Clock } from "../../clock.js";
-import type { ReservedMessage, Storage, WorkerId } from "../../storage/types.js";
+import type { ReservedMessage, Storage, TenantId, WorkerId } from "../../storage/types.js";
 import { type DispatchOne, dispatchMessage } from "../dispatcher/dispatch.js";
 
 export interface WorkerOptions {
@@ -13,12 +13,59 @@ export interface WorkerOptions {
   readonly renewIntervalMs: number;
 }
 
+// TS reference scheduling algorithm for "Worker fairness across tenants"
+// (openspec/specs/multi-tenancy/spec.md): PORT-SPECIFIC mechanism, CONTRACT
+// outcome. A tenant holds the worker for at most this many consecutive
+// dispatch cycles before rotation yields to the next tenant with backlog,
+// bounding how long any other tenant can be starved by a burst.
+export const MAX_DISPATCH_CYCLES_PER_TENANT = 10;
+
+// Round-robins reservation across tenants that have pending backlog.
+// `refresh` re-derives membership from a fresh countPendingByTenant() read
+// (tenant-less "_null" rows are excluded — they fall through to the
+// unfiltered sweep in Worker.runLoop instead), preserving the current
+// tenant's turn when it's still active.
+class TenantRotation {
+  private tenants: ReadonlyArray<TenantId> = [];
+  private index = 0;
+  private cyclesOnCurrent = 0;
+
+  refresh(counts: ReadonlyMap<TenantId | "_null", number>): void {
+    const current = this.tenants[this.index];
+    this.tenants = [...counts.keys()].filter((id): id is TenantId => id !== "_null").sort();
+    this.index = current !== undefined ? Math.max(this.tenants.indexOf(current), 0) : 0;
+    this.cyclesOnCurrent = 0;
+  }
+
+  current(): TenantId | undefined {
+    return this.tenants[this.index];
+  }
+
+  size(): number {
+    return this.tenants.length;
+  }
+
+  recordCycle(dispatchedAny: boolean): void {
+    this.cyclesOnCurrent += 1;
+    if (dispatchedAny && this.cyclesOnCurrent < MAX_DISPATCH_CYCLES_PER_TENANT) return;
+    this.cyclesOnCurrent = 0;
+    if (this.tenants.length > 0) this.index = (this.index + 1) % this.tenants.length;
+  }
+}
+
 export class Worker {
   private readonly opts: WorkerOptions;
   private stopping = false;
   private active = 0;
   private wakeResolver: (() => void) | null = null;
   private inFlight: Promise<void> = Promise.resolve();
+  private readonly rotation = new TenantRotation();
+  // Forces a rotation refresh on the very first iteration.
+  private cyclesSinceRefresh = MAX_DISPATCH_CYCLES_PER_TENANT;
+  // Consecutive empty reservations across the current rotation; once it
+  // reaches the rotation width, a full pass found nothing and it's safe to
+  // idle rather than busy-loop querying each tenant in turn.
+  private emptyStreak = 0;
 
   constructor(opts: WorkerOptions) {
     this.opts = opts;
@@ -33,16 +80,29 @@ export class Worker {
 
   async runLoop(): Promise<void> {
     while (!this.stopping) {
+      this.cyclesSinceRefresh += 1;
+      if (this.cyclesSinceRefresh >= MAX_DISPATCH_CYCLES_PER_TENANT) {
+        this.cyclesSinceRefresh = 0;
+        this.rotation.refresh(await this.opts.storage.countPendingByTenant());
+      }
+      const tenantId = this.rotation.current();
       const batch = await this.opts.storage.reserveBatch({
         workerId: this.opts.id,
         leaseMs: this.opts.leaseMs,
         batchSize: this.opts.batchSize,
+        ...(tenantId !== undefined ? { tenantId } : {}),
         now: this.opts.clock.now(),
       });
+      if (tenantId !== undefined) this.rotation.recordCycle(batch.length > 0);
       if (batch.length === 0) {
-        await this.idleSleep();
+        this.emptyStreak += 1;
+        if (this.emptyStreak >= Math.max(this.rotation.size(), 1)) {
+          this.emptyStreak = 0;
+          await this.idleSleep();
+        }
         continue;
       }
+      this.emptyStreak = 0;
       this.inFlight = Promise.all(batch.map((m) => this.processOne(m))).then(() => undefined);
       await this.inFlight;
     }
