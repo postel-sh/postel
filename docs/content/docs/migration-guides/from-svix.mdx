@@ -23,7 +23,7 @@ Svix and Postel agree on the wire format — Svix co-authored the [Standard Webh
 | `svix.message.resend` / "replay missing messages" | `postel.outbound.replay({ messageId })`, `replay({ endpointId, since })`, `replay({ filter })` |
 | Circuit breaker / endpoint auto-disable on repeated failure | `circuitBreaker` + `autoDisable` config (see [Retries & backoff](/docs/outbound/retries)) |
 | Operational webhooks (`endpoint.updated`, `message.attempt.exhausted`, …) subscribed on your own Svix instance | `postel.on("attempt" \| "circuit-open" \| "circuit-close" \| "dead-letter", handler)` — in-process, no separate subscription |
-| The Svix Dashboard | [`@postel/admin`](/docs/outbound/admin) — a REST control plane you mount yourself; no bundled UI |
+| The Svix Dashboard | [`@postel/admin`](/docs/operations/admin) — a REST control plane you mount yourself; no bundled UI |
 | The Svix customer Portal | Not available — see [what you give up](#what-you-give-up) |
 | Self-hosted Postgres + Redis + dispatcher deployment | No separate deployment — `postel.start()` runs the worker pool inside your app process against your existing database |
 
@@ -33,14 +33,14 @@ Svix and Postel agree on the wire format — Svix co-authored the [Standard Webh
 2. Recreate each Svix Application as either a Postel `tenantId` (if you need per-customer isolation and rate limits) or drop the concept entirely if you only ran one.
 3. For every Svix Endpoint, call `postel.outbound.endpoints.create({ url, types: filterTypes, tenantId })`. Exact-match `filterTypes` values carry over unchanged; Postel's `types` additionally support globs (`"order.*"`), which Svix's exact-match filters don't have.
 4. Replace every `svix.message.create(...)` call with `postel.outbound.send({ type, data }, { tx })`, and — this is the point of moving off a separate service — pass `{ tx }` to join the DB transaction of the write that caused the event. Svix, being an external service, could never offer this.
-5. Mount [`@postel/admin`](/docs/outbound/admin) (`adminRouter(postel, { authorize })`) wherever you need the operational surface the Svix Dashboard gave you — endpoint CRUD, replay, message/attempt reads, key rotation.
+5. Mount [`@postel/admin`](/docs/operations/admin) (`adminRouter(postel, { authorize })`) wherever you need the operational surface the Svix Dashboard gave you — endpoint CRUD, replay, message/attempt reads, key rotation.
 6. Swap any code that polled Svix's operational webhooks for `postel.on(event, handler)` listeners in-process.
 7. Point receivers at your new endpoint URLs. Because the signature headers are the spec's, not Svix-specific, a receiver already using `svix.Webhook` or `standardwebhooks.Webhook` to verify keeps working without a code change — only the secret and URL differ. (If a receiver is your own code, see [From a signing-only library](/docs/migration-guides/from-signing-libs) for the flip side.)
 8. Decommission the Svix deployment once traffic has fully cut over and replay history you need has been exported.
 
 ## What you give up
 
-- **The customer-facing portal.** Svix's packaged, embeddable portal that lets *your customers* manage their own endpoints, view delivery logs, and download signing keys has no Postel equivalent — Postel gives you the [admin API](/docs/outbound/admin) to build that surface yourself, but ships no UI. If your customers currently self-serve through the Svix portal, budget for that UI work, or keep Svix for the segment of customers who need it.
+- **The customer-facing portal.** Svix's packaged, embeddable portal that lets *your customers* manage their own endpoints, view delivery logs, and download signing keys has no Postel equivalent — Postel gives you the [admin API](/docs/operations/admin) to build that surface yourself, but ships no UI. If your customers currently self-serve through the Svix portal, budget for that UI work, or keep Svix for the segment of customers who need it.
 - **Multi-region delivery and Svix's operational SLA.** Svix operates dispatch infrastructure across regions with a published uptime commitment. Postel runs inside your own app process on your own infrastructure — its reliability is now a function of your deployment, not a vendor's.
 - **A managed, horizontally-scaled dispatcher.** Svix's dispatcher is a separate scaling unit from your application. Postel's worker pool runs in-process; scaling delivery throughput means scaling your app, and very high fan-out may need the same benchmarking called out in the [BullMQ migration guide](/docs/migration-guides/from-bullmq#what-you-give-up).
 
@@ -50,4 +50,4 @@ If any of the above is a hard requirement rather than a nice-to-have, staying on
 
 - [Endpoints](/docs/outbound/endpoints) — the full lifecycle, filtering, and per-endpoint overrides.
 - [Replay](/docs/outbound/replay) — the verbs behind `svix.message.resend`.
-- [Admin API](/docs/outbound/admin) — building your own operational surface.
+- [Admin API](/docs/operations/admin) — building your own operational surface.

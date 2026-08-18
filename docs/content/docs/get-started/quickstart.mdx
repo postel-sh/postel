@@ -5,11 +5,11 @@ description: Zero to a verified inbound webhook and a signed outbound one, in a 
 
 import { Steps, Step } from "fumadocs-ui/components/steps";
 
-Postel has two independent halves. This page gets each one working from scratch — do the one you need now, or both. Everything below is TypeScript you can run today; [other languages](/docs/get-started/polyglot) are on the roadmap.
+Postel has two independent halves. This page gets each one working from scratch — do the one you need now, or both. Everything below is TypeScript you can run today; [other languages](/docs/project/polyglot) are on the roadmap.
 
 ## Receive a webhook
 
-Verify a Standard Webhooks-signed request from `acme` — a stand-in for any producer that signs with the Standard Webhooks header scheme (`webhook-id` / `webhook-timestamp` / `webhook-signature`). Producers with their own scheme — GitHub's `X-Hub-Signature-256`, Stripe's `Stripe-Signature` — don't match those headers; verify them with a small [custom `Verifier`](/docs/inbound/verify#custom-verifiers) instead, the built-ins only speak Standard Webhooks.
+Verify a Standard Webhooks-signed request from `acme` — a stand-in for any producer that signs with the Standard Webhooks header scheme (`webhook-id` / `webhook-timestamp` / `webhook-signature`). Producers with their own scheme — GitHub's `X-Hub-Signature-256`, Stripe's `Stripe-Signature` — don't match those headers; verify them with a small [custom `Verifier`](/docs/inbound/custom-verifiers) instead, the built-ins only speak Standard Webhooks.
 
 <Steps>
 
@@ -76,7 +76,7 @@ export const postel = Postel(config); // postel.inbound.acme is still typed
 
 ### Verify a request
 
-The verifier runs over the **exact received bytes** — never re-parse and re-serialize the body first ([here's why](/docs/inbound/raw-bytes)). Pick your framework; each adapter is a thin gate over the same verifier, so your handler only runs once the signature checks out.
+The verifier runs over the **exact received bytes** — never re-parse and re-serialize the body first ([here's why](/docs/concepts/raw-bytes)). Pick your framework; each adapter is a thin gate over the same verifier, so your handler only runs once the signature checks out.
 
 <Tabs items={["Framework-agnostic", "Hono", "Express", "Fastify", "NestJS"]}>
 
@@ -288,7 +288,7 @@ That's the [transactional outbox](/docs/outbound/send) — no broker, no dispatc
 
 **Receiving** — the things that bite every integration eventually:
 
-- [Raw bytes](/docs/inbound/raw-bytes) — the single most common silent failure. Read this before you ship.
+- [Raw bytes](/docs/concepts/raw-bytes) — the single most common silent failure. Read this before you ship.
 - [Key rotation](/docs/inbound/key-rotation) — rotate secrets with zero downtime.
 - [Deduplication](/docs/inbound/deduplication) — webhooks are at-least-once; here's the atomic helper.
 

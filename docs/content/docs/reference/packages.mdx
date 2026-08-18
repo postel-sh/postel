@@ -16,7 +16,7 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/fastify`** | [Fastify](/docs/web-adapters/fastify) framework adapter | `fastifyPostel` raw-body plugin + `FastifyWebAdapter(postel, app)` routing facade + low-level `verifyWebhook()` preHandler / `fetchToFastify`; sets `req.postel`. |
 | **`@postel/nestjs`** | [NestJS](/docs/web-adapters/nestjs) framework adapter | `NestjsWebAdapter(postel)` (type-checked `WebhookGuard`) + `PostelModule.forRoot(postel)` + `WebhookGuard(key)` guard + `@Event()` / `@WebhookResult()` decorators. |
 | **`@postel/nextjs`** | [Next.js](/docs/web-adapters/nextjs) framework adapter | `NextjsWebAdapter(postel)` Route Handler bindings (`inbound.<source>.post`, `outbound.bindJwks`, `admin.bindAdminRoutes`, each returning `{ METHOD: handler }`) + low-level `withWebhook()`. |
-| **`@postel/admin`** | [Admin control plane](/docs/outbound/admin) over the outbound sender | `adminRouter(postel, { authorize })` Fetch router (endpoint CRUD, replay, keys, message/attempt reads, tenant reads) with default-deny auth + tenant scoping; mount via Hono / `fetchToExpress` / `fetchToFastify`. |
+| **`@postel/admin`** | [Admin control plane](/docs/operations/admin) over the outbound sender | `adminRouter(postel, { authorize })` Fetch router (endpoint CRUD, replay, keys, message/attempt reads, tenant reads) with default-deny auth + tenant scoping; mount via Hono / `fetchToExpress` / `fetchToFastify`. |
 | **`@postel/effect`** | [Effect-TS layer](/docs/reference/effect) over the core API | `PostelLive(config)` / `PostelTag()` — a Scope-managed `Layer`; `send`/`replay`/`messages.{get,attempts,list}`/`inbound.<source>.verify` return `Effect`s with `PostelError` as the typed failure channel. Peer-depends on `effect`. |
 | **`@postel/sqlite`** | [SQLite storage adapter](/docs/storage/sqlite) | Standalone — Postel owns the SQLite database (`SqliteStorage`). Full outbound `Storage`; also exports `SqliteDedup` for inbound dedup. |
 | **`@postel/pg`** | [Postgres storage adapter](/docs/storage/pg) | Standalone — `PgStorage({ connectionString })`. Full outbound `Storage` (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`); also exports `PgDedup` for inbound dedup. |
@@ -45,7 +45,7 @@ The matrix is per [ADR 0007](https://github.com/postel-sh/postel/blob/main/decis
 
 ## Polyglot ports (Go, Python, Rust)
 
-Out of scope for the npm registry. See [Polyglot](/docs/get-started/polyglot) for the per-language plan.
+Out of scope for the npm registry. See [Polyglot](/docs/project/polyglot) for the per-language plan.
 
 ## Compliance & tooling
 

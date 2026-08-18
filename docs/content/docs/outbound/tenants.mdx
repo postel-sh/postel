@@ -59,4 +59,4 @@ This `{ limit?, cursor? }` → `{ items, nextCursor }` envelope is the library-w
 
 ## Over HTTP
 
-The same two reads are exposed by the [admin API](/docs/outbound/admin) as `GET /tenants` (`?limit=`, `?cursor=`) and `GET /tenants/:id`. Those routes are tenant-scoped from the `authorize` decision — a tenant-bound caller listing tenants sees only its own tenant record — and an unknown or cross-tenant id responds `404 TENANT_NOT_FOUND`.
+The same two reads are exposed by the [admin API](/docs/operations/admin) as `GET /tenants` (`?limit=`, `?cursor=`) and `GET /tenants/:id`. Those routes are tenant-scoped from the `authorize` decision — a tenant-bound caller listing tenants sees only its own tenant record — and an unknown or cross-tenant id responds `404 TENANT_NOT_FOUND`.

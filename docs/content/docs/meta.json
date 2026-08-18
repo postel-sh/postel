@@ -3,11 +3,14 @@
   "pages": [
     "index",
     "get-started",
+    "concepts",
     "inbound",
     "outbound",
     "web-adapters",
     "storage",
+    "operations",
     "migration-guides",
-    "reference"
+    "reference",
+    "project"
   ]
 }

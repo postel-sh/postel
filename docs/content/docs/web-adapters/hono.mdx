@@ -56,7 +56,7 @@ hwa.outbound.bindJwks("/keys", customProvider);  // custom route + provider
 
 ## Admin
 
-`hwa.admin.bindAdminRoutes(prefix, opts)` mounts the [`@postel/admin`](/docs/outbound/admin) control plane (Hono speaks Fetch natively). `authorize` is required.
+`hwa.admin.bindAdminRoutes(prefix, opts)` mounts the [`@postel/admin`](/docs/operations/admin) control plane (Hono speaks Fetch natively). `authorize` is required.
 
 ```ts
 hwa.admin.bindAdminRoutes("/admin", { authorize: (req) => checkAdminToken(req) });

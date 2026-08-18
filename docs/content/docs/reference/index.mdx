@@ -13,8 +13,10 @@ The reference section is the source of truth. Inbound and outbound concept pages
   <Card icon={<InboxIcon />} title="Inbound API" href="/docs/reference/inbound" description="InboundSource config, verify(), every Verifier factory, JWKS, deduplication, and signFixture." />
   <Card icon={<SendIcon />} title="Outbound API" href="/docs/reference/outbound" description="OutboundConfig, the full OutboundApi, and every supporting type — endpoints, keys, tenants, replay, messages." />
   <Card icon={<RepeatIcon />} title="Strategies" href="/docs/reference/strategies" description="The retry, rate-limit, worker, signing, and KMS strategy factories." />
+  <Card icon={<CodeIcon />} title="@postel/http" href="/docs/reference/http" description="The framework-agnostic gate every adapter is built on — outcomes, options, the error→status policy." />
+  <Card icon={<RepeatIcon />} title="@postel/effect" href="/docs/reference/effect" description="The Effect-TS layer — PostelLive, PostelTag, and the typed error channel." />
   <Card icon={<AlertTriangleIcon />} title="Errors" href="/docs/reference/errors" description="Every PostelError subclass — its code, when it's thrown, and how to recover." />
-  <Card icon={<FileTextIcon />} title="Specs & standards" href="/docs/reference/specs" description="Wire format (AsyncAPI 3.0), DB schema (SQL DDL), capability specs, ADRs, conformance levels." />
+  <Card icon={<FileTextIcon />} title="Specs & standards" href="/docs/project/specs" description="Wire format (AsyncAPI 3.0), DB schema (SQL DDL), capability specs, ADRs, conformance levels — on the Project tab." />
 </Cards>
 
 If a narrative page elsewhere contradicts a reference page, the reference page wins.

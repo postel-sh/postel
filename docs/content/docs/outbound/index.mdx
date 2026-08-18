@@ -5,51 +5,11 @@ description: Send Standard Webhooks to your customers' endpoints. Transactional 
 
 import { BoxIcon, RepeatIcon, HistoryIcon, LinkIcon, RocketIcon } from "@/components/icons";
 
-> **Status: available.** The outbound runtime is implemented and runs against the in-process `InMemoryStorage` adapter or any database-backed `Storage` adapter — standalone [`@postel/pg`](/docs/storage/pg) / [`@postel/sqlite`](/docs/storage/sqlite) / [`@postel/mysql`](/docs/storage/mysql), or the Drizzle / Kysely / Prisma / TypeORM / MikroORM adapters over the ORM you already run. See [Storage](/docs/storage).
-
-The outbound half of Postel delivers Standard Webhooks to your customers' HTTP endpoints. It's the half you reach for when *your* product emits webhooks — order.created, deployment.finished, message.posted — and someone else's app is the receiver.
-
-If you're verifying webhooks that other services send to you — that's the [inbound half](/docs/inbound), and it ships today.
-
-## Start here
-
-<Cards>
-  <Card icon={<BoxIcon />} title="Sending & the outbox" href="/docs/outbound/send" description="The transactional contract — an outbox INSERT that joins your business write." />
-  <Card icon={<RepeatIcon />} title="Retries & backoff" href="/docs/outbound/retries" description="Retry strategies, circuit breaker, auto-disable." />
-  <Card icon={<HistoryIcon />} title="Replay" href="/docs/outbound/replay" description="First-class replay verbs — by message, endpoint, or filter." />
-  <Card icon={<LinkIcon />} title="Endpoints" href="/docs/outbound/endpoints" description="Manage the receiver side of your fanout." />
-  <Card icon={<RocketIcon />} title="Serverless" href="/docs/outbound/serverless" description="Bounded drain() calls for Lambda, Vercel, and Cloudflare — no long-lived process." />
-</Cards>
-
-## What's available
-
-✅ = available now · ⏳ = config slot present, adapter/runtime planned.
-
-| Feature | Status | Notes |
-|---|---|---|
-| **Transactional outbox** | ✅ | `send()` writes an outbox row inside *your* business transaction. The webhook is queued only if your business write commits — no orphaned events, no "we charged the card but never told the customer." |
-| **Retries, circuit breaker, dead-letter, auto-disable** | ✅ | Exponential or linear backoff, configurable per endpoint, with circuit breakers and auto-disable on persistent failure. |
-| **Replay as a first-class verb** | ✅ | `replay({ messageId })`, `replay({ endpointId, since })`, or `replay({ filter })`. No queue surgery, no manual SQL. |
-| **Fanout** | ✅ | One `send()` → N endpoints, filtered by event type, channel, or arbitrary predicate. |
-| **Endpoint lifecycle** | ✅ | `endpoints.create/update/delete/list/get/disable/enable`, with `rotateSecret({ keepPreviousFor })` for overlap-window rotation. |
-| **Signing** | ✅ | HMAC (`HmacV1()`) or Ed25519 (`Ed25519V1a()`). Asymmetric signing pairs with JWKS publication so receivers verify without a shared secret. |
-| **Key management** | ✅ | Symmetric (`generateSymmetric`) and asymmetric (`generateAsymmetric`) generation; `rotateSecret` preserves the endpoint's algorithm. Current public keys are retrievable via `keys.publicJwks()` and served through each adapter's [`outbound.bindJwks()`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side) mount. |
-| **Admin API** | ✅ | [`@postel/admin`](/docs/outbound/admin) — a default-deny HTTP control plane over the outbound API: endpoint CRUD, replay, reconcile, tenants, and key generation. |
-| **Message & attempt introspection** | ✅ | [`messages.get / attempts / list`](/docs/outbound/messages) — read a message and its payload, its delivery-attempt history (status, code, latency), and filter recent messages. Exposed over HTTP as `GET /messages…` in the admin API. |
-| **Tenant introspection** | ✅ | [`tenants.get / list`](/docs/outbound/tenants) — read a tenant back (its rate limit, metadata, creation time), and list tenants with keyset pagination. Exposed over HTTP as `GET /tenants…` in the admin API. |
-| **Storage** | ✅ | `InMemoryStorage()` for single-process/tests, plus database-backed adapters — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql` and the Drizzle / Kysely / Prisma / TypeORM / MikroORM ORM adapters — or implement the `Storage` interface against your own database. |
-| **Multi-tenancy** | ✅ scoping · ⏳ limits | Tenant-scoped fanout and persistence ship, along with read access (`tenants.get / list`); per-tenant rate-limit *enforcement* and fair-scheduling land later (the config persists today). |
-| **Worker strategies** | ✅ in-process · ⏳ queues | The in-process worker pool ships and is the default; `BullMQ` / `PgBoss` / `External` are config slots that throw `NotImplementedError` until their adapters ship. |
-| **Serverless drain** | ✅ | [`outbound.drain({ maxMessages, deadline })`](/docs/outbound/serverless) — a bounded, single-pass reserve-and-dispatch call for Lambda/Vercel/Cloudflare-style hosts that can't keep a worker pool alive between invocations. Safe to run alongside a live `postel.start()` pool. |
-| **KMS integration** | ⏳ later | `PlaintextKms` only today; `AwsKms` / `GcpKms` / `Vault` are config slots that throw `NotImplementedError` until envelope encryption ships. |
-| **Observability** | ✅ logger · events · health · otel spans · metrics | `observability.logger` receives the runtime's `attempt` / `circuit-open` / `circuit-close` / `dead-letter` events as they happen, each carrying a `trace_id` field when a trace is active. The same events are typed on `postel.on(event, handler)` — the handler's payload is inferred from the event name and `on` returns an `Unsubscribe`. `postel.health()` is a readiness probe: `{ ok, outboxDepth, oldestPendingAge, workerCount }`, reporting `ok: false` when the storage probe fails or a configured `observability.health` threshold (`maxOutboxDepth`, `maxOldestPendingAge`) is exceeded — also reachable over HTTP via the admin router's `GET /health`. `postel.metrics()` returns a snapshot of `webhook_send_total` / `webhook_attempt_duration_seconds` / `webhook_attempt_success_ratio` / `webhook_dead_letter_total` / `webhook_outbox_depth` / `webhook_endpoint_circuit_state`, with no `prom-client` dependency. [OpenTelemetry spans](/docs/outbound/observability) cover `send` / `dispatch` / `attempt` / `retry` / `replay`, carrying message, endpoint, and tenant ids, with zero overhead when no tracer provider is registered. |
-| **Unwired config slots fail fast** | ⏳ later | `retention`, `ephemeralKeys`, the `http.tls` / `http.dns` knobs, and per-endpoint `maxInflight` are typed for forward-compatibility but not yet wired — configuring any of them throws `NotImplementedError` rather than silently doing nothing. |
-
-**Security note:** until KMS lands, signing secrets (HMAC keys and Ed25519 private keys) are stored as-is in `endpoint_secrets.material` — no envelope encryption is applied. Every row's `encryption` column reads `'plaintext'` today; treat your database as the sole boundary protecting signing keys, the same as any other secret store with no KMS in front of it.
+The outbound half of Postel delivers Standard Webhooks to your customers' HTTP endpoints. It's the half you reach for when *your* product emits webhooks — order.created, deployment.finished, message.posted — and someone else's app is the receiver. (Verifying webhooks other services send *you* is the [inbound half](/docs/inbound).)
 
 ## The mental model
 
-The same `Postel({...})` factory accepts an `outbound` config alongside `inbound`. The two are independent — configure one, both, or neither.
+`send()` is an outbox INSERT under the hood: it commits or rolls back atomically with your business write, and a worker pool picks the row up and does the HTTP delivery — you never block on the network inside a transaction. The full picture, with diagrams, is on [How Postel works](/docs/concepts/how-postel-works).
 
 ```ts
 import { Postel, InMemoryStorage, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
@@ -75,23 +35,42 @@ await db.tx(async (tx) => {
 });
 ```
 
-The key insight: `send()` is just an outbox INSERT under the hood. It commits or rolls back atomically with your business write. A separate worker picks the outbox row up and does the HTTP delivery — but you, the application author, never block on the network inside your transaction. That worker only runs between `postel.start()` and `postel.stop()`; skip `start()` (and never call `drain()` either) and messages queue forever with no delivery and no error.
+The worker only runs between `postel.start()` and `postel.stop()`; skip `start()` (and never call `drain()` either) and messages queue forever with no delivery and no error. Hosts that can't keep a pool alive — Lambda, Vercel Functions, Cloudflare Workers — call [`drain()`](/docs/operations/serverless) from a cron-triggered handler instead.
 
-If you can't keep a worker pool running — Lambda, Vercel Functions, Cloudflare Workers all terminate the process between invocations — call `postel.outbound.drain({ maxMessages, deadline })` from a cron-triggered handler instead of `start()`. See [Serverless](/docs/outbound/serverless).
+## Start here
 
-## What's available, and what's next
+<Cards>
+  <Card icon={<BoxIcon />} title="Sending & the outbox" href="/docs/outbound/send" description="The transactional contract — an outbox INSERT that joins your business write." />
+  <Card icon={<RepeatIcon />} title="Retries & backoff" href="/docs/outbound/retries" description="The retry schedule, circuit breaker, auto-disable." />
+  <Card icon={<HistoryIcon />} title="Replay" href="/docs/outbound/replay" description="First-class replay verbs — by message, endpoint, or filter." />
+  <Card icon={<LinkIcon />} title="Endpoints" href="/docs/outbound/endpoints" description="Manage the receiver side of your fanout." />
+  <Card icon={<RocketIcon />} title="Serverless" href="/docs/operations/serverless" description="Bounded drain() calls for Lambda, Vercel, and Cloudflare — no long-lived process." />
+</Cards>
 
-The outbound runtime is implemented and exercised end-to-end by the `@postel/compliance` sender suite. What's available now:
+## What's available
 
-- The sender-side capability specs (sender, retry-policy, replay-reconciliation, endpoint-management, key-management, filtering-transformation) and their TypeScript runtime.
-- The `@postel/compliance` suite driving the sender behaviors against the running runtime.
-- The in-process `InMemoryStorage` adapter — production-shaped for single-process deployments and the natural choice for tests.
-- The full database-backed [storage-adapter matrix](/docs/storage) — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql`, and the Drizzle / Kysely / Prisma / TypeORM / MikroORM ORM adapters — plus a custom-adapter path for any other database.
+✅ = available now · ⏳ = config slot present, adapter/runtime planned. The outbound runtime is exercised end-to-end by the [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) sender suite.
 
-Still ahead, in a later release:
-- The external job-queue worker adapters (BullMQ, PgBoss) — the config slots exist but throw `NotImplementedError` today; the in-process worker pool is the supported runtime.
-- KMS-backed encryption at rest (`AwsKms` / `GcpKms` / `Vault`), automatic retention pruning, ephemeral auto-rotating keys, and the `http.tls` / `http.dns` knobs. Their config slots are typed but unwired, so configuring them throws `NotImplementedError` rather than silently no-opping. `observability.logger` is wired today and receives delivery / circuit events with trace correlation, [OpenTelemetry spans](/docs/outbound/observability) ship for the sender path, and `postel.metrics()` covers the Prometheus-named counters/histograms/gauges.
+| Feature | Status | Notes |
+|---|---|---|
+| **Transactional outbox** | ✅ | `send()` writes an outbox row inside *your* business transaction — no orphaned events, no "we charged the card but never told the customer." |
+| **Retries, circuit breaker, dead-letter, auto-disable** | ✅ | [Scheduled backoff](/docs/outbound/retries), configurable per endpoint, with breakers and auto-disable on persistent failure. |
+| **Replay** | ✅ | `replay({ messageId })`, `replay({ endpointId, since })`, or `replay({ filter })`. No queue surgery, no manual SQL. |
+| **Fanout** | ✅ | One `send()` → N endpoints, filtered by event type globs, channels, structural filters, or a predicate. |
+| **Endpoint lifecycle** | ✅ | `endpoints.create/update/delete/list/get/disable/enable`, plus `rotateSecret({ keepPreviousFor })` for overlap-window rotation. |
+| **Signing & key management** | ✅ | `HmacV1()` or `Ed25519V1a()`; key generation, rotation, and `keys.publicJwks()` served through each adapter's [`bindJwks()`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side) mount. |
+| **Admin API** | ✅ | [`@postel/admin`](/docs/operations/admin) — a default-deny HTTP control plane: endpoint CRUD, replay, reconcile, tenants, key generation, `GET /health`. |
+| **Introspection** | ✅ | [`messages.get / attempts / list`](/docs/outbound/messages) and [`tenants.get / list`](/docs/outbound/tenants), also over HTTP via the admin API. |
+| **Storage** | ✅ | `InMemoryStorage()` for tests and single-process demos, plus the full [database adapter matrix](/docs/storage). |
+| **Serverless drain** | ✅ | [`drain({ maxMessages, deadline })`](/docs/operations/serverless) — bounded single-pass delivery, safe alongside a live pool. |
+| **Observability** | ✅ | Logger pass-through with trace correlation, typed `postel.on(...)` events, `health()`, Prometheus-named `metrics()`, and OTel spans — the whole story is on [Observability](/docs/operations/observability). |
+| **Multi-tenancy** | ✅ scoping · ⏳ limits | Tenant-scoped fanout, persistence, and reads ship; per-tenant rate-limit *enforcement* lands later (the config persists today). |
+| **Worker strategies** | ✅ in-process · ⏳ queues | The in-process pool is the default and only runtime; `BullMQ` / `PgBoss` / `External` slots throw `NotImplementedError` until their adapters ship. |
+| **KMS integration** | ⏳ later | `PlaintextKms` only; `AwsKms` / `GcpKms` / `Vault` slots throw `NotImplementedError` until envelope encryption ships. |
+| **Unwired slots fail fast** | ⏳ later | `retention`, `ephemeralKeys`, `http.tls` / `http.dns`, and per-endpoint `maxInflight` are typed but unwired — configuring any of them throws `NotImplementedError` rather than silently doing nothing. |
+
+**Security note:** until KMS lands, signing secrets are stored as-is in `endpoint_secrets.material` (`encryption = 'plaintext'`) — treat your database as the sole boundary protecting signing keys, the same as any secret store with no KMS in front of it.
 
 ## Where to read next
 
-The pages above cover the runtime. For the design rationale behind the library-not-service shape, read [Why Postel](/docs/get-started/why).
+For the design rationale behind the library-not-service shape, read [Why Postel](/docs/project/why); for the guarantees this half makes and doesn't make, [Delivery guarantees](/docs/concepts/delivery-guarantees).

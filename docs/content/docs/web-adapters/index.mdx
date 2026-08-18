@@ -15,7 +15,7 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
 
 - **`hwa.inbound.<source>.post(route, handler, opts?)`** — register a gated route. Raw bytes are verified before your handler runs, with the typed result on the request context (`c.var.postel` / `req.postel`). The source key is type-checked against your config. For a non-`POST` delivery (some providers use `PUT`/`PATCH`), use **`.on(method, route, handler, opts?)`** — `.post` is sugar for `.on("POST", …)`. Bodyless verbs (`GET`/`HEAD`) aren't offered: the gate verifies a signature over the body.
 - **`hwa.outbound.bindJwks(route?, provider?)`** — publish your public keys (defaults to `/.well-known/webhooks-keys` + `postel.outbound.keys.publicJwks()`).
-- **`hwa.admin.bindAdminRoutes(prefix, opts)`** — mount the [`@postel/admin`](/docs/outbound/admin) control plane.
+- **`hwa.admin.bindAdminRoutes(prefix, opts)`** — mount the [`@postel/admin`](/docs/operations/admin) control plane.
 
 Prefer to own the routing yourself? The facade is sugar over the **low-level primitives** every package still exports: `verifyWebhook(source, opts?)` (the framework-native gate) and `withWebhook(source, handler, opts?)` (gate + handler folded into one). NestJS is the exception — it stays DI-idiomatic with a `WebhookGuard` rather than a routing facade.
 
@@ -66,4 +66,4 @@ We deliberately don't bridge the two slots: auto-converting Standard Schema → 
 
 ## Both directions
 
-Adapters also mount the **outbound** HTTP surface: `hwa.outbound.bindJwks()` publishes your current public keys (see [key rotation](/docs/inbound/key-rotation)), and `hwa.admin.bindAdminRoutes()` mounts the [`@postel/admin`](/docs/outbound/admin) control plane (natively on Hono; via `fetchToExpress` / `fetchToFastify` on Node).
+Adapters also mount the **outbound** HTTP surface: `hwa.outbound.bindJwks()` publishes your current public keys (see [key rotation](/docs/inbound/key-rotation)), and `hwa.admin.bindAdminRoutes()` mounts the [`@postel/admin`](/docs/operations/admin) control plane (natively on Hono; via `fetchToExpress` / `fetchToFastify` on Node).

@@ -11,7 +11,7 @@ This is the long-form rationale. For a 30-second fit check, use [Is Postel for m
 
 Teams who need outbound webhooks today choose between:
 
-- **A hosted service** — Svix, Hookdeck Outpost — solves the problem comprehensively but adds operational footprint (Postgres + Redis + a separate dispatcher process) and costs $0→$490/mo cliff for hosted.
+- **A hosted service** — Svix, Hookdeck Outpost — solves the problem comprehensively but adds operational footprint (Postgres + Redis + a separate dispatcher process), and hosted pricing jumps from a free tier straight to $490/mo.
 - **A hand-rolled worker** on Sidekiq, Oban, or BullMQ — the queue handles retries; everything else (signing, idempotency, replay, key rotation, JWKS, multi-secret windows, dedup, raw-bytes preservation) is reimplemented every time.
 
 The [Standard Webhooks](https://www.standardwebhooks.com) specification covers the wire format and ships signing helpers in nine languages, but explicitly leaves delivery, retry, key management, replay, and operational tooling to implementers. There's a gap between *"signs and verifies"* and *"production-grade delivery layer"* that the consortium doesn't fill.
@@ -25,21 +25,7 @@ Postel sits in that gap.
 
 Postel does not compete with Svix or Hookdeck on customer-facing webhook portals, multi-region delivery, or 99.999% uptime SLAs. It targets a different audience: teams who want to add reliable outbound webhooks to an existing application without standing up a separate service, and single-binary OSS products that cannot run a Postgres + Redis + service sidecar in the first place.
 
-## Comparison
-
-| | Svix self-hosted | Hand-rolled (BullMQ/Sidekiq) | Standard Webhooks lib only | **Postel** |
-|---|---|---|---|---|
-| Sender — outbox, retries, replay | ✅ | ⚠️ DIY | ❌ | ✅ |
-| Receiver — verification, dedup | ✅ | ⚠️ DIY | ⚠️ Signing only | ✅ |
-| Runs in your app process | ❌ | ✅ | ✅ | ✅ |
-| Requires Redis / broker | ✅ | Usually yes | ❌ | ❌ |
-| Requires separate dispatcher process | ✅ | Often | ❌ | ❌ |
-| Customer-facing portal as packaged product | ✅ | ❌ | ❌ | ❌ (use Svix) |
-| Multi-region / 99.999% SLA | ✅ (hosted) | ⚠️ DIY | n/a | ❌ (use Svix) |
-| Multi-language ports | Java, Go, Python, Rust, Kotlin, Ruby, C#, PHP (client libs only) | n/a | ✅ 9 langs (signing only) | TS today; Go/Py/Rust on roadmap (full lib) |
-| Cost | Self-host infra + ops | Engineer time | Free | Free (OSS) |
-
-If you need anything in the "use Svix" rows, use Svix. Postel won't grow into them.
+The full product-by-product table — Svix, Hookdeck Outpost, Convoy, DIY — lives on the [comparison page](/docs/project/comparison), including what Postel deliberately doesn't do. If you need a customer-facing portal, multi-region delivery, or five-nines SLAs, use Svix; Postel won't grow into them.
 
 ## Four design choices
 
@@ -55,11 +41,11 @@ Postel will never have a hosted offering, never run a separate dispatcher proces
 
 The reliability and security guarantees Postel makes have to hold across every port — TypeScript today, Go and Python and Rust tomorrow. That requires more than docs. Every behavior — sender, receiver, retry, replay, dedup, key rotation — is captured as a testable scenario, and the cross-port contract is enforced by a **compliance test suite** ([`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance)) that runs against any HTTP receiver claiming Standard Webhooks compliance. Every Postel port passes the same suite at the same version before it can ship.
 
-The suite is the boundary between **CONTRACT** (everything every port must do) and **PORT-SPECIFIC** (mechanism each port is free to choose). What the suite tests is contract; what it doesn't is implementation detail. See [Reference → Specs & standards](/docs/reference/specs).
+The suite is the boundary between **CONTRACT** (everything every port must do) and **PORT-SPECIFIC** (mechanism each port is free to choose). What the suite tests is contract; what it doesn't is implementation detail. See [Reference → Specs & standards](/docs/project/specs).
 
 ### 3. Polyglot from the start
 
-The TypeScript port ships first because Node + Postgres is the largest existing footprint and the receiver story is the smallest plausible cut. But the contract is language-agnostic: the wire format is AsyncAPI 3.0, the DB schema is SQL DDL, the capability behaviors are markdown specs, and the compliance suite drives any conformant receiver. Go, Python, and Rust ports follow on the same schedule, each gated on passing the suite. See [Polyglot](/docs/get-started/polyglot).
+The TypeScript port ships first because Node + Postgres is the largest existing footprint and the receiver story is the smallest plausible cut. But the contract is language-agnostic: the wire format is AsyncAPI 3.0, the DB schema is SQL DDL, the capability behaviors are markdown specs, and the compliance suite drives any conformant receiver. Go, Python, and Rust ports follow on the same schedule, each gated on passing the suite. See [Polyglot](/docs/project/polyglot).
 
 The bet: a small narrow contract enforced by the compliance suite scales further than per-port reinvention or single-language lock-in.
 
@@ -69,32 +55,13 @@ Postel implements the [Standard Webhooks](https://www.standardwebhooks.com) wire
 
 When we deviate, we do so via the multi-secret rotation window: producers can sign with both old and new keys during overlap, and receivers accept either. No flag day.
 
-## Operating principles
+## Governance, in one paragraph
 
-- **OSS license.** MIT or Apache-2.0 (decided before 1.0).
-- **No "open-core."** Every feature in the capability specs ships in OSS, forever. The funding model — sponsorships, support contracts — is separate and never feature-gates.
-- **Maintainer-led governance** with clear contribution guidelines. Public roadmap. The compliance suite is the binding contract.
-- **Standard Webhooks consortium engagement.** We pursue "delivery layer" reference implementation status with the consortium, with this library as the reference.
-
-## What 1.0 looks like
-
-A reasonable observer answers **yes** to all of:
-
-1. Can I add webhooks to my existing relational-DB app (Postgres, MySQL, SQLite, …) without bringing up Redis or a service?
-2. Does it handle key rotation with overlap windows out of the box?
-3. Can I publish a JWKS endpoint with one line?
-4. Is replay a first-class API verb?
-5. Does the TypeScript implementation pass `@postel/compliance` end-to-end?
-6. Are the receiver verifier errors actionable?
-7. Does the multi-tenant scheduler isolate noisy neighbors by default?
-8. Is the "Why not a service?" answer obvious from the docs?
-9. Are the wire format, DB schema, and capability specs documented well enough that the first community port is plausible — and validated by passing the compliance suite?
-
-If all yes → 1.0. Otherwise it isn't done.
+MIT-licensed OSS with no open-core: every feature in the capability specs ships in the open, forever — funding (sponsorships, support) never feature-gates. Maintainer-led, public roadmap, and the compliance suite as the binding contract. The full operating principles and the 1.0 definition-of-done live in [VISION.md](https://github.com/postel-sh/postel/blob/main/VISION.md), which is the governing document — this page is the adopter-facing summary.
 
 ## Read next
 
+- [Comparison](/docs/project/comparison) — Postel vs Svix vs Outpost vs Convoy vs DIY, product by product.
 - [Is Postel for me?](/docs/get-started/is-postel-for-me) — the fast filter.
-- [Quickstart](/docs/get-started/quickstart) — verify your first webhook.
-- [Polyglot](/docs/get-started/polyglot) — the language-port roadmap.
-- [Reference → Specs & standards](/docs/reference/specs) — the source-of-truth artifacts.
+- [Polyglot](/docs/project/polyglot) — the language-port roadmap.
+- [Specs & standards](/docs/project/specs) — the source-of-truth artifacts.

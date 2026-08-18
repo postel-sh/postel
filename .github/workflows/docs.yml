@@ -4,13 +4,19 @@ on:
   pull_request:
     paths:
       - "docs/**"
-      - "typescript/packages/core/src/**"
+      - "typescript/packages/**"
+      - "typescript/docs-snippets/**"
+      - "scripts/check-reference-drift.mjs"
+      - "scripts/reference-drift-exempt.txt"
       - ".github/workflows/docs.yml"
   push:
     branches: [main]
     paths:
       - "docs/**"
-      - "typescript/packages/core/src/**"
+      - "typescript/packages/**"
+      - "typescript/docs-snippets/**"
+      - "scripts/check-reference-drift.mjs"
+      - "scripts/reference-drift-exempt.txt"
       - ".github/workflows/docs.yml"
 
 permissions:
@@ -18,6 +24,37 @@ permissions:
   deployments: write
 
 jobs:
+  docs-gates:
+    name: Snippets & reference drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: typescript
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        working-directory: typescript
+        run: pnpm build
+
+      - name: Type-check docs snippets
+        working-directory: typescript
+        run: pnpm --filter @postel/docs-snippets check
+
+      - name: Reference drift
+        run: node scripts/check-reference-drift.mjs
+
   build-and-deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest

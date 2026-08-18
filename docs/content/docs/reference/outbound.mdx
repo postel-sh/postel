@@ -367,11 +367,11 @@ interface MessageListOptions extends CursorOptions {
 }
 ```
 
-`Message.status` is the message-level outbox lifecycle; each endpoint's own delivery outcome is on `DeliveryAttempt.status` — a message can be `dispatched` overall while one endpoint's attempts are all `failed`. `messages.get` resolves `undefined` for an unknown id; `messages.list`/`attempts` back the message-introspection reads used by [`@postel/admin`](/docs/outbound/admin)'s `GET /messages` routes.
+`Message.status` is the message-level outbox lifecycle; each endpoint's own delivery outcome is on `DeliveryAttempt.status` — a message can be `dispatched` overall while one endpoint's attempts are all `failed`. `messages.get` resolves `undefined` for an unknown id; `messages.list`/`attempts` back the message-introspection reads used by [`@postel/admin`](/docs/operations/admin)'s `GET /messages` routes.
 
 ### drain
 
-Bounded, single-pass delivery for [serverless and cron invocations](/docs/outbound/serverless): reserves and dispatches at most `maxMessages` outbox messages, stopping earlier when `deadline` elapses. Never starts a persistent loop — a single call always resolves — and reuses the worker pool's reserve/lease mechanism, so it's safe alongside a running `postel.start()` pool.
+Bounded, single-pass delivery for [serverless and cron invocations](/docs/operations/serverless): reserves and dispatches at most `maxMessages` outbox messages, stopping earlier when `deadline` elapses. Never starts a persistent loop — a single call always resolves — and reuses the worker pool's reserve/lease mechanism, so it's safe alongside a running `postel.start()` pool.
 
 ```ts nocheck
 drain(opts: DrainOptions): Promise<DrainResult>;

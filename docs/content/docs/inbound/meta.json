@@ -1,13 +1,14 @@
 {
   "title": "Inbound",
   "icon": "inbox",
-  "description": "Verify Standard Webhooks sent to your app.",
+  "description": "Verify webhooks sent to your app — Standard Webhooks, Stripe, GitHub, and more.",
   "pages": [
     "index",
     "verify",
+    "providers",
+    "custom-verifiers",
     "signing",
     "key-rotation",
-    "deduplication",
-    "raw-bytes"
+    "deduplication"
   ]
 }

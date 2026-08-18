@@ -2,16 +2,5 @@
   "title": "Outbound",
   "icon": "send",
   "description": "Deliver Standard Webhooks to your customers.",
-  "pages": [
-    "index",
-    "send",
-    "retries",
-    "replay",
-    "endpoints",
-    "messages",
-    "tenants",
-    "serverless",
-    "admin",
-    "observability"
-  ]
+  "pages": ["index", "send", "retries", "replay", "endpoints", "messages", "tenants"]
 }
