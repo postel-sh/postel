@@ -25,7 +25,7 @@
 
 ## 5. ADR + drift bookkeeping
 
-- [x] 5.1 `decisions/0014-framework-adapter-pattern.md`.
+- [x] 5.1 `decisions/0017-framework-adapter-pattern.md` (filed as `0014-framework-adapter-pattern.md`; renumbered 2026-08-17).
 - [x] 5.2 Add *Framework adapters share a framework-agnostic HTTP core* to `scripts/spec-drift-deferred.txt` (packaging-policy item, consistent with the other distribution-packaging entries).
 
 ## 6. Verify + archive

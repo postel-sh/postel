@@ -25,7 +25,7 @@
 
 ## Risks / Trade-offs
 
-- *Risk:* a second framework-neutral surface (`@postel/http`) alongside core's `jwksHandler` could blur "where do HTTP things live?" → *Mitigation:* ADR 0014 states the rule — verify/sign/dedup live in core; HTTP gating/outcome lives in `@postel/http`; per-framework idioms live in adapter packages.
+- *Risk:* a second framework-neutral surface (`@postel/http`) alongside core's `jwksHandler` could blur "where do HTTP things live?" → *Mitigation:* ADR 0017 (originally filed as 0014; renumbered — see [ADR 0017](../../../../decisions/0017-framework-adapter-pattern.md)) states the rule — verify/sign/dedup live in core; HTTP gating/outcome lives in `@postel/http`; per-framework idioms live in adapter packages.
 - *Risk:* the gate exposes the verified result on the framework request context (`c.set("postel", …)`), a typed contract per framework. → *Mitigation:* that typing is each adapter's concern (PORT-SPECIFIC); the core only deals in the normalized outcome.
 
 ## Open Questions

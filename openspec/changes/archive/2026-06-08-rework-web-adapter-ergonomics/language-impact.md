@@ -15,4 +15,4 @@
 
 ## Lockstep / lag
 
-TypeScript-port-only ergonomics + naming change over unchanged `@postel/http` wire behavior, permitted by ADR 0014 (adapter ergonomics + JWKS binding shape are PORT-SPECIFIC). The served JWKS document and well-known path remain CONTRACT, so the compliance suite and any future port are unaffected.
+TypeScript-port-only ergonomics + naming change over unchanged `@postel/http` wire behavior, permitted by ADR 0017 (filed as ADR 0014; adapter ergonomics + JWKS binding shape are PORT-SPECIFIC). The served JWKS document and well-known path remain CONTRACT, so the compliance suite and any future port are unaffected.

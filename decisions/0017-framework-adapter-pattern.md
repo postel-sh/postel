@@ -1,7 +1,8 @@
-# 0014 — Framework-adapter pattern: a framework-agnostic HTTP core + thin per-framework gate bindings
+# 0017 — Framework-adapter pattern: a framework-agnostic HTTP core + thin per-framework gate bindings
 
 - **Status**: Accepted
 - **Date**: 2026-06-02
+- **Renumbered (2026-08-17)**: originally filed as ADR 0014, which collided with [0014-release-and-versioning-flow.md](0014-release-and-versioning-flow.md) (also dated 2026-06-02, merged first). Renumbered to 0017; no content change.
 - **Decision drivers**: avoid N adapters re-deriving the verify→HTTP policy; keep `@postel/core` pure; make the error→status mapping a single CONTRACT-testable surface; cross-port consistency for future Go/Python/Rust receivers
 
 ## Context

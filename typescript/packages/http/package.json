@@ -3,6 +3,12 @@
   "version": "0.0.0",
   "description": "Framework-agnostic webhook HTTP core for Postel: verification gate, error-to-status policy, Fetch handler.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/http"
+  },
+  "keywords": ["webhooks", "standard-webhooks", "http", "fetch", "middleware", "postel"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
