@@ -43,6 +43,8 @@ If you're verifying webhooks that other services send to you — that's the [inb
 | **Observability** | ✅ logger · events · health · ⏳ otel/metrics | `observability.logger` receives the runtime's `attempt` / `circuit-open` / `circuit-close` / `dead-letter` events as they happen. The same events are typed on `postel.on(event, handler)` — the handler's payload is inferred from the event name and `on` returns an `Unsubscribe`. `postel.health()` is a readiness probe: `{ ok, outboxDepth, oldestPendingAge, workerCount }`, reporting `ok: false` when the storage probe fails or a configured `observability.health` threshold (`maxOutboxDepth`, `maxOldestPendingAge`) is exceeded. OpenTelemetry spans and Prometheus metrics are deferred. |
 | **Unwired config slots fail fast** | ⏳ later | `retention`, `ephemeralKeys`, and the `http.tls` / `http.dns` knobs are typed for forward-compatibility but not yet wired — configuring any of them throws `NotImplementedError` rather than silently doing nothing. |
 
+**Security note:** until KMS lands, signing secrets (HMAC keys and Ed25519 private keys) are stored as-is in `endpoint_secrets.material` — no envelope encryption is applied. Every row's `encryption` column reads `'plaintext'` today; treat your database as the sole boundary protecting signing keys, the same as any other secret store with no KMS in front of it.
+
 ## The mental model
 
 The same `Postel({...})` factory accepts an `outbound` config alongside `inbound`. The two are independent — configure one, both, or neither.

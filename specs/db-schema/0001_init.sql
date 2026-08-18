@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS endpoint_secrets (
   algorithm       text NOT NULL,            -- 'v1' (HMAC) | 'v1a' (Ed25519)
   status          text NOT NULL,            -- 'primary' | 'verifying' | 'expiring'
   priority        integer NOT NULL,         -- lower = higher priority
-  encrypted_value bytea NOT NULL,           -- envelope-encrypted; KMS adapter unwraps
+  encrypted_value bytea NOT NULL,           -- renamed to `material` (no encryption applied
+                                             -- yet; see 0007_endpoint_secret_material_column.sql)
   -- SQLite: encrypted_value BLOB
   not_after       timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now()

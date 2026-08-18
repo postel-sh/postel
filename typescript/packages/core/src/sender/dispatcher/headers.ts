@@ -26,7 +26,7 @@ export async function signAndBuildHeaders(
   // expiring secrets exist for the receiver's rotation-overlap window and MUST
   // NOT be used for outbound signing.
   for (const sec of input.secrets) {
-    const secretString = new TextDecoder().decode(sec.encryptedValue);
+    const secretString = new TextDecoder().decode(sec.material);
     const decoded = decodeSecret(secretString);
     if (sec.algorithm === "v1" && decoded.kind === "hmac") {
       const sig = await signHmacV1(decoded.bytes, canonical);

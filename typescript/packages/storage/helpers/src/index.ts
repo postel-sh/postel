@@ -53,7 +53,7 @@ export const MYSQL_CAPABILITIES: StorageCapabilities = {
 // The schema version the current library is built against — kept in lockstep
 // with the latest forward-only migration in specs/db-schema/. A SQL adapter
 // compares this against `_postel_meta.schema_version` for the boot handshake.
-export const POSTEL_SCHEMA_VERSION = 6;
+export const POSTEL_SCHEMA_VERSION = 7;
 
 // --- Column codec ---------------------------------------------------------
 // Three dialect axes diverge at the column boundary: how timestamps and JSON
@@ -464,7 +464,7 @@ export function encodeSecretInsert(
   secret: Omit<EndpointSecretRecord, "createdAt">,
   codec: ColumnCodec,
 ): Row {
-  const { id, endpointId, algorithm, status, priority, encryptedValue, publicKey, notAfter } =
+  const { id, endpointId, algorithm, status, priority, material, encryption, publicKey, notAfter } =
     secret;
   return {
     id,
@@ -472,7 +472,8 @@ export function encodeSecretInsert(
     algorithm,
     status,
     priority,
-    encrypted_value: encodeBytes(encryptedValue),
+    material: encodeBytes(material),
+    encryption,
     public_key: publicKey === undefined ? null : encodeBytes(publicKey),
     not_after: encodeTimestamp(notAfter, codec),
   };
@@ -485,7 +486,8 @@ export function decodeSecret(row: Row, codec: ColumnCodec): EndpointSecretRecord
     algorithm,
     status,
     priority,
-    encrypted_value,
+    material,
+    encryption,
     public_key,
     not_after,
     created_at,
@@ -498,7 +500,8 @@ export function decodeSecret(row: Row, codec: ColumnCodec): EndpointSecretRecord
     algorithm: algorithm as EndpointSecretRecord["algorithm"],
     status: status as EndpointSecretRecord["status"],
     priority: Number(priority ?? 0),
-    encryptedValue: decodeBytes(encrypted_value),
+    material: decodeBytes(material),
+    encryption: encryption as EndpointSecretRecord["encryption"],
     ...(publicKey === undefined ? {} : { publicKey }),
     notAfter: decodeTimestamp(not_after, codec),
     createdAt: decodeTimestamp(created_at, codec) ?? new Date(0),

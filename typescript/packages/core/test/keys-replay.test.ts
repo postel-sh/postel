@@ -79,7 +79,8 @@ describe("Endpoint holds a priority-ordered secret array", () => {
       algorithm: "v1",
       status: "primary",
       priority: 0,
-      encryptedValue: new TextEncoder().encode("whsec_aaaa"),
+      material: new TextEncoder().encode("whsec_aaaa"),
+      encryption: "plaintext",
       notAfter: null,
     });
     await storage.secrets.insert({
@@ -88,7 +89,8 @@ describe("Endpoint holds a priority-ordered secret array", () => {
       algorithm: "v1",
       status: "verifying",
       priority: 1,
-      encryptedValue: new TextEncoder().encode("whsec_bbbb"),
+      material: new TextEncoder().encode("whsec_bbbb"),
+      encryption: "plaintext",
       notAfter: null,
     });
     const list = await storage.secrets.listForEndpoint(ep.id);
@@ -124,7 +126,8 @@ describe("Rotation API with overlap window", () => {
       algorithm: "v1",
       status: "primary",
       priority: 0,
-      encryptedValue: new TextEncoder().encode("whsec_orig"),
+      material: new TextEncoder().encode("whsec_orig"),
+      encryption: "plaintext",
       notAfter: null,
     });
     const postel = Postel({ outbound: { storage } });
@@ -261,7 +264,8 @@ describe("Replay attempts tagged for audit", () => {
       algorithm: "v1",
       status: "primary",
       priority: 0,
-      encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+      material: new TextEncoder().encode(SAMPLE_SECRET),
+      encryption: "plaintext",
       notAfter: null,
     });
     const postel = Postel({ outbound: { storage } });

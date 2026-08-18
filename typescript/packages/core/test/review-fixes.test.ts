@@ -44,7 +44,8 @@ async function insertSecret(
     algorithm: "v1",
     status: "primary",
     priority: 0,
-    encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+    material: new TextEncoder().encode(SAMPLE_SECRET),
+    encryption: "plaintext",
     notAfter: null,
   });
 }
