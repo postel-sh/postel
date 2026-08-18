@@ -1,7 +1,7 @@
 import type { Clock } from "../../clock.js";
-import { spanAttributes, withSpan } from "../../observability/tracing.js";
 import type { ReservedMessage, Storage, TenantId, WorkerId } from "../../storage/types.js";
-import { type DispatchOne, dispatchMessage } from "../dispatcher/dispatch.js";
+import type { DispatchOne } from "../dispatcher/dispatch.js";
+import { processReservedMessage } from "./process-one.js";
 
 export interface WorkerOptions {
   readonly id: WorkerId;
@@ -135,33 +135,19 @@ export class Worker {
 
   private async processOne(msg: ReservedMessage): Promise<void> {
     this.active += 1;
-    const renewTimer = setInterval(() => {
-      this.opts.storage
-        .renewLease(msg.id, this.opts.id, this.opts.leaseMs, this.opts.clock.now())
-        .catch(() => {
-          // Swallow transient renew failures: the lease simply expires and the
-          // janitor reclaims the message. An unhandled rejection from a storage
-          // adapter here could otherwise crash the worker process.
-        });
-    }, this.opts.renewIntervalMs);
     try {
-      await withSpan(
-        "postel.dispatch",
-        spanAttributes({ "postel.message.id": msg.id, "postel.tenant.id": msg.tenantId }),
-        () =>
-          dispatchMessage(
-            { storage: this.opts.storage, clock: this.opts.clock },
-            msg,
-            this.opts.dispatchOne,
-          ),
+      await processReservedMessage(
+        {
+          storage: this.opts.storage,
+          clock: this.opts.clock,
+          dispatchOne: this.opts.dispatchOne,
+          workerId: this.opts.id,
+          leaseMs: this.opts.leaseMs,
+          renewIntervalMs: this.opts.renewIntervalMs,
+        },
+        msg,
       );
-      await this.opts.storage.releaseLease(msg.id, this.opts.id);
-    } catch {
-      // An unexpected dispatch error must not kill the worker loop. Leave the
-      // lease to expire so the janitor (expireStaleLeases) reclaims the message
-      // with natural backoff rather than hot-looping; another worker retries it.
     } finally {
-      clearInterval(renewTimer);
       this.active -= 1;
     }
   }

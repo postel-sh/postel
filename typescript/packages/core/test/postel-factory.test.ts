@@ -102,6 +102,14 @@ describe("Postel factory returns the library instance", () => {
     expect(typeof postel.outbound.messages.list).toBe("function");
   });
 
+  it("Outbound drain surface is present", async () => {
+    const postel = Postel({ outbound: { storage: InMemoryStorage() } });
+    expect(typeof postel.outbound.drain).toBe("function");
+    const result = await postel.outbound.drain({ maxMessages: 100, deadline: "30s" });
+    expect(typeof result.processed).toBe("number");
+    expect(typeof result.reachedDeadline).toBe("boolean");
+  });
+
   it("Type inference for the inbound surface", () => {
     const postel = Postel({
       inbound: { github: { verify: Secret(TEST_SECRET_A) } },

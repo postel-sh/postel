@@ -15,6 +15,7 @@ import { rotateSecret } from "./sender/keys/rotation.js";
 import { reconcileImpl, replayImpl } from "./sender/replay/replay.js";
 import { buildRetryDispatcher } from "./sender/retry/orchestrator.js";
 import { sendImpl } from "./sender/send.js";
+import { type DrainOptions, type DrainResult, drainOnce } from "./sender/worker/drain.js";
 import { WorkerPool } from "./sender/worker/pool.js";
 import type { StandardSchemaV1 } from "./standard-schema.js";
 import type {
@@ -374,6 +375,7 @@ export interface OutboundApi<
   };
   replay(opts: ReplayOptions<TTx>): Promise<ReplayResult>;
   reconcile(opts: ReconcileOptions<TTx>): Promise<Page<MessageId>>;
+  drain(opts: DrainOptions): Promise<DrainResult>;
   messages: {
     get<TData = unknown>(id: string, opts?: { tx?: TTx }): Promise<Message<TData> | undefined>;
     attempts(id: string): Promise<ReadonlyArray<DeliveryAttempt>>;
@@ -632,6 +634,9 @@ export function buildOutboundRuntime<
           ...(opts.cursor !== undefined ? { cursor: opts.cursor } : {}),
         },
       );
+    },
+    async drain(opts) {
+      return drainOnce({ storage: config.storage, clock, dispatchOne: rateLimitDispatcher }, opts);
     },
     messages: {
       async get<TData = unknown>(id: string, opts?: { tx?: TTx }) {

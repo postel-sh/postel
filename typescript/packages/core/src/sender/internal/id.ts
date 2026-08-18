@@ -11,3 +11,9 @@ export function newAttemptId(): string {
   crypto.getRandomValues(bytes);
   return `att_${bytesToBase64(bytes).replace(/[+/=]/g, "")}`;
 }
+
+export function newDrainWorkerId(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return `drain_${bytesToBase64(bytes).replace(/[+/=]/g, "")}`;
+}
