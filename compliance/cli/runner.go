@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -20,6 +22,7 @@ type TestResult struct {
 	Expected    VectorExpected   `json:"expected"`
 	Observed    *ObservedVerdict `json:"observed,omitempty"`
 	Pass        bool             `json:"pass"`
+	Skipped     bool             `json:"skipped"`
 	Error       string           `json:"error,omitempty"`
 	DurationMs  int64            `json:"duration_ms"`
 	File        string           `json:"file"`
@@ -34,8 +37,15 @@ type SuiteRun struct {
 	Results      []TestResult `json:"results"`
 }
 
-func (s *SuiteRun) Summary() (pass, fail int) {
+// Summary tallies executed vectors' verdicts. Skipped vectors are counted
+// separately and never as pass or fail — a mode-mismatched vector that was
+// never driven against a target must not affect the exit code.
+func (s *SuiteRun) Summary() (pass, fail, skip int) {
 	for _, r := range s.Results {
+		if r.Skipped {
+			skip++
+			continue
+		}
 		if r.Pass {
 			pass++
 		} else {
@@ -71,38 +81,46 @@ func run(opts *cliOpts, out io.Writer) (int, error) {
 	}
 	client := &http.Client{Timeout: defaultDriverTimeout}
 	for _, p := range paths {
-		suite.Results = append(suite.Results, executeVector(p, vectorsDir, schemas, opts, client))
+		res, included := executeVector(p, vectorsDir, schemas, opts, client)
+		if !included {
+			continue
+		}
+		suite.Results = append(suite.Results, res)
 	}
 	if err := WriteFormatted(out, opts.format, suite); err != nil {
 		return 2, fmt.Errorf("write output: %w", err)
 	}
-	_, fail := suite.Summary()
+	_, fail, _ := suite.Summary()
 	if fail > 0 {
 		return 1, nil
 	}
 	return 0, nil
 }
 
-func executeVector(path, vectorsDir string, schemas *CompiledSchemas, opts *cliOpts, client *http.Client) TestResult {
+// executeVector runs a single vector file and reports whether it should be
+// included in the suite's results at all — a vector excluded by --only is
+// not included, distinct from a mode-mismatched vector, which IS included
+// but marked Skipped so it cannot be mistaken for a pass.
+func executeVector(vectorPath, vectorsDir string, schemas *CompiledSchemas, opts *cliOpts, client *http.Client) (TestResult, bool) {
 	started := time.Now()
-	res := TestResult{File: relOrPath(vectorsDir, path)}
+	res := TestResult{File: relOrPath(vectorsDir, vectorPath)}
 
-	rawBytes, err := os.ReadFile(path)
+	rawBytes, err := os.ReadFile(vectorPath)
 	if err != nil {
 		res.Error = err.Error()
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 	if err := ValidateVectorBytes(rawBytes, schemas); err != nil {
 		res.Error = err.Error()
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 	v, err := LoadVectorYAML(rawBytes)
 	if err != nil {
 		res.Error = err.Error()
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 	res.VectorID = v.ID
 	res.Capability = v.Requirement.Capability
@@ -110,21 +128,28 @@ func executeVector(path, vectorsDir string, schemas *CompiledSchemas, opts *cliO
 	res.Description = v.Description
 	res.Expected = v.Expected
 
+	if opts.only != "" {
+		matched, _ := path.Match(opts.only, fullVectorPath(res.Capability, res.VectorID))
+		if !matched {
+			return TestResult{}, false
+		}
+	}
+
 	mode := v.Mode
 	if mode == "" {
 		mode = "receiver"
 	}
 	if mode == "sender" && opts.senderControl == "" {
-		res.Pass = true
+		res.Skipped = true
 		res.Error = "skipped: sender-mode vector requires --sender-control"
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 	if mode == "receiver" && opts.target == "" {
-		res.Pass = true
+		res.Skipped = true
 		res.Error = "skipped: receiver-mode vector requires --target"
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 	if mode == "sender" {
 		pass, observed, errMsg := runSenderVector(v, vectorsDir, opts, client)
@@ -134,13 +159,13 @@ func executeVector(path, vectorsDir string, schemas *CompiledSchemas, opts *cliO
 			res.Error = errMsg
 		}
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 
 	if err := ResolveVectorTemplates(v, opts.now); err != nil {
 		res.Error = fmt.Sprintf("resolve templates: %v", err)
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 
 	switch v.SignatureMode {
@@ -149,25 +174,37 @@ func executeVector(path, vectorsDir string, schemas *CompiledSchemas, opts *cliO
 		if err := computeSignatureInPlace(v, vectorsDir, schemas); err != nil {
 			res.Error = fmt.Sprintf("compute signature: %v", err)
 			res.DurationMs = time.Since(started).Milliseconds()
-			return res
+			return res, true
 		}
 	default:
 		res.Error = fmt.Sprintf("unknown signature_mode %q (expected static|computed)", v.SignatureMode)
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 
 	resp, err := DriveVector(opts.target, v, client)
 	if err != nil {
 		res.Error = fmt.Sprintf("send: %v", err)
 		res.DurationMs = time.Since(started).Milliseconds()
-		return res
+		return res, true
 	}
 	observed := ClassifyResponse(resp)
 	res.Observed = &observed
 	res.Pass = verdictMatches(v.Expected, observed)
 	res.DurationMs = time.Since(started).Milliseconds()
-	return res
+	return res, true
+}
+
+// fullVectorPath renders the spec's stable `<capability>/<sub-category>/<vector-id>`
+// categorization path. Some corpus IDs already carry the capability as their
+// leading segment (e.g. "receiver/dedup/concurrent-atomicity"); others don't
+// (e.g. "signature-v1/valid" under capability "standard-webhooks-compliance").
+func fullVectorPath(capability, id string) string {
+	prefix := capability + "/"
+	if strings.HasPrefix(id, prefix) {
+		return id
+	}
+	return prefix + id
 }
 
 func verdictMatches(expected VectorExpected, observed ObservedVerdict) bool {

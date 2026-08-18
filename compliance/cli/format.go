@@ -22,13 +22,22 @@ func WriteFormatted(w io.Writer, format string, s *SuiteRun) error {
 }
 
 func writeText(w io.Writer, s *SuiteRun) error {
-	pass, fail := s.Summary()
+	pass, fail, skip := s.Summary()
 	for _, r := range s.Results {
 		marker := "FAIL"
-		if r.Pass {
+		switch {
+		case r.Skipped:
+			marker = "SKIP"
+		case r.Pass:
 			marker = "PASS"
 		}
 		fmt.Fprintf(w, "%s  %s  [%s — %s]  %s\n", marker, r.VectorID, r.Capability, r.Requirement, r.Description)
+		if r.Skipped {
+			if r.Error != "" {
+				fmt.Fprintf(w, "      reason:   %s\n", r.Error)
+			}
+			continue
+		}
 		if r.Pass {
 			continue
 		}
@@ -41,7 +50,7 @@ func writeText(w io.Writer, s *SuiteRun) error {
 		}
 	}
 	fmt.Fprintf(w, "\nsuite %s — target %s\n", s.SuiteVersion, s.Target)
-	fmt.Fprintf(w, "%d pass / %d fail — %d total\n", pass, fail, len(s.Results))
+	fmt.Fprintf(w, "%d pass / %d fail / %d skipped — %d executed, %d total\n", pass, fail, skip, pass+fail, len(s.Results))
 	return nil
 }
 
@@ -63,9 +72,26 @@ func formatObserved(o ObservedVerdict) string {
 }
 
 func writeJSON(w io.Writer, s *SuiteRun) error {
+	pass, fail, skip := s.Summary()
+	type withSummary struct {
+		*SuiteRun
+		Summary struct {
+			Total    int `json:"total"`
+			Executed int `json:"executed"`
+			Pass     int `json:"pass"`
+			Fail     int `json:"fail"`
+			Skipped  int `json:"skipped"`
+		} `json:"summary"`
+	}
+	out := withSummary{SuiteRun: s}
+	out.Summary.Total = len(s.Results)
+	out.Summary.Executed = pass + fail
+	out.Summary.Pass = pass
+	out.Summary.Fail = fail
+	out.Summary.Skipped = skip
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(s)
+	return enc.Encode(out)
 }
 
 func writeTAP(w io.Writer, s *SuiteRun) error {
@@ -73,12 +99,15 @@ func writeTAP(w io.Writer, s *SuiteRun) error {
 	fmt.Fprintf(w, "1..%d\n", len(s.Results))
 	for i, r := range s.Results {
 		status := "ok"
-		if !r.Pass {
+		directive := ""
+		if r.Skipped {
+			directive = " # SKIP " + r.Error
+		} else if !r.Pass {
 			status = "not ok"
 		}
 		desc := fmt.Sprintf("%s - %s (%s — %s)", r.VectorID, r.Description, r.Capability, r.Requirement)
-		fmt.Fprintf(w, "%s %d %s\n", status, i+1, desc)
-		if r.Pass {
+		fmt.Fprintf(w, "%s %d %s%s\n", status, i+1, desc, directive)
+		if r.Skipped || r.Pass {
 			continue
 		}
 		fmt.Fprintln(w, "  ---")
@@ -91,6 +120,8 @@ func writeTAP(w io.Writer, s *SuiteRun) error {
 		}
 		fmt.Fprintln(w, "  ...")
 	}
+	pass, fail, skip := s.Summary()
+	fmt.Fprintf(w, "# %d executed (%d pass, %d fail), %d skipped\n", pass+fail, pass, fail, skip)
 	return nil
 }
 
@@ -101,12 +132,18 @@ type junitFailure struct {
 	Body    string   `xml:",chardata"`
 }
 
+type junitSkipped struct {
+	XMLName xml.Name `xml:"skipped"`
+	Message string   `xml:"message,attr,omitempty"`
+}
+
 type junitTestCase struct {
 	XMLName   xml.Name      `xml:"testcase"`
 	Name      string        `xml:"name,attr"`
 	Classname string        `xml:"classname,attr"`
 	Time      string        `xml:"time,attr"`
 	Failure   *junitFailure `xml:"failure,omitempty"`
+	Skipped   *junitSkipped `xml:"skipped,omitempty"`
 }
 
 type junitTestSuite struct {
@@ -114,12 +151,13 @@ type junitTestSuite struct {
 	Name      string          `xml:"name,attr"`
 	Tests     int             `xml:"tests,attr"`
 	Failures  int             `xml:"failures,attr"`
+	Skipped   int             `xml:"skipped,attr"`
 	Time      string          `xml:"time,attr"`
 	TestCases []junitTestCase `xml:"testcase"`
 }
 
 func writeJUnit(w io.Writer, s *SuiteRun) error {
-	_, fail := s.Summary()
+	_, fail, skip := s.Summary()
 	cases := make([]junitTestCase, 0, len(s.Results))
 	for _, r := range s.Results {
 		tc := junitTestCase{
@@ -127,7 +165,10 @@ func writeJUnit(w io.Writer, s *SuiteRun) error {
 			Classname: r.Capability,
 			Time:      fmt.Sprintf("%.3f", float64(r.DurationMs)/1000.0),
 		}
-		if !r.Pass {
+		switch {
+		case r.Skipped:
+			tc.Skipped = &junitSkipped{Message: r.Error}
+		case !r.Pass:
 			msg := "expected " + formatExpected(r.Expected)
 			if r.Observed != nil {
 				msg += ", observed " + formatObserved(*r.Observed)
@@ -142,6 +183,7 @@ func writeJUnit(w io.Writer, s *SuiteRun) error {
 		Name:      "@postel/compliance " + s.SuiteVersion,
 		Tests:     len(s.Results),
 		Failures:  fail,
+		Skipped:   skip,
 		Time:      "0",
 		TestCases: cases,
 	}
