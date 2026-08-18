@@ -1,3 +1,4 @@
+import type { Agent } from "undici";
 import type { Clock } from "../../clock.js";
 import { SsrfBlocked } from "../../errors.js";
 import type { HttpDefaults } from "../../outbound.js";
@@ -12,7 +13,8 @@ import { durationToMs } from "../internal/duration.js";
 import type { DispatchContext, DispatchOne, DispatchOutcome } from "./dispatch.js";
 import { evaluateFilter, evaluateTransform } from "./filter-transform.js";
 import { resolveCustomHeaders, signAndBuildHeaders } from "./headers.js";
-import { DEFAULT_SSRF_POLICY, type SsrfPolicy, ssrfCheck } from "./ssrf.js";
+import { pinnedDispatcher } from "./pinned-dispatcher.js";
+import { DEFAULT_SSRF_POLICY, type ResolvedTarget, type SsrfPolicy, ssrfCheck } from "./ssrf.js";
 import { decideFromResponse } from "./status-decision.js";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -107,8 +109,9 @@ export function buildHttpDispatcher(deps: HttpDispatcherDeps): DispatchOne {
       };
     }
     const policy = resolvePolicy(endpoint, deps.defaults);
+    let target: ResolvedTarget;
     try {
-      await ssrfCheck(endpoint.url, policy, "dispatch");
+      target = await ssrfCheck(endpoint.url, policy, "dispatch");
     } catch (e) {
       if (e instanceof SsrfBlocked) {
         return {
@@ -174,17 +177,29 @@ export function buildHttpDispatcher(deps: HttpDispatcherDeps): DispatchOne {
     const t = setTimeout(() => controller.abort(new Error("request timeout")), ms);
     let response: Response | undefined;
     let networkError: string | undefined;
+    const agent = pinnedDispatcher(target);
     try {
       response = await deps.fetchImpl(endpoint.url, {
         method: "POST",
         body: bodyString,
         headers,
         signal: controller.signal,
-      });
+        // Non-standard undici extension: pins the connection to the SSRF-vetted
+        // IP so a DNS answer that changes between check and connect can't be
+        // used to reach a private address (TOCTOU). Not part of lib.dom's
+        // RequestInit, hence the cast.
+        dispatcher: agent,
+      } as RequestInit & { dispatcher: Agent });
     } catch (e) {
-      networkError = (e as Error).message;
+      const err = e as Error & { cause?: unknown };
+      // Node's fetch wraps the real reason (e.g. a TLS certificate rejection)
+      // in `.cause` behind a generic "fetch failed" message — surface it so a
+      // rejected self-signed cert is distinguishable from any other network error.
+      networkError =
+        err.cause instanceof Error ? `${err.message}: ${err.cause.message}` : err.message;
     } finally {
       clearTimeout(t);
+      await agent.close();
     }
     const completedAt = ctx.clock.now();
     const latencyMs = completedAt.getTime() - startedAt.getTime();

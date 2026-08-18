@@ -50,6 +50,10 @@ importers:
         version: 20.17.10
 
   packages/core:
+    dependencies:
+      undici:
+        specifier: ^5.29.0
+        version: 5.29.0
     devDependencies:
       '@types/node':
         specifier: 20.17.10
