@@ -76,7 +76,11 @@ function controlClock(): Clock & { advance(ms: number): void } {
   };
 }
 
-function buildPostel(storage: HostStorage, clock: Clock, concurrency?: number): SenderHost["postel"] {
+function buildPostel(
+  storage: HostStorage,
+  clock: Clock,
+  concurrency?: number,
+): SenderHost["postel"] {
   return Postel({
     outbound: {
       storage,
@@ -126,7 +130,7 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 // "memory" — mechanism is PORT-SPECIFIC per the compliance capability spec.
 export function resolveStorageOptions(
   argv: readonly string[],
-  env: Record<string, string | undefined>,
+  env: NodeJS.ProcessEnv,
 ): { storage: "memory" | "pg"; pgConnectionString?: string } {
   let storage: string | undefined;
   let pgConnectionString: string | undefined;
@@ -134,7 +138,9 @@ export function resolveStorageOptions(
     if (argv[i] === "--storage") storage = argv[i + 1];
     if (argv[i] === "--pg-url") pgConnectionString = argv[i + 1];
   }
+  // biome-ignore lint/complexity/useLiteralKeys: noPropertyAccessFromIndexSignature requires bracket access here
   storage ??= env["POSTEL_COMPLIANCE_STORAGE"];
+  // biome-ignore lint/complexity/useLiteralKeys: noPropertyAccessFromIndexSignature requires bracket access here
   pgConnectionString ??= env["POSTEL_COMPLIANCE_PG_URL"];
   return storage === "pg"
     ? { storage: "pg", ...(pgConnectionString !== undefined ? { pgConnectionString } : {}) }

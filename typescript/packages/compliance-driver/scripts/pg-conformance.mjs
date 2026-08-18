@@ -183,7 +183,16 @@ function runComplianceBinary(senderControlUrl) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(
       COMPLIANCE_BIN,
-      ["--sender-control", senderControlUrl, "--vectors", VECTORS_DIR, "--schema-dir", SCHEMA_DIR, "--format", "json"],
+      [
+        "--sender-control",
+        senderControlUrl,
+        "--vectors",
+        VECTORS_DIR,
+        "--schema-dir",
+        SCHEMA_DIR,
+        "--format",
+        "json",
+      ],
       { stdio: ["ignore", "pipe", "inherit"] },
     );
     let stdout = "";
@@ -233,16 +242,34 @@ async function assertRowShape(pool) {
   const endpoints = await pool.query("SELECT id, state FROM endpoints");
   check("endpoints has rows after the sender corpus run", endpoints.rows.length > 0);
   for (const row of endpoints.rows) {
-    check(`endpoints.state is documented (${row.id})`, ENDPOINT_STATES.includes(row.state), row.state);
+    check(
+      `endpoints.state is documented (${row.id})`,
+      ENDPOINT_STATES.includes(row.state),
+      row.state,
+    );
   }
 
-  const secrets = await pool.query("SELECT algorithm, status, material, encryption FROM endpoint_secrets");
+  const secrets = await pool.query(
+    "SELECT algorithm, status, material, encryption FROM endpoint_secrets",
+  );
   check("endpoint_secrets has rows after the sender corpus run", secrets.rows.length > 0);
   for (const row of secrets.rows) {
-    check("endpoint_secrets.algorithm is documented", SECRET_ALGORITHMS.includes(row.algorithm), row.algorithm);
-    check("endpoint_secrets.status is documented", SECRET_STATUSES.includes(row.status), row.status);
+    check(
+      "endpoint_secrets.algorithm is documented",
+      SECRET_ALGORITHMS.includes(row.algorithm),
+      row.algorithm,
+    );
+    check(
+      "endpoint_secrets.status is documented",
+      SECRET_STATUSES.includes(row.status),
+      row.status,
+    );
     check("endpoint_secrets.material is bytea", Buffer.isBuffer(row.material));
-    check("endpoint_secrets.encryption is 'plaintext'", row.encryption === "plaintext", row.encryption);
+    check(
+      "endpoint_secrets.encryption is 'plaintext'",
+      row.encryption === "plaintext",
+      row.encryption,
+    );
   }
 
   const messages = await pool.query("SELECT status, data FROM messages");

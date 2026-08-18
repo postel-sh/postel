@@ -23,10 +23,13 @@ describe("Sender-side compliance driver mechanism — storage backend selection"
 
   it("--storage pg --pg-url flags win over env vars", () => {
     expect(
-      resolveStorageOptions(["node", "cli.js", "--storage", "pg", "--pg-url", "postgres://flag/db"], {
-        POSTEL_COMPLIANCE_STORAGE: "memory",
-        POSTEL_COMPLIANCE_PG_URL: "postgres://env/db",
-      }),
+      resolveStorageOptions(
+        ["node", "cli.js", "--storage", "pg", "--pg-url", "postgres://flag/db"],
+        {
+          POSTEL_COMPLIANCE_STORAGE: "memory",
+          POSTEL_COMPLIANCE_PG_URL: "postgres://env/db",
+        },
+      ),
     ).toEqual({ storage: "pg", pgConnectionString: "postgres://flag/db" });
   });
 
