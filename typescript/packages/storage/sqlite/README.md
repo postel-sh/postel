@@ -2,9 +2,24 @@
 
 > Standalone Postel storage adapter — Postel owns the SQLite database; zero-config drop-in.
 
-This package is part of [Postel](https://github.com/postel-sh/postel), a polyglot library for sending and receiving webhooks reliably and securely. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified by the `@postel/compliance` test suite.
+This package is part of [Postel](https://github.com/postel-sh/postel), a polyglot library for sending and receiving webhooks reliably and securely. `@postel/sqlite` implements the full outbound `Storage` interface on top of [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) — the simplest way to get durable, single-node webhook delivery with no server to run. It also exports `SqliteDedup` for inbound idempotency-dedup.
 
-Status: **0.0.0** — scaffolded. No code yet. See the [distribution-packaging-typescript capability spec](../../../../openspec/specs/distribution-packaging-typescript/spec.md) for the full package map and the per-package implementation specs under [`openspec/specs/`](../../../../openspec/specs/).
+```bash
+npm install @postel/sqlite better-sqlite3
+```
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { SqliteStorage } from "@postel/sqlite";
+
+export const postel = Postel({
+  outbound: {
+    storage: SqliteStorage({ filename: "postel.db" }), // ":memory:" for tests
+  },
+});
+```
+
+`autoMigrate` (default `true`) brings the database up to the current schema on first use. SQLite has no `LISTEN`/`NOTIFY`, so workers poll the outbox instead of being pushed; delivery is identical, only wake-up latency differs. See [SQLite storage](https://postel.dev/docs/storage/sqlite) for options, `SqliteDedup`, and single-writer notes.
 
 ## License
 
