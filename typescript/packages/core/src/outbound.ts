@@ -354,6 +354,7 @@ export interface OutboundApi<
     list(opts?: EndpointListOptions<TTx>): Promise<Page<Endpoint>>;
     get(id: string, opts?: { tx?: TTx }): Promise<Endpoint>;
     disable(id: string, opts?: { tx?: TTx }): Promise<void>;
+    enable(id: string, opts?: { tx?: TTx }): Promise<void>;
     rotateSecret(id: string, opts: RotateSecretOptions<TTx>): Promise<void>;
   };
   keys: {
@@ -507,6 +508,7 @@ export function buildOutboundRuntime<
       list: endpointApi.list,
       get: endpointApi.get,
       disable: endpointApi.disable,
+      enable: endpointApi.enable,
       async rotateSecret(id, opts) {
         await rotateSecret(config.storage, clock, id, {
           keepPreviousFor: opts.keepPreviousFor,

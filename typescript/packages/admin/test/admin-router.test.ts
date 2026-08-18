@@ -102,6 +102,25 @@ describe("Admin HTTP handlers", () => {
     expect(gotBody.filter).toEqual({ dataPath: "region", equals: "eu" });
   });
 
+  it("Manual re-enable via admin handler: POST /endpoints/:id/enable moves a disabled endpoint back to active", async () => {
+    const { router } = build(ALLOW);
+    const created = await router(
+      req("POST", "/admin/endpoints", { url: "http://127.0.0.1:65535/hook", allowHttp: true }),
+    );
+    const { id } = (await created.json()) as { id: string };
+
+    await router(req("POST", `/admin/endpoints/${id}/disable`));
+    const disabled = await router(req("GET", `/admin/endpoints/${id}`));
+    expect(((await disabled.json()) as { state: string }).state).toBe("disabled");
+
+    const res = await router(req("POST", `/admin/endpoints/${id}/enable`));
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { id: string; state: string }).toEqual({ id, state: "active" });
+
+    const got = await router(req("GET", `/admin/endpoints/${id}`));
+    expect(((await got.json()) as { state: string }).state).toBe("active");
+  });
+
   it("a missing endpoint id maps to 404 (EndpointNotFound)", async () => {
     const { router } = build(ALLOW);
     const res = await router(req("GET", "/admin/endpoints/ep_does_not_exist"));

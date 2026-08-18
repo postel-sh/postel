@@ -73,6 +73,7 @@ When `authorize` returns a `tenantId`, every route is scoped to it: lists and cr
 | `GET /endpoints` · `POST /endpoints` | list (paginated: `?limit=`, `?cursor=`) · create |
 | `GET/PATCH/DELETE /endpoints/:id` | get · update · delete |
 | `POST /endpoints/:id/disable` | disable (pause) |
+| `POST /endpoints/:id/enable` | re-enable (back to `active`) |
 | `POST /endpoints/:id/rotate-secret` | rotate signing secret |
 | `POST /replay` · `POST /reconcile` | replay · reconcile (body accepts `limit` / `cursor`) |
 | `POST /tenants/:id/rate-limit` · `DELETE /tenants/:id` | tenant rate limit · delete |

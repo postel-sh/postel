@@ -73,7 +73,7 @@ The breaker prevents one misbehaving endpoint from saturating worker capacity. P
 
 ## Auto-disable
 
-If an endpoint has been broken long enough that retrying is wasted work, auto-disable removes it from delivery rotation. The endpoint moves to `state: "disabled"`; a human (or an automated reconciliation job) re-enables it.
+If an endpoint has been broken long enough that retrying is wasted work, auto-disable removes it from delivery rotation. The endpoint moves to `state: "disabled"`; a human (or an automated reconciliation job) calls `postel.outbound.endpoints.enable(id)` to move it back to `active`.
 
 ```ts
 const postel = Postel({
