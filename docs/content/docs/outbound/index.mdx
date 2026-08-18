@@ -30,7 +30,7 @@ If you're verifying webhooks that other services send to you — that's the [inb
 | **Retries, circuit breaker, dead-letter, auto-disable** | ✅ | Exponential or linear backoff, configurable per endpoint, with circuit breakers and auto-disable on persistent failure. |
 | **Replay as a first-class verb** | ✅ | `replay({ messageId })`, `replay({ endpointId, since })`, or `replay({ filter })`. No queue surgery, no manual SQL. |
 | **Fanout** | ✅ | One `send()` → N endpoints, filtered by event type, channel, or arbitrary predicate. |
-| **Endpoint lifecycle** | ✅ | `endpoints.create/update/delete/list/get/disable`, with `rotateSecret({ keepPreviousFor })` for overlap-window rotation. |
+| **Endpoint lifecycle** | ✅ | `endpoints.create/update/delete/list/get/disable/enable`, with `rotateSecret({ keepPreviousFor })` for overlap-window rotation. |
 | **Signing** | ✅ | HMAC (`HmacV1()`) or Ed25519 (`Ed25519V1a()`). Asymmetric signing pairs with JWKS publication so receivers verify without a shared secret. |
 | **Key management** | ✅ | Symmetric (`generateSymmetric`) and asymmetric (`generateAsymmetric`) generation; `rotateSecret` preserves the endpoint's algorithm. Current public keys are retrievable via `keys.publicJwks()` and served through each adapter's [`outbound.bindJwks()`](/docs/inbound/key-rotation#publishing-a-jwks-producer-side) mount. |
 | **Admin API** | ✅ | [`@postel/admin`](/docs/outbound/admin) — a default-deny HTTP control plane over the outbound API: endpoint CRUD, replay, reconcile, tenants, and key generation. |

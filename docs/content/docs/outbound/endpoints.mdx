@@ -24,6 +24,9 @@ await postel.outbound.endpoints.update(ep.id, {
 // Disable (delivery stops; row remains for audit)
 await postel.outbound.endpoints.disable(ep.id);
 
+// Re-enable (manual recovery from disabled or circuit-open)
+await postel.outbound.endpoints.enable(ep.id);
+
 // Delete (delivery stops; row removed unless purgeAttempts: false)
 await postel.outbound.endpoints.delete(ep.id, { purgeAttempts: true });
 

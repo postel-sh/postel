@@ -106,6 +106,7 @@ export function buildEndpointApi(
   }): Promise<Page<Endpoint>>;
   get(id: string, opts?: { tx?: unknown }): Promise<Endpoint>;
   disable(id: string, opts?: { tx?: unknown }): Promise<void>;
+  enable(id: string, opts?: { tx?: unknown }): Promise<void>;
 } {
   const ssrfDefault = defaults.ssrf ?? DEFAULT_SSRF_POLICY;
   const resolveSsrfPolicy = (override: SsrfOverride): SsrfPolicy => {
@@ -243,6 +244,16 @@ export function buildEndpointApi(
         id,
         "disabled" satisfies EndpointState,
         "manual",
+        "system",
+        undefined,
+        opts,
+      );
+    },
+    async enable(id, opts) {
+      await storage.endpoints.transitionState(
+        id,
+        "active" satisfies EndpointState,
+        "re-enabled",
         "system",
         undefined,
         opts,

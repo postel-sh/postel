@@ -652,4 +652,24 @@ describe("Endpoint state machine with audit trail", () => {
     expect(target?.toState).toBe("disabled");
     expect(target?.actor).toBe("system");
   });
+
+  it("Manual re-enable: a disabled endpoint transitions back to active with reason=re-enabled", async () => {
+    const storage = InMemoryStorage();
+    const endpointId = await seedEndpoint(storage, "https://example.test/hook");
+    const postel = Postel({ outbound: { storage, http: { ssrf: { allowedRanges: [] } } } });
+
+    await postel.outbound.endpoints.disable(endpointId);
+    expect((await postel.outbound.endpoints.get(endpointId)).state).toBe("disabled");
+
+    await postel.outbound.endpoints.enable(endpointId);
+
+    const endpoint = await postel.outbound.endpoints.get(endpointId);
+    expect(endpoint.state).toBe("active");
+
+    const transitions = await storage.endpoints.listStateTransitions(endpointId);
+    const target = transitions.find((t) => t.reason === "re-enabled");
+    expect(target).toBeDefined();
+    expect(target?.fromState).toBe("disabled");
+    expect(target?.toState).toBe("active");
+  });
 });

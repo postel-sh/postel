@@ -275,6 +275,14 @@ export function adminRouter(
       return json(200, { id, state: "disabled" });
     }
 
+    const enable = /\/endpoints\/([^/]+)\/enable$/.exec(path);
+    if (enable && method === "POST") {
+      const id = enable[1] as string;
+      await endpointForTenant(id, tenantId);
+      await out.endpoints.enable(id);
+      return json(200, { id, state: "active" });
+    }
+
     const rotate = /\/endpoints\/([^/]+)\/rotate-secret$/.exec(path);
     if (rotate && method === "POST") {
       const id = rotate[1] as string;
