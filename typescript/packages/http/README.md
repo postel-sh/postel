@@ -27,7 +27,7 @@ export const POST = (req: Request) => handler(req);
 
 ## Behavior
 
-- Verification failures map to HTTP status by `PostelError.code`: `SIGNATURE_INVALID` / `TIMESTAMP_TOO_OLD` / `MALFORMED_HEADER` / `RAW_BYTES_MISMATCH_DETECTED` → 400, `UNKNOWN_KEY_ID` → 401. Anything that is not a `PostelError` (e.g. `NotImplementedError`) propagates so the framework yields 5xx.
+- Verification failures map to HTTP status by `PostelError.code`: `SIGNATURE_INVALID` / `TIMESTAMP_TOO_OLD` / `MALFORMED_HEADER` → 400, `UNKNOWN_KEY_ID` → 401. Anything that is not a `PostelError` (e.g. `NotImplementedError`) propagates so the framework yields 5xx.
 - Dedup-ack is opt-in (`opts.dedup`) and runs **after** verification: a confirmed duplicate returns `2xx` with `X-Postel-Dedup-Result: duplicate` and your handler does not run.
 - Raw bytes are passed to `verify` unchanged — no JSON re-serialization between receipt and verification.
 

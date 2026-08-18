@@ -6,7 +6,7 @@ Receiver-side verification of incoming webhook deliveries: signature verificatio
 ## Requirements
 ### Requirement: Verify returns parsed event or structured error
 
-The library SHALL expose `postel.verify(rawBody, headers, secretOrKeyset)` that, on success, returns the parsed Standard Webhooks event. On failure, it MUST throw a structured error indicating which step failed: one of `SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `UNKNOWN_KEY_ID`, `RAW_BYTES_MISMATCH_DETECTED`, `EVENT_VALIDATION`. `EVENT_VALIDATION` is thrown only AFTER the signature check passes, when the inbound source declares a `schema` and the parsed `event.data` does not satisfy it.
+The library SHALL expose `postel.verify(rawBody, headers, secretOrKeyset)` that, on success, returns the parsed Standard Webhooks event. On failure, it MUST throw a structured error indicating which step failed: one of `SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `UNKNOWN_KEY_ID`, `EVENT_VALIDATION`. `EVENT_VALIDATION` is thrown only AFTER the signature check passes, when the inbound source declares a `schema` and the parsed `event.data` does not satisfy it.
 
 #### Scenario: Successful verify
 
@@ -153,7 +153,6 @@ A framework adapter SHALL expose a verification **gate** — a framework-agnosti
 | `SIGNATURE_INVALID` | 400 |
 | `TIMESTAMP_TOO_OLD` | 400 |
 | `MALFORMED_HEADER` | 400 |
-| `RAW_BYTES_MISMATCH_DETECTED` | 400 |
 | `UNKNOWN_KEY_ID` | 401 |
 | `EVENT_VALIDATION` | 422 |
 

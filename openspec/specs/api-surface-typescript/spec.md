@@ -76,18 +76,16 @@ The canonical class ↔ code mapping is:
 | `TimestampTooOld` | `TIMESTAMP_TOO_OLD` |
 | `MalformedHeader` | `MALFORMED_HEADER` |
 | `UnknownKeyId` | `UNKNOWN_KEY_ID` |
-| `RawBytesMismatchDetected` | `RAW_BYTES_MISMATCH_DETECTED` |
 | `EventValidation` | `EVENT_VALIDATION` |
 | `EndpointDisabled` | `ENDPOINT_DISABLED` |
 | `EndpointNotFound` | `ENDPOINT_NOT_FOUND` |
-| `IdempotencyKeyConflict` | `IDEMPOTENCY_KEY_CONFLICT` |
 | `MigrationRequired` | `MIGRATION_REQUIRED` |
 | `EndpointValidation` | `ENDPOINT_VALIDATION` |
 | `SsrfBlocked` | `SSRF_BLOCKED` |
 
 `EventValidation` additionally carries the failing schema's `issues` (a `ReadonlyArray<StandardSchemaV1.Issue>`). `EventValidation` is thrown from two sites — the receiver's `verify()` (per-source `schema` mismatch) and the sender's `send()` (per-type `events` registry mismatch, per `sender`'s "Per-type event schema validation on send") — with the same class and code in both directions.
 
-Adding a new error class MUST add both names atomically. The `receiver` capability's error-code list and this table are synchronized — drift between the two is treated as a bug.
+Adding a new error class MUST add both names atomically, and only for a failure mode the runtime actually produces — a class with no throw site is dead surface, not a forward-declared contract. The `receiver` capability's error-code list and this table are synchronized — drift between the two is treated as a bug.
 
 **Implementation-state errors are intentionally outside the `PostelError` hierarchy.** Errors that describe library state rather than webhook semantics — e.g., `NotImplementedError`, thrown when a port version exposes a typed method whose runtime has not yet shipped — describe a *different category* of failure than webhook-protocol outcomes. Adopters who write the natural pattern `if (err instanceof PostelError) return 4xx` are translating webhook-protocol failures into HTTP responses; that pattern MUST NOT accidentally catch implementation-state errors and convert them into HTTP 4xx, because library-state failures are programming/version errors that should bubble as 5xx (or fail-fast in development). Implementation-state errors SHALL therefore extend the platform `Error` class directly and SHALL carry a stable `code` property (e.g., `code: 'NOT_IMPLEMENTED'`) for adopters who explicitly want to discriminate them, but they SHALL NOT extend `PostelError` and their codes SHALL NOT appear in the `PostelErrorCode` union.
 
@@ -343,6 +341,7 @@ The slots that fail fast in the current TypeScript port are:
 - `outbound.ephemeralKeys`.
 - `outbound.http.tls` and per-endpoint `http.tls` (the TLS-verification opt-out is not wired; TLS-on remains the runtime default).
 - `outbound.http.dns` and per-endpoint `http.dns` (DNS-resolution pinning is not wired).
+- `endpoints.create` / `endpoints.update` `maxInflight`. The field is accepted, typed, and persisted on the endpoint record, but no dispatcher or worker reads it — until a per-endpoint concurrency cap ships, configuring it fails fast rather than silently admitting unbounded concurrent deliveries.
 
 `NotImplementedError` is an implementation-state error (code `NOT_IMPLEMENTED`), not a `PostelError` — see *Structured error classes*. The capability of record for each slot (key-management, observability, sender) keeps its eventual contract; this requirement owns only the interim construction-time behavior.
 
@@ -377,6 +376,12 @@ The slots that fail fast in the current TypeScript port are:
 
 - **WHEN** a caller sets `outbound.http.tls` (e.g. `{ verify: false }`) or `outbound.http.dns` (e.g. `{ pinResolution: true }`), at the org level or as a per-endpoint `http` override on `endpoints.create` / `endpoints.update`
 - **THEN** the call throws `NotImplementedError`
+
+#### Scenario: Endpoint maxInflight fails fast
+
+- **WHEN** a caller calls `endpoints.create({ url, maxInflight: 5 })` or `endpoints.update(id, { maxInflight: 5 })`
+- **THEN** the call throws `NotImplementedError`
+- **AND** no endpoint row is created or patched with a `maxInflight` value the runtime would silently ignore
 
 ### Requirement: House API idioms [PORT-SPECIFIC]
 

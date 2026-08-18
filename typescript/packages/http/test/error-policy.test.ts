@@ -4,7 +4,6 @@ import {
   MalformedHeader,
   NotImplementedError,
   PostelError,
-  RawBytesMismatchDetected,
   SignatureInvalid,
   TimestampTooOld,
   UnknownKeyId,
@@ -18,7 +17,6 @@ describe("Framework adapters gate verification and map protocol errors to HTTP s
     expect(statusForError(new SignatureInvalid("bad signature"))).toBe(400);
     expect(statusForError(new TimestampTooOld("stale"))).toBe(400);
     expect(statusForError(new MalformedHeader("missing header"))).toBe(400);
-    expect(statusForError(new RawBytesMismatchDetected("mismatch"))).toBe(400);
     expect(statusForError(new UnknownKeyId("unknown kid"))).toBe(401);
     expect(statusForError(new EventValidation([{ message: "data.id must be a string" }]))).toBe(
       422,

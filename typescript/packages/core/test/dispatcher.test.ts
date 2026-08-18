@@ -218,7 +218,6 @@ describe("Endpoint CRUD", () => {
       headers: { "x-team": "billing" },
       metadata: { customerEmail: "a@b" },
       allowHttp: true,
-      maxInflight: 10,
       http: { requestTimeout: "5s" },
       circuitBreaker: { threshold: 5, cooldown: "1m" },
       autoDisable: { failureRate: 0.5, window: "24h", minAttempts: 20 },
@@ -237,7 +236,7 @@ describe("Endpoint CRUD", () => {
       expect(ep.headers).toEqual({ "x-team": "billing" });
       expect(ep.metadata).toEqual({ customerEmail: "a@b" });
       expect(ep.allowHttp).toBe(true);
-      expect(ep.maxInflight).toBe(10);
+      expect(ep.maxInflight).toBe(null);
       expect(ep.http).toEqual({ requestTimeout: "5s" });
       expect(ep.circuitBreaker).toEqual({ threshold: 5, cooldown: "1m" });
       expect(ep.autoDisable).toEqual({ failureRate: 0.5, window: "24h", minAttempts: 20 });

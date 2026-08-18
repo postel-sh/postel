@@ -1,6 +1,6 @@
 import { EndpointNotFound } from "../../errors.js";
 import { bytesToBase64 } from "../../internal/base64.js";
-import { assertHttpWired } from "../../internal/config-guards.js";
+import { assertHttpWired, assertMaxInflightWired } from "../../internal/config-guards.js";
 import type {
   AutoDisableDefaults,
   CircuitBreakerDefaults,
@@ -119,6 +119,7 @@ export function buildEndpointApi(
   return {
     async create(opts) {
       assertHttpWired(opts.http, "endpoint");
+      assertMaxInflightWired(opts.maxInflight, "endpoints.create");
       const txOption = opts.tx !== undefined ? { tx: opts.tx } : undefined;
       const allowHttp = opts.allowHttp === true;
       const ssrfPolicy = resolveSsrfPolicy(opts.http?.ssrf);
@@ -178,6 +179,7 @@ export function buildEndpointApi(
     },
     async update(id, opts) {
       assertHttpWired(opts.http, "endpoint");
+      assertMaxInflightWired(opts.maxInflight, "endpoints.update");
       const txOption = opts.tx !== undefined ? { tx: opts.tx } : undefined;
       // URL-affecting fields must re-run create-time validation against the
       // effective (post-patch) values, otherwise a safe HTTPS endpoint could be

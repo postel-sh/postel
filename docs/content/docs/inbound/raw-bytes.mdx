@@ -53,12 +53,6 @@ const { event } = await postel.inbound.vendor.verify(body, headers);
 console.log(event.type, event.data);  // parsed for you, signature already verified
 ```
 
-## The detector
-
-Some adapters can detect re-serialization at runtime. If a framework adapter receives a `Buffer` or `Uint8Array` that looks like it was JSON-re-encoded (specific whitespace patterns, key reordering, number reformatting), it throws `RawBytesMismatchDetected` instead of silently producing `SignatureInvalid`. The error message names the suspected mutation — much faster to diagnose than a generic "bad signature."
-
-This is best-effort: it catches the common cases (Express's default JSON parser, mass re-serialization) but cannot detect every possible mutation. The clean path is always to plumb the raw bytes; the detector is a safety net.
-
 ## What the compliance suite checks
 
 The `receiver/raw-bytes/*` vectors in [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) are exactly this:

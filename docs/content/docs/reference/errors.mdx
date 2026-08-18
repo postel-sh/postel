@@ -16,12 +16,10 @@ Error
     ├── TimestampTooOld              code: "TIMESTAMP_TOO_OLD"           (inbound)
     ├── SignatureInvalid             code: "SIGNATURE_INVALID"           (inbound)
     ├── UnknownKeyId                 code: "UNKNOWN_KEY_ID"              (inbound)
-    ├── RawBytesMismatchDetected     code: "RAW_BYTES_MISMATCH_DETECTED" (inbound)
     ├── EventValidation              code: "EVENT_VALIDATION"            (inbound + outbound)
     ├── EndpointValidation           code: "ENDPOINT_VALIDATION"         (outbound)
     ├── SsrfBlocked                  code: "SSRF_BLOCKED"                (outbound)
     ├── EndpointNotFound             code: "ENDPOINT_NOT_FOUND"          (outbound)
-    ├── IdempotencyKeyConflict       code: "IDEMPOTENCY_KEY_CONFLICT"    (reserved)
     ├── EndpointDisabled             code: "ENDPOINT_DISABLED"           (reserved)
     └── MigrationRequired            code: "MIGRATION_REQUIRED"          (reserved)
 
@@ -68,7 +66,7 @@ if (err instanceof TimestampTooOld) {
 **Thrown by:** `postel.inbound.<source>.verify` — step 4 / step 5.
 **When:** No configured verifier matched the request's signature. Also thrown if the body fails to JSON-parse after a successful signature check (which almost always means downstream tampering).
 
-**Recovery:** `401 Unauthorized`. The single most common cause is [body re-serialization](/docs/inbound/raw-bytes). Check `RawBytesMismatchDetected` first; if that didn't fire, you have a real secret mismatch or a different signing scheme.
+**Recovery:** `401 Unauthorized`. The single most common cause is [body re-serialization](/docs/inbound/raw-bytes) — check whether your framework adapter (or a proxy in front of it) re-serializes JSON before `verify` sees it.
 
 ```ts
 if (err instanceof SignatureInvalid) {
@@ -83,14 +81,6 @@ if (err instanceof SignatureInvalid) {
 **When:** The `kid` in the request's `webhook-id` header doesn't appear in the cached keyset. The next verifier in the array is tried; if every verifier exhausts, the final error is `SignatureInvalid`.
 
 **Recovery:** Usually transient — the producer rotated keys faster than your keyset cache TTL. Check that your `refreshEvery` and `cacheTtl` settings match the producer's rotation cadence. See [Key rotation → JWKS](/docs/inbound/key-rotation#jwks--asymmetric-rotation-without-secret-sharing).
-
-### `RawBytesMismatchDetected`
-
-**Code:** `RAW_BYTES_MISMATCH_DETECTED`
-**Thrown by:** Framework adapters (when they implement detection).
-**When:** The body bytes look like they were JSON-re-encoded between receipt and verify — whitespace patterns, key ordering, number formatting all suggest mutation.
-
-**Recovery:** Best-effort safety net. Fix the underlying re-serialization (don't catch and ignore). See [Raw bytes](/docs/inbound/raw-bytes).
 
 ### `EventValidation`
 
@@ -144,7 +134,7 @@ if (err instanceof EndpointNotFound) {
 
 ### Reserved codes (defined, not yet emitted by the runtime)
 
-`IdempotencyKeyConflict` (`IDEMPOTENCY_KEY_CONFLICT`), `EndpointDisabled` (`ENDPOINT_DISABLED`), and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them yet: idempotent `send` reuses the existing message id rather than conflicting, a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the in-memory storage adapter has no migration step. They become live when strict-idempotency conflict reporting and the database-backed storage adapters land.
+`EndpointDisabled` (`ENDPOINT_DISABLED`) and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them yet: a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the in-memory storage adapter has no migration step. They become live when the database-backed storage adapters land.
 
 ### `ConfigurationError`
 

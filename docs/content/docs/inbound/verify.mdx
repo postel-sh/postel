@@ -93,7 +93,6 @@ Every failure is a typed subclass of `PostelError`:
 | `TimestampTooOld` | `TIMESTAMP_TOO_OLD` | The `webhook-timestamp` is outside the tolerance window (default ±5 minutes). |
 | `SignatureInvalid` | `SIGNATURE_INVALID` | No configured verifier matched the signature. Most common cause: re-serialized bytes ([Raw bytes](/docs/inbound/raw-bytes)) or a wrong secret. |
 | `UnknownKeyId` | `UNKNOWN_KEY_ID` | JWKS mode only: the `kid` in the request is not in the cached keyset. |
-| `RawBytesMismatchDetected` | `RAW_BYTES_MISMATCH_DETECTED` | Framework adapter detected the body was mutated before `verify` was called. |
 | `EventValidation` | `EVENT_VALIDATION` | The source declares a `schema` and the verified `event.data` failed it. Thrown after the signature check; the gate maps it to `422`. |
 
 Each carries a stable `code` string for log filters and cross-port discrimination. Error messages are safe to log — they never contain the secret or the signature bytes.

@@ -5,11 +5,9 @@ export type PostelErrorCode =
   | "TIMESTAMP_TOO_OLD"
   | "MALFORMED_HEADER"
   | "UNKNOWN_KEY_ID"
-  | "RAW_BYTES_MISMATCH_DETECTED"
   | "EVENT_VALIDATION"
   | "ENDPOINT_DISABLED"
   | "ENDPOINT_NOT_FOUND"
-  | "IDEMPOTENCY_KEY_CONFLICT"
   | "MIGRATION_REQUIRED"
   | "ENDPOINT_VALIDATION"
   | "SSRF_BLOCKED";
@@ -55,10 +53,6 @@ export class UnknownKeyId extends PostelError {
   readonly code = "UNKNOWN_KEY_ID" as const;
 }
 
-export class RawBytesMismatchDetected extends PostelError {
-  readonly code = "RAW_BYTES_MISMATCH_DETECTED" as const;
-}
-
 export class EventValidation extends PostelError {
   readonly code = "EVENT_VALIDATION" as const;
   constructor(
@@ -78,10 +72,6 @@ export class EndpointDisabled extends PostelError {
 
 export class EndpointNotFound extends PostelError {
   readonly code = "ENDPOINT_NOT_FOUND" as const;
-}
-
-export class IdempotencyKeyConflict extends PostelError {
-  readonly code = "IDEMPOTENCY_KEY_CONFLICT" as const;
 }
 
 export class MigrationRequired extends PostelError {
