@@ -1,0 +1,380 @@
+---
+title: Outbound API
+description: OutboundConfig, the full OutboundApi (send, endpoints, keys, tenants, replay, reconcile, messages), and every supporting type — the send-side surface of @postel/core.
+---
+
+Every signature on this page is exported from `@postel/core`. See [Core API](/docs/reference/core) for `Postel()`/config, [Inbound API](/docs/reference/inbound) for the receive side, [Strategies](/docs/reference/strategies) for `retryPolicy`/`workers`/`signing`/`kms`, and [Errors](/docs/reference/errors) for what each of these throws.
+
+## OutboundConfig
+
+```ts
+interface OutboundConfig<TTx = unknown, TEvents extends OutboundEventRegistry = NoEventsRegistered> {
+  readonly storage: Storage<TTx>;
+  readonly events?: TEvents;
+  readonly signing?: SigningStrategy;
+  readonly retryPolicy?: RetryStrategy;
+  readonly workers?: WorkerStrategy;
+  readonly kms?: KmsStrategy;
+  readonly http?: HttpDefaults;
+  readonly circuitBreaker?: CircuitBreakerDefaults;
+  readonly autoDisable?: AutoDisableDefaults;
+  readonly replay?: ReplayDefaults;
+  readonly retention?: RetentionDefaults;
+  readonly ephemeralKeys?: EphemeralKeysDefaults;
+  readonly clock?: Clock;
+  readonly defaultTenantId?: string | null;
+}
+```
+
+The value of `PostelConfig.outbound`. Only `storage` is required — every other slot has a runtime default, except `retention` and `ephemeralKeys`, which throw `NotImplementedError` at construction if set at all (see below). `signing`/`retryPolicy`/`workers`/`kms` are factory-built values from [Strategies](/docs/reference/strategies).
+
+**`events`** — a registry mapping event `type` strings to a [Standard Schema](/docs/reference/core#standard-schema): the send-side mirror of `InboundSource.schema`. A registered type's `data` is validated (and typed) on every `send()` call; see [`EventDataOf`](#eventdataof).
+
+```ts
+type OutboundEventRegistry = Record<string, StandardSchemaV1<unknown, unknown>>;
+```
+
+### Defaults interfaces
+
+```ts
+interface HttpDefaults {
+  readonly requestTimeout?: DurationMs;
+  readonly overallDeadline?: DurationMs;
+  readonly tls?: { readonly verify?: boolean };
+  readonly dns?: { readonly pinResolution?: boolean };
+  readonly ssrf?: {
+    readonly blockPrivateRanges?: boolean;
+    readonly allowedRanges?: ReadonlyArray<string>;
+  };
+  readonly userAgent?: string;
+  readonly fetch?: typeof globalThis.fetch;
+}
+
+interface CircuitBreakerDefaults {
+  readonly threshold?: number;
+  readonly cooldown?: DurationMs;
+}
+
+interface AutoDisableDefaults {
+  readonly failureRate?: number;
+  readonly window?: DurationMs;
+  readonly minAttempts?: number;
+}
+
+interface ReplayDefaults {
+  readonly defaultThroughput?: number;
+}
+
+interface RetentionDefaults {
+  readonly messages?: number | string;
+  readonly attempts?: number | string;
+}
+
+interface EphemeralKeysDefaults {
+  readonly rotateEvery: DurationMs;
+}
+```
+
+`http`, `circuitBreaker`, and `autoDisable` set org-wide defaults; each can be overridden per endpoint via the matching field on [`EndpointCreateOptions`](#endpointcreateoptions). Setting `retention` or `ephemeralKeys` at all — any value, not just a truthy one — throws `NotImplementedError` at `Postel(...)` construction time: both are typed config slots with no runtime yet (no automatic pruning, no timer-driven key rotation). This is deliberate fail-fast behavior, not a bug — see [`NotImplementedError`](/docs/reference/errors#notimplementederror).
+
+## OutboundApi
+
+```ts
+interface OutboundApi<TTx = unknown, TEvents extends OutboundEventRegistry = NoEventsRegistered> {
+  send<T extends string>(
+    event: SendEvent<EventDataOf<TEvents, T>> & { readonly type: T },
+    options?: SendOptions<TTx>,
+  ): Promise<SendResult>;
+  send<TData = unknown, T extends string = string>(
+    event: SendEvent<TData> & { readonly type: Exclude<T, keyof TEvents> },
+    options?: SendOptions<TTx>,
+  ): Promise<SendResult>;
+
+  endpoints: {
+    create(opts: EndpointCreateOptions & { tx?: TTx }): Promise<Endpoint>;
+    update(id: string, opts: EndpointUpdateOptions & { tx?: TTx }): Promise<Endpoint>;
+    delete(id: string, opts?: { purgeAttempts?: boolean; tx?: TTx }): Promise<void>;
+    list(opts?: EndpointListOptions<TTx>): Promise<Page<Endpoint>>;
+    get(id: string, opts?: { tx?: TTx }): Promise<Endpoint>;
+    disable(id: string, opts?: { tx?: TTx }): Promise<void>;
+    enable(id: string, opts?: { tx?: TTx }): Promise<void>;
+    rotateSecret(id: string, opts: RotateSecretOptions<TTx>): Promise<void>;
+  };
+
+  keys: {
+    generateSymmetric(): string;
+    generateAsymmetric(): Promise<AsymmetricKeypair>;
+    publicJwks(opts?: { tenantId?: string; tx?: TTx }): Promise<Jwks>;
+  };
+
+  tenants: {
+    setRateLimit(tenantId: string, opts: SetRateLimitOptions<TTx>): Promise<void>;
+    delete(tenantId: string, opts?: { tx?: TTx }): Promise<void>;
+    get(id: string, opts?: { tx?: TTx }): Promise<Tenant | undefined>;
+    list(opts?: TenantListOptions): Promise<TenantPage>;
+  };
+
+  replay(opts: ReplayOptions<TTx>): Promise<ReplayResult>;
+  reconcile(opts: ReconcileOptions<TTx>): Promise<Page<MessageId>>;
+
+  messages: {
+    get<TData = unknown>(id: string, opts?: { tx?: TTx }): Promise<Message<TData> | undefined>;
+    attempts(id: string): Promise<ReadonlyArray<DeliveryAttempt>>;
+    list(opts?: MessageListOptions): Promise<Page<Message>>;
+  };
+}
+```
+
+`postel.outbound` — present only when `PostelConfig.outbound` is set. `endpoints.get`/`endpoints.update` (when patching `url`/`allowHttp`/`http`) throw `EndpointNotFound` for an unknown `id`; see [Errors](/docs/reference/errors).
+
+### send()
+
+`send` is overloaded on `TEvents`, the registry from `OutboundConfig.events`: when the call site's literal `type` matches a registered key, `data` is typed as (and validated against) that schema's output; any other `type` falls through to the unregistered-type overload, which accepts any `TData`. See [Send](/docs/outbound/send).
+
+```ts
+interface SendEvent<TData = unknown> {
+  readonly type: string;
+  readonly data?: TData;
+  readonly channels?: ReadonlyArray<string>;
+  readonly idempotencyKey?: string;
+  readonly version?: string;
+  readonly timestamp?: string | Date;
+  readonly ttl?: DurationMs;
+  readonly tenantId?: string;
+}
+
+interface SendOptions<TTx = unknown> {
+  readonly tx?: TTx;
+}
+
+interface SendResult {
+  readonly id: MessageId;
+  readonly reused: boolean; // true when idempotencyKey matched an existing message
+}
+
+type MessageId = string;
+```
+
+#### EventDataOf
+
+```ts
+type EventDataOf<E extends OutboundEventRegistry, T extends string> = T extends keyof E
+  ? E[T] extends StandardSchemaV1<unknown, infer D> ? D : unknown
+  : unknown;
+```
+
+The `data` type for a given literal event `type`: the registered schema's output when `T` is a registered key, otherwise `unknown`. Mirrors [`EventOf`](/docs/reference/inbound#eventof) on the inbound side.
+
+### endpoints
+
+```ts
+interface EndpointCreateOptions {
+  readonly url: string;
+  readonly types?: ReadonlyArray<string>;
+  readonly channels?: ReadonlyArray<string>;
+  readonly filter?: StructuralFilter;
+  readonly filterFn?: (event: FilterEnvelope) => boolean;
+  readonly transform?: (event: unknown) => unknown;
+  readonly retryPolicy?: RetryStrategy;
+  readonly headers?: Record<string, string> | ((ctx: { message: unknown }) => Record<string, string>);
+  readonly signing?: SigningStrategy;
+  readonly circuitBreaker?: CircuitBreakerDefaults;
+  readonly autoDisable?: AutoDisableDefaults;
+  readonly http?: HttpDefaults;
+  readonly metadata?: Record<string, unknown>;
+  readonly tenantId?: string;
+  readonly allowHttp?: boolean;
+  readonly maxInflight?: number;
+  readonly provisionSecret?: boolean;
+}
+
+interface EndpointUpdateOptions extends Partial<EndpointCreateOptions> {}
+
+interface EndpointListOptions<TTx = unknown> extends CursorOptions {
+  readonly tenantId?: string;
+  readonly tx?: TTx;
+}
+
+interface RotateSecretOptions<TTx = unknown> {
+  readonly keepPreviousFor: DurationMs;
+  readonly tx?: TTx;
+}
+```
+
+`update` validates `url`/`allowHttp`/`http` against the effective (post-patch) values whenever any of those three fields changes — a patch can't silently downgrade a safe HTTPS endpoint into a cleartext or SSRF-eligible one. Create-time URL validation throws `EndpointValidation`; a URL that resolves into a blocked range only at dispatch time throws (internally) `SsrfBlocked`. See [Errors](/docs/reference/errors) and [Endpoints](/docs/outbound/endpoints).
+
+`filter`/`filterFn` are two ways to scope which sent events reach an endpoint: `filter` is serializable (round-trips through storage, shows up on `Endpoint.filter`); `filterFn` is a code-side predicate (never persisted, absent from the read shape). `transform` is likewise code-side.
+
+```ts
+type Json = string | number | boolean | null | ReadonlyArray<Json> | { readonly [key: string]: Json };
+
+interface StructuralFilterClause {
+  readonly dataPath: string;
+  readonly equals: Json;
+}
+
+type StructuralFilter = StructuralFilterClause | ReadonlyArray<StructuralFilterClause>;
+
+interface FilterEnvelope {
+  readonly type: string;
+  readonly data: unknown;
+  readonly channels?: ReadonlyArray<string>;
+  readonly timestamp?: string;
+}
+```
+
+An array of `StructuralFilterClause` is evaluated as AND; `dataPath` is dot-separated into `event.data`. `FilterEnvelope` is what `filterFn` receives — a concrete shape instead of `unknown`, so a predicate can narrow without a cast.
+
+#### Endpoint (read shape)
+
+```ts
+interface Endpoint {
+  readonly id: string;
+  readonly url: string;
+  readonly state: "active" | "disabled" | "circuit-open";
+  readonly types: ReadonlyArray<string> | null;
+  readonly channels: ReadonlyArray<string> | null;
+  readonly filter: StructuralFilter | null;
+  readonly retryPolicy: SerializableRetryStrategy | null;
+  readonly headers: Readonly<Record<string, string>> | null;
+  readonly allowHttp: boolean;
+  readonly maxInflight: number | null;
+  readonly http: SerializableHttpDefaults | null;
+  readonly circuitBreaker: CircuitBreakerDefaults | null;
+  readonly autoDisable: AutoDisableDefaults | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly tenantId?: string;
+  readonly metadata?: Record<string, unknown>;
+}
+
+type SerializableRetryStrategy = Exclude<RetryStrategy, { kind: "custom" }>;
+type SerializableHttpDefaults = Readonly<Omit<HttpDefaults, "fetch">>;
+```
+
+Every field that round-trips through `create`/`get`/`list`/`update` is present here, identically across storage adapters. Function-shaped inputs stay off this shape: `filterFn`/`transform` are absent keys, a `Custom` retry strategy or callable `headers` read back as `null`, and `http` drops its `fetch` function. `signing` is entirely absent (a strategy can carry key material).
+
+### keys
+
+```ts
+interface AsymmetricKeypair {
+  readonly private: string;
+  readonly public: string;
+}
+```
+
+`generateSymmetric()` returns a `whsec_`-prefixed HMAC secret synchronously. `generateAsymmetric()` returns a `whsk_`/`whpk_`-prefixed Ed25519 keypair. `publicJwks(opts)` pages through every endpoint's non-expired public keys and returns them as a [`Jwks`](/docs/reference/inbound#jwks) document — this is what you'd serve from a JWKS route via [`jwksHandler`](/docs/reference/inbound#jwks).
+
+### tenants
+
+```ts
+interface SetRateLimitOptions<TTx = unknown> {
+  readonly perSecond: number;
+  readonly tx?: TTx;
+}
+
+interface Tenant {
+  readonly id: string;
+  readonly rateLimit: RateLimitStrategy | null;
+  readonly metadata: Readonly<Record<string, unknown>> | null;
+  readonly createdAt: Date;
+}
+
+interface TenantListOptions extends CursorOptions {}
+type TenantPage = Page<Tenant>;
+```
+
+`rateLimit` is decoded from the tenant's stored `metadata.rateLimit` into a typed [`RateLimitStrategy`](/docs/reference/strategies#fixedrate); `metadata` is still exposed raw for anything else stored there. `tenants.get` resolves `undefined` (not a throw) for an unknown id.
+
+### replay / reconcile
+
+```ts
+type ReplayOptions<TTx = unknown> =
+  | { readonly messageId: string; readonly freshWebhookId: boolean; readonly tx?: TTx }
+  | {
+      readonly endpointId: string;
+      readonly since: Date | string;
+      readonly until?: Date | string;
+      readonly types?: ReadonlyArray<string>;
+      readonly replayThroughput?: number;
+      readonly freshWebhookId: boolean;
+      readonly tx?: TTx;
+    }
+  | {
+      readonly filter: (msg: unknown) => boolean;
+      readonly replayThroughput?: number;
+      readonly freshWebhookId: boolean;
+      readonly tx?: TTx;
+    };
+
+interface ReplayResult {
+  readonly enqueued: number;
+}
+
+interface ReconcileOptions<TTx = unknown> extends CursorOptions {
+  readonly endpointId: string;
+  readonly since: Date | string;
+  readonly tx?: TTx;
+}
+```
+
+`replay` takes one of three discriminated shapes — a single message, every message for an endpoint in a time range, or an arbitrary predicate — see [Replay](/docs/outbound/replay). `reconcile` returns a bounded page of undelivered `MessageId`s for a backlog audit; it's a paged read, not a streaming iterable, so an arbitrarily large backlog is never materialized in one call.
+
+### messages
+
+```ts
+interface Message<TData = unknown> {
+  readonly id: MessageId;
+  readonly type: string;
+  readonly data: TData;
+  readonly channels: ReadonlyArray<string> | null;
+  readonly idempotencyKey: string | null;
+  readonly version: string | null;
+  readonly tenantId: string | null;
+  readonly ttlSeconds: number | null;
+  readonly createdAt: Date;
+  readonly expiresAt: Date | null;
+  readonly status: "pending" | "dispatched" | "dead-lettered" | "expired";
+  readonly attemptNumber: number;
+  readonly scheduledFor: Date | null;
+  readonly replayOf: MessageId | null;
+}
+
+interface DeliveryAttempt {
+  readonly id: string;
+  readonly messageId: MessageId;
+  readonly endpointId: string;
+  readonly tenantId: string | null;
+  readonly attemptNumber: number;
+  readonly status: "pending" | "success" | "failed" | "failed-permanent" | "dead-letter" | "expired" | "filtered" | "skipped" | "ssrf-blocked";
+  readonly scheduledFor: Date | null;
+  readonly startedAt: Date | null;
+  readonly completedAt: Date | null;
+  readonly responseCode: number | null;
+  readonly responseHeaders: Readonly<Record<string, string>> | null;
+  readonly responseBody: string | null;
+  readonly latencyMs: number | null;
+  readonly error: string | null;
+  readonly replayOf: MessageId | null;
+}
+
+interface MessageListOptions extends CursorOptions {
+  readonly tenantId?: string;
+  readonly types?: ReadonlyArray<string>;
+  readonly status?: Message["status"] | ReadonlyArray<Message["status"]>;
+  readonly since?: Date | string;
+  readonly until?: Date | string;
+}
+```
+
+`Message.status` is the message-level outbox lifecycle; each endpoint's own delivery outcome is on `DeliveryAttempt.status` — a message can be `dispatched` overall while one endpoint's attempts are all `failed`. `messages.get` resolves `undefined` for an unknown id; `messages.list`/`attempts` back the message-introspection reads used by [`@postel/admin`](/docs/outbound/admin)'s `GET /messages` routes.
+
+## Storage
+
+`OutboundConfig.storage` takes any `Storage` adapter — `InMemoryStorage()` (below) for the in-process reference, or a standalone package (`@postel/pg`, `@postel/sqlite`, `@postel/mysql`, …) per [Storage](/docs/storage). The `Storage` interface itself is the adapter-author SPI, documented separately at [Custom adapters](/docs/storage/custom-adapters) rather than here — it's a different surface than the `OutboundApi` above, aimed at implementers rather than at code calling `postel.outbound.*`.
+
+```ts
+function InMemoryStorage(options?: InMemoryStorageOptions): Storage<InMemoryTx>;
+```
+
+`InMemoryStorage` is exported from `@postel/core` (every other adapter is its own package) — it's the zero-dependency default for local development, tests, and the compliance suite's reference implementation.

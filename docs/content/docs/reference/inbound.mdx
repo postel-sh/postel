@@ -1,0 +1,254 @@
+---
+title: Inbound API
+description: InboundSource config, verify(), every Verifier factory, JWKS, deduplication, and signFixture — the receive-side surface of @postel/core.
+---
+
+Every signature on this page is exported from `@postel/core`. See [Core API](/docs/reference/core) for `Postel()`/config, [Outbound API](/docs/reference/outbound) for the send side, and [Errors](/docs/reference/errors) for what each of these throws.
+
+## InboundSource
+
+```ts
+interface InboundSource<TData = unknown> {
+  readonly verify: Verifier | ReadonlyArray<Verifier> | VerifierMap;
+  readonly schema?: StandardSchemaV1<unknown, TData>;
+  readonly dedup?: DedupAdapter;
+  readonly dedupTtl?: Duration;
+  readonly tolerance?: Duration;
+  readonly clock?: Clock;
+  readonly onSuccess?: (event: WebhookEvent, result: ComposedVerifyResult) => void;
+  readonly onFailure?: (error: Error, headers: WebhookHeaders) => void;
+}
+```
+
+One entry of `PostelConfig.inbound`. `verify` accepts three shapes: a single `Verifier`, an array (tried in order — see [Multi-verifier composition](/docs/inbound/verify#composing-verifiers)), or a `VerifierMap` (a named record, so `ComposedVerifyResult.matchedVerifier` reports which key matched instead of just an index).
+
+- **`schema`** — a [Standard Schema](/docs/reference/core#standard-schema); when set, `verify()` validates `event.data` after the signature check and throws `EventValidation` on mismatch, narrowing the result's `TData` to the schema's output.
+- **`dedup`** — a [`DedupAdapter`](#dedupadapter); when set, the source gains `.dedup()`/`.dedupRelease()`. See [Deduplication](/docs/inbound/deduplication).
+- **`tolerance`** — overrides the default 300-second timestamp tolerance.
+- **`onSuccess`/`onFailure`** — fire-and-forget hooks for logging/metrics; they don't affect the verify outcome.
+
+## InboundApi / InboundSourceApi
+
+```ts
+type InboundApi<S extends Record<string, InboundSource>> = {
+  [K in keyof S]: InboundSourceApi<S[K]>;
+};
+
+type InboundSourceApi<S extends InboundSource> = {
+  verify<TData = EventOf<S>>(
+    rawBody: ArrayBuffer | Uint8Array | string,
+    headers: WebhookHeaders,
+  ): Promise<ComposedVerifyResult<TData>>;
+} & (S extends { readonly dedup: DedupAdapter }
+  ? {
+      dedup(messageId: string, options?: InboundDedupOptions): Promise<DedupResult>;
+      dedupRelease(messageId: string): Promise<void>;
+    }
+  : object);
+```
+
+`postel.inbound` is an `InboundApi<...>` keyed by the names you gave `PostelConfig.inbound`. Each `postel.inbound.<name>` has `.verify(rawBody, headers)`; `.dedup()`/`.dedupRelease()` are present **only** on sources configured with `dedup` — a source without it doesn't type-check `postel.inbound.<name>.dedup(...)` at all.
+
+### EventOf
+
+```ts
+type EventOf<S> = S extends { readonly schema?: StandardSchemaV1<unknown, infer T> } ? T : unknown;
+```
+
+The event-data type a source produces: the configured schema's output type, or `unknown` with no schema. This is `verify()`'s default `TData` — pass an explicit type argument to override it for a single call.
+
+### ComposedVerifyResult
+
+```ts
+interface ComposedVerifyResult<TData = unknown> extends VerifyResult<TData> {
+  readonly matchedVerifierIndex: number;
+  readonly matchedVerifier?: string; // present only when `verify` was a VerifierMap
+}
+```
+
+### InboundDedupOptions
+
+```ts
+interface InboundDedupOptions {
+  readonly ttl?: Duration; // overrides the source's dedupTtl for this call
+  readonly tx?: unknown;
+}
+```
+
+### VerifierMap
+
+```ts
+type VerifierMap = Record<string, Verifier>;
+```
+
+## verify()
+
+```ts
+function verify<TData = unknown>(
+  rawBody: ArrayBuffer | Uint8Array | string,
+  headers: WebhookHeaders,
+  secretOrKeyset: SecretOrJwksKeyset,
+  options?: VerifyOptions,
+): Promise<VerifyResult<TData>>;
+```
+
+The low-level Standard Webhooks verification function every `Verifier` factory below wraps. Call it directly when you don't want the `InboundSource`/`Postel()` machinery — e.g. a one-off verification outside any configured source. Checks `webhook-id`/`webhook-timestamp`/`webhook-signature` (and `webhook-key-id` when `secretOrKeyset` is a `JwksKeyset`), enforces the timestamp tolerance, and tries each secret/tuple combination.
+
+```ts
+interface VerifyOptions {
+  readonly toleranceSeconds?: number;
+  readonly clock?: Clock;
+}
+
+interface VerifyResult<TData = unknown> {
+  readonly event: WebhookEvent<TData>;
+  readonly matchedSecretIndex: number;
+}
+
+interface WebhookEvent<TData = unknown> {
+  readonly type: string;
+  readonly timestamp?: string;
+  readonly data?: TData;
+}
+
+type WebhookHeaders = Readonly<Record<string, string>>;
+type SecretValue = string;
+type SecretOrJwksKeyset = SecretValue | ReadonlyArray<SecretValue> | JwksKeyset;
+```
+
+## Verifier
+
+```ts
+interface Verifier {
+  verify(
+    rawBody: ArrayBuffer | Uint8Array | string,
+    headers: WebhookHeaders,
+    options?: VerifyOptions,
+  ): Promise<VerifyResult>;
+}
+```
+
+The shape `InboundSource.verify` accepts. Every factory below returns a `Verifier`; write your own by implementing this interface directly (e.g. to wrap a bespoke signing scheme).
+
+### Secret / PublicKey / Keyset / Noop
+
+```ts
+function Secret(value: string): Verifier;
+function PublicKey(value: string): Verifier;
+function Keyset(opts: KeysetOptions): Verifier;
+function Noop(): Verifier;
+```
+
+- **`Secret(value)`** — Standard Webhooks HMAC (`v1`) verification against one `whsec_`-prefixed secret. See [Signing](/docs/inbound/signing).
+- **`PublicKey(value)`** — Standard Webhooks asymmetric (`v1a`, Ed25519) verification against one `whpk_`-prefixed public key.
+- **`Keyset(opts)`** — asymmetric verification against a JWKS endpoint, resolving the signing key by the request's `kid`. See [Key rotation → JWKS](/docs/inbound/key-rotation#jwks--asymmetric-rotation-without-secret-sharing).
+- **`Noop()`** — parses the body into a `WebhookEvent` without checking any signature. For local development and tests only — never use in a route that accepts real traffic.
+
+```ts
+interface KeysetOptions {
+  readonly jwksUri: string;
+  readonly refreshEvery?: number; // seconds, default 1800
+  readonly cacheTtl?: number;     // seconds, default 300
+  readonly fetch?: typeof globalThis.fetch;
+}
+```
+
+### Named provider verifiers
+
+```ts
+function Stripe(secret: string, options?: VerifyOptions): Verifier;
+function GitHub(secret: string): Verifier;
+function Shopify(secret: string): Verifier;
+function Twilio(authToken: string, url: string): Verifier;
+function Slack(signingSecret: string, options?: VerifyOptions): Verifier;
+```
+
+Each speaks that provider's native signature scheme (not Standard Webhooks) directly, so you can plug a real provider secret into `InboundSource.verify` without hand-rolling the header parsing:
+
+| Verifier | Header(s) checked | Event `type` |
+|---|---|---|
+| `Stripe` | `Stripe-Signature` (`t=`/`v1=` tuples, HMAC-SHA256, 300s default tolerance) | the body's `type` field |
+| `GitHub` | `X-Hub-Signature-256` (`sha256=` HMAC-SHA256) + `X-GitHub-Event` | the `X-GitHub-Event` header value |
+| `Shopify` | `X-Shopify-Hmac-Sha256` (base64 HMAC-SHA256) + `X-Shopify-Topic` | the `X-Shopify-Topic` header value |
+| `Twilio` | `X-Twilio-Signature` (base64 HMAC-SHA1 over the canonical `url` + sorted form params) | the fixed string `"twilio.webhook"` |
+| `Slack` | `X-Slack-Signature` (`v0=` HMAC-SHA256 over `v0:<timestamp>:<body>`) + `X-Slack-Request-Timestamp` (300s default tolerance) | the body's `type` field |
+
+`Twilio`'s second argument is the exact webhook URL Twilio was configured to call — it's part of the signed canonical string, so a mismatch (e.g. a proxy rewriting the path) fails verification even with the right `authToken`.
+
+## JWKS
+
+```ts
+function jwksHandler(options: JwksHandlerOptions): (request: Request) => Response;
+function createJwksKeyset(options: KeysetOptions): JwksKeyset;
+
+interface JwksHandlerOptions {
+  readonly keys: ReadonlyArray<Jwk>;
+  readonly tenantId?: string;
+}
+
+interface JwksKeyset {
+  readonly findByKid: (kid: string) => Promise<Jwk | undefined>;
+  readonly refresh: () => Promise<void>;
+}
+
+interface Jwk {
+  readonly kid: string;
+  readonly alg: string;
+  readonly kty: string;
+  readonly crv?: string;
+  readonly x?: string;
+  readonly not_after?: string;
+  readonly [key: string]: unknown;
+}
+
+interface Jwks {
+  readonly keys: ReadonlyArray<Jwk>;
+}
+```
+
+`jwksHandler` builds a Fetch `Request → Response` handler serving a static `{ keys }` document (`GET`/`HEAD` only, `application/jwk-set+json`) — it asserts every key is public-only before serving, so passing a private key throws at handler-construction time, not at request time. `createJwksKeyset` is the client side: it's what `Keyset(opts)` (above) uses internally to fetch-and-cache a remote JWKS by `jwksUri`, and you can call it directly to build your own `JwksKeyset`.
+
+## Deduplication
+
+```ts
+interface DedupAdapter {
+  readonly record: (messageId: string, ttlSeconds: number, options?: DedupRecordOptions) => Promise<DedupResult>;
+  readonly release?: (messageId: string) => Promise<void>;
+}
+
+interface DedupResult {
+  readonly duplicate: boolean;
+}
+
+interface DedupRecordOptions {
+  readonly tx?: unknown;
+}
+
+function InMemoryDedup(options?: InMemoryDedupOptions): DedupAdapter;
+
+interface InMemoryDedupOptions {
+  readonly now?: () => Date;
+}
+```
+
+`InMemoryDedup()` is the in-process reference adapter — a `Map` keyed by `messageId`, TTL-expired lazily on writes past 1024 entries. Standalone dedup adapters (`SqliteDedup`, `PgDedup`, `MysqlDedup`) ship in their respective storage packages. See [Deduplication](/docs/inbound/deduplication).
+
+## signFixture
+
+```ts
+function signFixture<TData = unknown>(options: SignFixtureOptions<TData>): Promise<SignedFixture>;
+
+interface SignFixtureOptions<TData = unknown> {
+  readonly secret: SecretValue;
+  readonly payload: WebhookEvent<TData>;
+  readonly messageId?: string;   // random msg_... if omitted
+  readonly timestamp?: Date;     // now() if omitted
+}
+
+interface SignedFixture {
+  readonly headers: WebhookHeaders;
+  readonly body: string;
+}
+```
+
+Builds a signed request fixture (headers + JSON body) for tests — the inverse of `verify()`. Only HMAC (`whsec_`-prefixed) secrets are supported; passing an asymmetric key throws `ConfigurationError`.

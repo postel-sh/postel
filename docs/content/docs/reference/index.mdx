@@ -3,12 +3,16 @@ title: Reference
 description: Every package, every error class, every spec — linked to the canonical source artifact.
 ---
 
-import { PackageIcon, AlertTriangleIcon, FileTextIcon } from "@/components/icons";
+import { PackageIcon, CodeIcon, InboxIcon, SendIcon, RepeatIcon, AlertTriangleIcon, FileTextIcon } from "@/components/icons";
 
 The reference section is the source of truth. Inbound and outbound concept pages aim for *narrative*; reference pages aim for *completeness*.
 
 <Cards>
   <Card icon={<PackageIcon />} title="Packages" href="/docs/reference/packages" description="Every @postel/* package — what it does, what it depends on, and whether it ships today." />
+  <Card icon={<CodeIcon />} title="Core API" href="/docs/reference/core" description="Postel() / definePostelConfig(), PostelConfig, the lifecycle API, observability, pagination, and the shared utility types." />
+  <Card icon={<InboxIcon />} title="Inbound API" href="/docs/reference/inbound" description="InboundSource config, verify(), every Verifier factory, JWKS, deduplication, and signFixture." />
+  <Card icon={<SendIcon />} title="Outbound API" href="/docs/reference/outbound" description="OutboundConfig, the full OutboundApi, and every supporting type — endpoints, keys, tenants, replay, messages." />
+  <Card icon={<RepeatIcon />} title="Strategies" href="/docs/reference/strategies" description="The retry, rate-limit, worker, signing, and KMS strategy factories." />
   <Card icon={<AlertTriangleIcon />} title="Errors" href="/docs/reference/errors" description="Every PostelError subclass — its code, when it's thrown, and how to recover." />
   <Card icon={<FileTextIcon />} title="Specs & standards" href="/docs/reference/specs" description="Wire format (AsyncAPI 3.0), DB schema (SQL DDL), capability specs, ADRs, conformance levels." />
 </Cards>

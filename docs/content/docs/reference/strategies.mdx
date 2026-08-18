@@ -1,0 +1,126 @@
+---
+title: Strategies
+description: The retry, rate-limit, worker, signing, and KMS strategy factories that configure OutboundConfig and EndpointCreateOptions.
+---
+
+Every factory on this page is exported from `@postel/core` and returns a plain, serializable strategy value — set on `OutboundConfig` for an org-wide default or on [`EndpointCreateOptions`](/docs/reference/outbound#endpoints) to override it per endpoint. See [Retries](/docs/outbound/retries) and [Signing](/docs/inbound/signing) for the narrative version of retry/signing behavior.
+
+## Retry
+
+```ts
+type RetryStrategy =
+  | { readonly kind: "exponential"; readonly schedule: ReadonlyArray<DurationMs>; readonly jitter: number; readonly maxAttempts: number }
+  | { readonly kind: "linear"; readonly step: DurationMs; readonly maxAttempts: number }
+  | { readonly kind: "custom"; readonly compute: (attempt: number) => DurationMs; readonly maxAttempts: number };
+
+function ExponentialBackoff(options?: ExponentialBackoffOptions): RetryStrategy;
+function LinearBackoff(options: LinearBackoffOptions): RetryStrategy;
+function Custom(options: CustomRetryOptions): RetryStrategy;
+
+interface ExponentialBackoffOptions {
+  readonly schedule?: ReadonlyArray<DurationMs>; // default: 5s, 5m, 30m, 2h, 5h, 10h, 1d, 2d, 3d
+  readonly jitter?: number;                      // default 0.2
+  readonly maxAttempts?: number;                 // default: schedule.length
+}
+
+interface LinearBackoffOptions {
+  readonly step: DurationMs;
+  readonly maxAttempts: number;
+}
+
+interface CustomRetryOptions {
+  readonly compute: (attempt: number) => DurationMs;
+  readonly maxAttempts: number;
+}
+```
+
+`ExponentialBackoff()` with no arguments is the default `retryPolicy` when `OutboundConfig.retryPolicy` is unset. A `Custom` strategy's `compute` function is code-side — it's excluded from the serializable `Endpoint.retryPolicy` read shape ([`SerializableRetryStrategy`](/docs/reference/outbound#endpoint-read-shape) reads back `null` for it).
+
+## Rate limit
+
+```ts
+type RateLimitStrategy = { readonly kind: "fixed"; readonly perSecond: number };
+
+function FixedRate(options: FixedRateOptions): RateLimitStrategy;
+
+interface FixedRateOptions {
+  readonly perSecond: number;
+}
+```
+
+`FixedRate` is the only kind today. Set per-tenant via `postel.outbound.tenants.setRateLimit(tenantId, { perSecond })` — see [`Tenant.rateLimit`](/docs/reference/outbound#tenants).
+
+## Workers
+
+```ts
+type WorkerStrategy =
+  | { readonly kind: "in-process"; readonly concurrency: number }
+  | { readonly kind: "bullmq"; readonly queue: unknown }
+  | { readonly kind: "pg-boss"; readonly boss: unknown }
+  | { readonly kind: "external"; readonly adapter: unknown };
+
+function InProcess(options?: InProcessOptions): WorkerStrategy;
+
+interface InProcessOptions {
+  readonly concurrency?: number; // default 4
+}
+
+/** @deprecated Not implemented — throws NotImplementedError at Postel(...) construction. Use InProcess(). */
+function BullMQ(queue: unknown): WorkerStrategy;
+/** @deprecated Not implemented — throws NotImplementedError at Postel(...) construction. Use InProcess(). */
+function PgBoss(boss: unknown): WorkerStrategy;
+/** @deprecated Not implemented — throws NotImplementedError at Postel(...) construction. Use InProcess(). */
+function External(adapter: unknown): WorkerStrategy;
+```
+
+`InProcess()` (the default) is the only worker strategy with a runtime today. `BullMQ`/`PgBoss`/`External` are typed config slots — passing one to `OutboundConfig.workers` throws `NotImplementedError` immediately when you call `Postel(...)`, not on first send. They exist so the config shape and cross-port contract are already settled for when those adapters ship.
+
+## Signing
+
+```ts
+type SigningStrategy =
+  | { readonly kind: "hmac-v1"; readonly alsoSign?: ReadonlyArray<SigningStrategy> }
+  | { readonly kind: "ed25519-v1a"; readonly alsoSign?: ReadonlyArray<SigningStrategy> };
+
+function HmacV1(options?: SigningOptions): SigningStrategy;
+function Ed25519V1a(options?: SigningOptions): SigningStrategy;
+
+interface SigningOptions {
+  readonly alsoSign?: ReadonlyArray<SigningStrategy>;
+}
+```
+
+`alsoSign` layers additional signatures onto the same outgoing request (e.g. sign with both `HmacV1()` and `Ed25519V1a()` during a rotation window) — the receiver's `verify()`/`Verifier` tries each signature tuple in the `webhook-signature` header until one matches.
+
+## KMS
+
+```ts
+type KmsStrategy =
+  | { readonly kind: "aws-kms"; readonly keyId: string }
+  | { readonly kind: "gcp-kms"; readonly keyName: string }
+  | { readonly kind: "vault"; readonly transitPath: string; readonly keyName: string }
+  | { readonly kind: "plaintext"; readonly allowInProduction: boolean };
+
+function PlaintextKms(options?: PlaintextKmsOptions): KmsStrategy;
+
+interface PlaintextKmsOptions {
+  readonly allowInProduction?: boolean; // default false
+}
+
+/** @deprecated Not implemented — throws NotImplementedError at Postel(...) construction. Use PlaintextKms(). */
+function AwsKms(options: AwsKmsOptions): KmsStrategy;
+/** @deprecated Not implemented — throws NotImplementedError at Postel(...) construction. Use PlaintextKms(). */
+function GcpKms(options: GcpKmsOptions): KmsStrategy;
+/** @deprecated Not implemented — throws NotImplementedError at Postel(...) construction. Use PlaintextKms(). */
+function Vault(options: VaultOptions): KmsStrategy;
+
+interface AwsKmsOptions { readonly keyId: string; }
+interface GcpKmsOptions { readonly keyName: string; }
+interface VaultOptions { readonly transitPath: string; readonly keyName: string; }
+```
+
+Same pattern as workers: `PlaintextKms()` (the default) is the only KMS strategy with a runtime — endpoint secrets are stored as-is. `AwsKms`/`GcpKms`/`Vault` are typed slots for the envelope-encryption work that hasn't shipped; configuring one throws `NotImplementedError` at construction.
+
+## Verifiers
+
+Inbound signature verification (`Secret`, `PublicKey`, `Keyset`, `Noop`, and the named provider verifiers `Stripe`/`GitHub`/`Shopify`/`Twilio`/`Slack`) lives on the [Inbound API](/docs/reference/inbound#verifier) page alongside the rest of `InboundSource` — they're strategy-shaped factories too, just receive-side.

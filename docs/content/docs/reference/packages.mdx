@@ -9,7 +9,7 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 
 | Package | Used for | Notes |
 |---|---|---|
-| **`@postel/core`** | [Inbound](/docs/inbound) and [Outbound](/docs/outbound) — the `Postel({ inbound, outbound })` factory and primitives | Zero runtime dependencies. The outbound runtime is available, including the in-process `InMemoryStorage` adapter (`import { InMemoryStorage } from "@postel/core"`). Inbound sources accept an optional [Standard Schema](https://github.com/standard-schema/standard-schema) `schema` (zod/valibot/…) that validates and types `event.data` — no schema-library dependency. |
+| **`@postel/core`** | [Inbound](/docs/inbound) and [Outbound](/docs/outbound) — the `Postel({ inbound, outbound })` factory and primitives | Zero runtime dependencies. The outbound runtime is available, including the in-process `InMemoryStorage` adapter (`import { InMemoryStorage } from "@postel/core"`). Inbound sources accept an optional [Standard Schema](https://github.com/standard-schema/standard-schema) `schema` (zod/valibot/…) that validates and types `event.data` — no schema-library dependency. Full signature reference: [Core](/docs/reference/core), [Inbound](/docs/reference/inbound), [Outbound](/docs/reference/outbound), [Strategies](/docs/reference/strategies). |
 | **`@postel/http`** | [Framework-agnostic webhook HTTP core](/docs/reference/http) | The verification gate (`handleInbound`, `fetchWebhook`) and the shared `PostelError`→HTTP-status policy every framework adapter binds to. Depends only on `@postel/core`. |
 | **`@postel/hono`** | [Hono](/docs/web-adapters/hono) framework adapter | `HonoWebAdapter(postel, app)` routing facade (`inbound.<source>.post`, `outbound.bindJwks`, `admin.bindAdminRoutes`) + low-level `verifyWebhook()` / `withWebhook()`. |
 | **`@postel/express`** | [Express](/docs/web-adapters/express) framework adapter | `ExpressWebAdapter(postel, app)` routing facade + low-level `verifyWebhook()` (mounts `express.raw()` + the gate) / `fetchToExpress`; sets `req.postel`. |
@@ -57,4 +57,4 @@ Out of scope for the npm registry. See [Polyglot](/docs/get-started/polyglot) fo
 
 ## Every export
 
-For exact type signatures, see [Errors](/docs/reference/errors) and [`@postel/http`](/docs/reference/http), or read the source under [`typescript/packages/core`](https://github.com/postel-sh/postel/tree/main/typescript/packages/core/src).
+For exact type signatures, see the `@postel/core` reference — [Core API](/docs/reference/core) (factories, config, lifecycle), [Inbound API](/docs/reference/inbound), [Outbound API](/docs/reference/outbound), [Strategies](/docs/reference/strategies), and [Errors](/docs/reference/errors) — or [`@postel/http`](/docs/reference/http) for the framework-agnostic HTTP layer.

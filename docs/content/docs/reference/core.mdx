@@ -1,0 +1,233 @@
+---
+title: Core API
+description: The Postel() / definePostelConfig() factories, PostelConfig, the lifecycle API, observability, and the shared utility types.
+---
+
+Every signature on this page is exported from `@postel/core`. See [Inbound API](/docs/reference/inbound), [Outbound API](/docs/reference/outbound), [Strategies](/docs/reference/strategies), and [Errors](/docs/reference/errors) for the rest of the package's public surface.
+
+## Postel()
+
+```ts
+function Postel<const C extends PostelConfig>(config: C): PostelInstance<C>;
+```
+
+Builds a `PostelInstance` from a config object. The returned instance always has the [lifecycle API](#lifecycle-api); it additionally has `.inbound` when `config.inbound` is set and `.outbound` when `config.outbound` is set — `PostelInstance<C>` is a conditional type, so `postel.outbound` doesn't type-check at all on a receive-only config.
+
+```ts
+import { Postel } from "@postel/core";
+
+const postel = Postel({
+  inbound: { vendor: { verify: Secret(process.env.VENDOR_SECRET!) } },
+  outbound: { storage: InMemoryStorage() },
+});
+```
+
+### definePostelConfig()
+
+```ts
+function definePostelConfig<const C extends PostelConfig>(config: C): C;
+```
+
+Identity function — returns its argument unchanged. Exists only to preserve the config's literal type when you declare it separately from the `Postel(...)` call: annotating a config object with the `PostelConfig` type before passing it in widens the literal, and the `WithInbound`/`WithOutbound` conditional types can no longer see which slots are configured, so `postel.inbound`/`postel.outbound` disappear from the instance type. Wrap the config in `definePostelConfig(...)` instead of typing it directly:
+
+```ts
+const config = definePostelConfig({
+  outbound: { storage: InMemoryStorage() },
+});
+const postel = Postel(config); // postel.outbound is still typed
+```
+
+## PostelConfig
+
+```ts
+interface PostelConfig<TInbound extends Record<string, InboundSource> = Record<string, InboundSource>> {
+  readonly observability?: ObservabilityConfig;
+  readonly outbound?: OutboundConfig;
+  readonly inbound?: TInbound;
+}
+```
+
+All three top-level slots are optional — a config with neither `inbound` nor `outbound` builds a `Postel()` instance with only the lifecycle API. See [`OutboundConfig`](/docs/reference/outbound#outboundconfig) for the outbound shape and [`InboundSource`](/docs/reference/inbound#inboundsource) for each key of `inbound`.
+
+## Lifecycle API
+
+Every `PostelInstance` has these six members, regardless of which of `inbound`/`outbound` are configured:
+
+```ts
+interface LifecycleApi {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  health(): Promise<HealthStatus>;
+  metrics(): Promise<MetricsSnapshot>;
+  on<E extends PostelEvent>(event: E, handler: EventHandler<E>): Unsubscribe;
+  off<E extends PostelEvent>(event: E, handler: EventHandler<E>): void;
+}
+```
+
+- **`start()`** starts the in-process worker pool (a no-op on a receive-only config). **`stop()`** stops it.
+- **`health()`** resolves a [`HealthStatus`](#healthstatus). On a receive-only config it always resolves `{ ok: true }` — there is no outbox to probe.
+- **`metrics()`** resolves the current [`MetricsSnapshot`](#metricssnapshot). See [Observability](/docs/outbound/observability).
+- **`on`/`off`** subscribe to the four [`PostelEvent`](#events) names. `on` returns an `Unsubscribe` (`() => void`) as a convenience over calling `off` yourself.
+
+### HealthStatus
+
+```ts
+interface HealthStatus {
+  readonly ok: boolean;
+  readonly outboxDepth?: number;
+  readonly oldestPendingAge?: number | undefined;
+  readonly workerCount?: number;
+  readonly reason?: string; // present only when ok is false
+}
+```
+
+### HealthThresholds
+
+```ts
+interface HealthThresholds {
+  readonly maxOutboxDepth?: number;
+  readonly maxOldestPendingAge?: Duration;
+}
+```
+
+Set on `observability.health` to make `health()` report `ok: false` on a degraded-but-reachable outbox — either threshold breach sets `ok: false` with a `reason` naming which one.
+
+## Observability config
+
+```ts
+interface ObservabilityConfig {
+  readonly logger?: Logger;
+  readonly health?: HealthThresholds;
+}
+
+type Logger = (entry: LogEvent) => void;
+
+type LogEvent =
+  | { readonly event: "attempt"; readonly level: "debug"; readonly data: AttemptPayload; readonly trace_id?: string }
+  | { readonly event: "circuit-open"; readonly level: "warn"; readonly data: CircuitTransitionPayload; readonly trace_id?: string }
+  | { readonly event: "circuit-close"; readonly level: "info"; readonly data: CircuitTransitionPayload; readonly trace_id?: string }
+  | { readonly event: "dead-letter"; readonly level: "error"; readonly data: DeadLetterPayload; readonly trace_id?: string };
+
+type LogLevel = LogEvent["level"]; // "debug" | "warn" | "info" | "error"
+```
+
+`observability.logger` receives the same four events as `postel.on(...)`, each wrapped with a severity `level` and, when a trace is active, an OTel `trace_id`. See [Observability](/docs/outbound/observability) for the forwarding rules.
+
+## Events
+
+```ts
+type PostelEvent = "attempt" | "circuit-open" | "circuit-close" | "dead-letter";
+
+interface PostelEventMap {
+  attempt: AttemptPayload;
+  "circuit-open": CircuitTransitionPayload;
+  "circuit-close": CircuitTransitionPayload;
+  "dead-letter": DeadLetterPayload;
+}
+
+type EventHandler<E extends PostelEvent = PostelEvent> = (payload: PostelEventMap[E]) => void;
+
+interface AttemptPayload {
+  readonly messageId: string;
+  readonly endpointId: string;
+  readonly tenantId: string | null;
+  readonly status: string;
+  readonly latencyMs: number;
+}
+
+interface CircuitTransitionPayload {
+  readonly endpointId: string;
+  readonly tenantId: string | null;
+}
+
+interface DeadLetterPayload {
+  readonly messageId: string;
+  readonly endpointId: string;
+  readonly tenantId: string | null;
+  readonly finalError: string;
+}
+```
+
+`postel.on("attempt", (payload) => ...)` fires after every delivery attempt (success or failure); `circuit-open`/`circuit-close` on breaker state transitions; `dead-letter` when an endpoint exhausts retries. These are the same four names the `Logger` pass-through wraps — see [Observability config](#observability-config).
+
+## MetricsSnapshot
+
+```ts
+interface MetricsSnapshot {
+  readonly webhook_send_total: readonly MetricSample[];
+  readonly webhook_attempt_duration_seconds: readonly HistogramSample[];
+  readonly webhook_attempt_success_ratio: readonly MetricSample[];
+  readonly webhook_dead_letter_total: readonly MetricSample[];
+  readonly webhook_outbox_depth: readonly MetricSample[];
+  readonly webhook_endpoint_circuit_state: readonly MetricSample[];
+}
+
+interface MetricSample {
+  readonly value: number;
+  readonly labels: Readonly<Record<string, string>>;
+}
+
+interface HistogramSample {
+  readonly count: number;
+  readonly sum: number;
+  readonly labels: Readonly<Record<string, string>>;
+}
+```
+
+Returned by `postel.metrics()` — a pull-based snapshot, not a push exporter. The metric names and label semantics are [CONTRACT](/docs/reference/specs); this snapshot shape is the TypeScript-specific exposition mechanism. See [Observability](/docs/outbound/observability) for how to expose it as Prometheus text format.
+
+## Pagination
+
+```ts
+interface CursorOptions {
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+interface Page<T> {
+  readonly items: ReadonlyArray<T>;
+  readonly nextCursor: string | null;
+}
+```
+
+Every list read across `outbound.endpoints.list`, `outbound.tenants.list`, and `outbound.messages.list` takes a subtype of `CursorOptions` and returns a `Page<T>`. `nextCursor: null` means the last page. See [ADR 0015](https://github.com/postel-sh/postel/blob/main/decisions/0015-pagination-envelope.md) for the cursor contract (ms-precision, binary-collation ordering).
+
+## Duration grammar
+
+```ts
+type Duration = number | `${number}${"s" | "m" | "h" | "d"}`;
+function ttlToSeconds(ttl: Duration): number;
+```
+
+Every duration-shaped config field (`tolerance`, `dedupTtl`, `HealthThresholds.maxOldestPendingAge`, …) accepts either a plain number of seconds or a `"<integer><s|m|h|d>"` string (`"5m"`, `"2h"`, `"1d"`). `ttlToSeconds` throws `ConfigurationError` on anything else — including fractional numbers and unit-less strings like `"5"`.
+
+The sender's internal duration fields (`HttpDefaults.requestTimeout`, `RetryStrategy` schedules, `CircuitBreakerDefaults.cooldown`, …) use a sibling type that also accepts a bare `ms` suffix:
+
+```ts
+type DurationMs = number | `${number}${"ms" | "s" | "m" | "h" | "d"}`;
+```
+
+`DurationMs` values are milliseconds when numeric; `Duration` values are seconds when numeric. Check which one a field is typed as before passing a bare number.
+
+## Clock
+
+```ts
+interface Clock {
+  now(): Date;
+  sleep(ms: number): Promise<void>;
+}
+
+const systemClock: Clock;
+```
+
+The time source every timestamp-tolerance check, retry schedule, and lease expiry reads through. `systemClock` (real `Date`/`setTimeout`) is the default everywhere a `clock?: Clock` slot exists — pass your own (e.g. a fake clock in tests) to `InboundSource.clock`, `VerifyOptions.clock`, or `OutboundConfig.clock`.
+
+## Standard Schema
+
+```ts
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+  readonly "~standard": StandardSchemaV1.Props<Input, Output>;
+}
+```
+
+Re-exported, not authored by Postel — the [Standard Schema](https://github.com/standard-schema/standard-schema) v1 interface, inlined so `@postel/core` takes no runtime dependency on zod/valibot/arktype/etc. `InboundSource.schema` and `OutboundEventRegistry` entries both accept any schema implementing this shape. See [`EventOf`](/docs/reference/inbound#eventof) and [`EventDataOf`](/docs/reference/outbound#eventdataof) for how the schema's output type flows into `verify()`/`send()`.
