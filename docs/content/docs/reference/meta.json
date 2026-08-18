@@ -10,6 +10,7 @@
     "outbound",
     "strategies",
     "http",
+    "effect",
     "errors",
     "specs",
     "benchmarks"

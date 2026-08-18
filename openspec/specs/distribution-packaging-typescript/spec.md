@@ -33,7 +33,7 @@ The library SHALL be distributed as the following npm packages, grouped by purpo
 
 **Auxiliary:**
 - `@postel/admin` — framework-agnostic admin HTTP handler builder.
-- `@postel/effect` — Effect-TS layer over the core API. **Pre-alpha placeholder** today (export only `__postelPackage`, `private`, not in the 1.0 published set); see *Empty placeholder packages are pre-alpha and unpublished*.
+- `@postel/effect` — Effect-TS layer over the core API: `PostelLive`/`PostelTag` build the Postel instance as a Scope-managed `Layer`, and `send`/`replay`/`messages.{get,attempts,list}`/`inbound.<source>.verify` are exposed as `Effect`-returning methods with `PostelError`/`ConfigurationError`/`NotImplementedError` as the typed error channel. See the `Effect-TS layer` requirement in `api-surface-typescript`.
 - `@postel/test` — test fixtures + signature generators + mock receivers for adopter unit tests. **Pre-alpha placeholder** today (export only `__postelPackage`, `private`, not in the 1.0 published set).
 - `@postel/compliance-driver` — HTTP control-plane shim the `@postel/compliance` suite drives in `--sender-control` mode. Distinct from `@postel/test` (audience: adopters) and `@postel/cli` (audience: adopters): its stability surface is a CONTRACT artifact tracked by the compliance suite's lockstep version.
 - `@postel/cli` — `postel` CLI binary (migrate, sign, verify, replay, simulate). **Pre-alpha placeholder** today (export only `__postelPackage`, `private`, not in the 1.0 published set); see *Empty placeholder packages are pre-alpha and unpublished*.
@@ -210,13 +210,13 @@ Every `### Requirement` declared under `openspec/specs/<capability>/spec.md` SHA
 
 A package whose only export is the `__postelPackage` name marker has no claimable runtime surface. Such a package SHALL be marked `private` in its `package.json` so it is excluded from the published release (`pnpm publish -r` skips `private` packages), and it SHALL NOT be counted in the 1.0 published package set. Its name is reserved on the workspace so the future runtime lands under the intended name, but adopters MUST NOT be able to install an empty package and mistake it for a working one.
 
-The current pre-alpha placeholders are `@postel/effect`, `@postel/test`, `@postel/bun`, and `@postel/cli`. `@postel/nextjs` shipped a real `NextjsWebAdapter` runtime (issue #138) and dropped out of this set. As each remaining placeholder's runtime lands, it drops the `__postelPackage`-only surface and may become publishable.
+The current pre-alpha placeholders are `@postel/test`, `@postel/bun`, and `@postel/cli`. `@postel/nextjs` shipped a real `NextjsWebAdapter` runtime (issue #138) and `@postel/effect` shipped a real Effect-TS layer (issue #145); both dropped out of this set. As each remaining placeholder's runtime lands, it drops the `__postelPackage`-only surface and may become publishable.
 
 **Conformance**: PORT-SPECIFIC — `private` and npm publish semantics are TypeScript / npm specifics. The durable cross-port intent is that an adopter cannot install an empty, name-only artifact from the 1.0 set; other ports honor it through their own registry idioms.
 
 #### Scenario: A name-only package stays private
 
-- **WHEN** a package's `src/index.ts` exports only `__postelPackage` (`@postel/effect`, `@postel/test`, `@postel/bun`, `@postel/cli`)
+- **WHEN** a package's `src/index.ts` exports only `__postelPackage` (`@postel/test`, `@postel/bun`, `@postel/cli`)
 - **THEN** its `package.json` has `"private": true`
 - **AND** it is absent from the published 1.0 package set
 
