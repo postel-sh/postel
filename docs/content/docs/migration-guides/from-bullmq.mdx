@@ -20,7 +20,7 @@ The shape this guide targets: your app calls `queue.add()` (BullMQ, Bee-Queue, a
 | `opts.jobId` (dedup by fixed id) | `idempotencyKey` on `send()` |
 | `opts.attempts` + `opts.backoff` | `retryPolicy: ExponentialBackoff({ maxAttempts, ... })` / `LinearBackoff(...)` |
 | Your `Worker` processor function | The in-process worker pool (`InProcess({ concurrency })`) — you don't write this code anymore |
-| `job.attemptsMade` | `attempts.attempt_number` (via `messages.attempts(id)`) |
+| `job.attemptsMade` | The attempt's `attemptNumber` (via `messages.attempts(id)`) |
 | A job that exhausts `attempts` and sits in the `failed` set | A message in the `dead_letter` view, re-enqueued via `replay()` |
 | Your own `crypto.createHmac(...)` signing code | `HmacV1()` (or `Ed25519V1a()`) signing strategy |
 | A separate "disable this webhook" flag you check before enqueueing | Endpoint `state: "disabled"` + the built-in circuit breaker / auto-disable |
@@ -52,13 +52,14 @@ new Worker("webhooks", async (job) => {
 ## After
 
 ```ts title="lib/postel.ts"
-import { Postel, PgStorage, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
+import { Postel, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
+import { PgStorage } from "@postel/pg";
 
 export const postel = Postel({
   outbound: {
-    storage:     PgStorage({ connectionString: process.env.DATABASE_URL }),
+    storage:     PgStorage({ connectionString: process.env.DATABASE_URL! }),
     signing:     HmacV1(),
-    retryPolicy: ExponentialBackoff({ maxAttempts: 5, initialDelay: "1s" }),
+    retryPolicy: ExponentialBackoff({ maxAttempts: 5 }),
     workers:     InProcess({ concurrency: 4 }),
   },
 });

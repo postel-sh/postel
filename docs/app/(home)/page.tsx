@@ -11,6 +11,7 @@ import {
   GlobeIcon,
   HonoIcon,
   NestjsIcon,
+  NextjsIcon,
 } from "@/components/icons";
 import { Install } from "@/components/install-tabs";
 import { HeroAdapterTabs } from "./hero-adapter-tabs";
@@ -43,6 +44,16 @@ const hwa = HonoWebAdapter(postel, app);
 hwa.inbound.vendor.post("/webhooks/vendor", (c) => {
   const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · raw bytes intact
   return c.json({ ok: true, type: event.type });
+});`;
+
+const heroNextjs = `import { NextjsWebAdapter } from "@postel/nextjs";
+import { postel } from "@/lib/postel";
+
+const nwa = NextjsWebAdapter(postel);
+
+export const { POST } = nwa.inbound.vendor.post((result) => {
+  // verified · raw bytes intact
+  return Response.json({ ok: true, type: result.event.type });
 });`;
 
 const heroExpress = `import express from "express";
@@ -277,6 +288,7 @@ export default async function HomePage() {
     expressHtml,
     fastifyHtml,
     nestHtml,
+    nextjsHtml,
     handRolledHtml,
     withPostelHtml,
     inboundConfigHtml,
@@ -286,6 +298,7 @@ export default async function HomePage() {
     codeToHtml(heroExpress, shikiOptions),
     codeToHtml(heroFastify, shikiOptions),
     codeToHtml(heroNestjs, shikiOptions),
+    codeToHtml(heroNextjs, shikiOptions),
     codeToHtml(handRolledOutbound, shikiOptions),
     codeToHtml(withPostelOutbound, shikiOptions),
     codeToHtml(inboundConfig, shikiOptions),
@@ -337,11 +350,11 @@ export default async function HomePage() {
             <div className="mt-6 max-w-sm">
               <Install packages="@postel/core" />
               <p className="text-fd-muted-foreground mt-2 text-xs">
-                Nothing&apos;s on npm yet — clone{" "}
-                <a href="https://github.com/postel-sh/postel" className="underline">
-                  the repo
-                </a>{" "}
-                and build from <code>typescript/</code> instead.
+                Nothing&apos;s on npm yet —{" "}
+                <Link href="/docs/get-started/quickstart" className="underline">
+                  run it from source
+                </Link>{" "}
+                until the first release ships.
               </p>
             </div>
           </div>
@@ -352,6 +365,7 @@ export default async function HomePage() {
               { label: "Express", file: "app.ts", html: expressHtml, icon: <ExpressIcon className="size-3.5" /> },
               { label: "Fastify", file: "app.ts", html: fastifyHtml, icon: <FastifyIcon className="size-3.5" /> },
               { label: "NestJS", file: "webhooks.controller.ts", html: nestHtml, icon: <NestjsIcon className="size-3.5" /> },
+              { label: "Next.js", file: "app/api/webhooks/vendor/route.ts", html: nextjsHtml, icon: <NextjsIcon className="size-3.5" /> },
             ]}
             badge="Inbound · verify"
             className="lg:justify-self-end lg:max-w-xl"

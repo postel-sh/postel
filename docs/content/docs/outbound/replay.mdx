@@ -41,7 +41,11 @@ The canonical operational verb: *"customer X's webhook receiver was down from 02
 
 ```ts
 await postel.outbound.replay({
-  filter:           (msg) => msg.type === "user.signup" && msg.data.plan === "enterprise",
+  // filter receives the stored message as `unknown` — narrow it yourself
+  filter: (msg) => {
+    const m = msg as { type: string; data: { plan?: string } };
+    return m.type === "user.signup" && m.data.plan === "enterprise";
+  },
   replayThroughput: 20,
   freshWebhookId:   false,
 });

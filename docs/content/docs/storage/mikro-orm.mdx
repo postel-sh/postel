@@ -41,11 +41,15 @@ export const postel = Postel({
 
 ## Shared transactions
 
-`Postel({...}).outbound.transaction(cb)` hands your callback a transaction context you thread into `send()`, so the outbox insert commits atomically with your business writes:
+Open the transaction with MikroORM as usual and pass its transaction context to `send()` as `tx`, so the outbox insert commits atomically with your business writes:
 
 ```ts
-await postel.outbound.transaction(async (tx) => {
-  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+await orm.em.transactional(async (em) => {
+  em.persist(order);
+  await postel.outbound.send(
+    { type: "order.created", data: { /* ... */ } },
+    { tx: em.getTransactionContext() },
+  );
 });
 ```
 

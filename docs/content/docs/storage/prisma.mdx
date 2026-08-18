@@ -42,7 +42,7 @@ Use Prisma's interactive transaction and pass the transaction client to `send()`
 ```ts
 await prisma.$transaction(async (tx) => {
   await tx.order.create({ data: { /* ... */ } });
-  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+  await postel.outbound.send({ type: "order.created", data: { /* ... */ } }, { tx });
 });
 ```
 

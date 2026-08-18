@@ -125,7 +125,9 @@ interface PostelEventMap {
   "dead-letter": DeadLetterPayload;
 }
 
-type EventHandler<E extends PostelEvent = PostelEvent> = (payload: PostelEventMap[E]) => void;
+// (the handler shape — @postel/core exports PostelEvent and PostelEventMap;
+// write the callback inline, there is no exported EventHandler alias)
+type Handler<E extends PostelEvent> = (payload: PostelEventMap[E]) => void;
 
 interface AttemptPayload {
   readonly messageId: string;

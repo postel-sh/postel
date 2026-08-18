@@ -36,7 +36,7 @@ The library has a narrow scope on purpose.
 | Runtime | Node, Bun, Deno | Same + Go, Python, Rust (each at its own cadence) |
 | Database | Postgres, MySQL, SQLite — standalone or via your ORM | The same families, including wire-compatible engines (MariaDB, PlanetScale, libSQL/Turso, …), plus any other backend via a custom `Storage` adapter |
 | Broker / queue | **None required.** Uses your existing DB transaction. | Same. Will stay broker-free forever ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). |
-| Framework adapters | Hono, Express, Fastify, NestJS (Next.js / Bun via the framework-agnostic factory) | + dedicated Next.js, Bun, Deno, SvelteKit adapters |
+| Framework adapters | Hono, Express, Fastify, NestJS, Next.js (Bun / Deno via the framework-agnostic factory) | + dedicated Bun, Deno, SvelteKit adapters |
 | Hosting model | Embedded in your app | Same. Never a hosted service. |
 
 If you need Redis-backed queues, a separate dispatcher service, multi-region replication, or a customer-facing webhook portal as a packaged product — Postel won't grow into any of those. Use Svix or Hookdeck Outpost.

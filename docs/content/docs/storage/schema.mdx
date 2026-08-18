@@ -3,7 +3,7 @@ title: Schema & migrations
 description: The canonical Postel database schema, the forward-only migrations, and the boot-time version handshake.
 ---
 
-Every SQL-backed adapter targets the same canonical schema. It's defined once, in Postgres dialect with SQLite variants noted inline, under [`specs/db-schema/`](https://github.com/postel-sh/postel/tree/main/specs/db-schema) — that directory is the source of truth, and each adapter transcribes it to its dialect.
+Every SQL-backed adapter targets the same canonical schema. It's defined once, in Postgres dialect with SQLite variants noted inline, under [`specs/db-schema/`](https://github.com/postel-sh/postel/tree/main/specs/db-schema) — that directory is the source of truth, and each adapter transcribes it to its dialect (the [MySQL adapter](/docs/storage/mysql) carries its own transcription, epoch-ms `BIGINT` timestamps included).
 
 ## Tables
 
@@ -16,6 +16,7 @@ Every SQL-backed adapter targets the same canonical schema. It's defined once, i
 | `messages` | The outbox: one row per `send()`. Workers reserve rows here. |
 | `attempts` | Per-endpoint, per-message delivery attempts (the audit trail). |
 | `endpoint_state_transitions` | Audit log of endpoint state changes. |
+| `postel_received_messages` | Receiver-side dedup records (`webhook-id` + TTL) for the DB-backed [dedup adapters](/docs/inbound/deduplication). |
 
 Plus a `dead_letter` view over `attempts` whose final disposition is exhausted.
 
