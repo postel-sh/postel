@@ -27,7 +27,8 @@
     "generate": "prisma generate",
     "build": "prisma generate && tsup src/index.ts --format esm,cjs --dts --sourcemap --target es2022 --clean",
     "typecheck": "prisma generate && tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "engines": {

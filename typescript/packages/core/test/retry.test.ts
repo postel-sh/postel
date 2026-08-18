@@ -14,6 +14,7 @@ import { dispatchMessage } from "../src/sender/dispatcher/dispatch.js";
 import { buildRateLimitDispatcher } from "../src/sender/dispatcher/rate-limit.js";
 import { CircuitBreakerRegistry } from "../src/sender/retry/circuit.js";
 import { FixedRate } from "../src/strategies/rate-limit.js";
+import { waitFor } from "./wait-for.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -30,10 +31,6 @@ function FakeClock(initial = new Date("2026-05-26T10:00:00Z")): Clock & {
       current = new Date(current.getTime() + ms);
     },
   };
-}
-
-async function tick(ms = 100): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 interface MockServer {
@@ -123,7 +120,16 @@ describe("Default retry schedule with jitter", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(500);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return (
+          attempts.some((a) => a.status === "failed") &&
+          attempts.some((a) => a.status === "dead-letter")
+        );
+      },
+      { timeoutMs: 2500 },
+    );
     await postel.stop();
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);
@@ -148,7 +154,13 @@ describe("Programmable per-endpoint retry policy", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return attempts.some((a) => a.status === "dead-letter");
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);
@@ -168,7 +180,16 @@ describe("Status-code-aware retry", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return (
+          attempts.some((a) => a.status === "failed-permanent") &&
+          attempts.filter((a) => a.responseCode === 400).length === 1
+        );
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);
@@ -187,7 +208,13 @@ describe("Status-code-aware retry", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return attempts.filter((a) => a.responseCode === 429).length > 0;
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);
@@ -218,7 +245,16 @@ describe("Per-endpoint and overall delivery deadlines", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(800);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return (
+          attempts.length > 0 &&
+          (attempts[0]?.status === "failed" || attempts[0]?.status === "dead-letter")
+        );
+      },
+      { timeoutMs: 4000 },
+    );
     await postel.stop();
     await new Promise<void>((resolve, reject) =>
       slow.close((err) => (err ? reject(err) : resolve())),
@@ -244,7 +280,7 @@ describe("Dead-letter event", () => {
     postel.on("dead-letter", (p) => events.push(p));
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(() => events.length > 0, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(events.length).toBeGreaterThan(0);
@@ -273,7 +309,7 @@ describe("Typed lifecycle event emitter [PORT-SPECIFIC]", () => {
     expect(typeof off).toBe("function");
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(() => seen.length > 0, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(seen.length).toBeGreaterThan(0);
@@ -294,9 +330,15 @@ describe("Typed lifecycle event emitter [PORT-SPECIFIC]", () => {
       attempts += 1;
     });
     off();
-    await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(
+      async () => {
+        const message = await storage.getMessage(id);
+        return message?.status === "dead-lettered";
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     expect(attempts).toBe(0);
@@ -316,7 +358,13 @@ describe("Per-endpoint circuit breaker", () => {
     });
     await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(
+      async () => {
+        const transitions = await storage.endpoints.listStateTransitions(endpointId);
+        return transitions.some((t) => t.reason === "circuit-open");
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const transitions = await storage.endpoints.listStateTransitions(endpointId);
@@ -335,7 +383,14 @@ describe("Per-endpoint circuit breaker", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(800);
+    await waitFor(
+      async () => {
+        if (server.requests().length < 2) return false;
+        const attempts = await storage.attempts.latestForMessage(id);
+        return attempts.some((a) => a.status === "success");
+      },
+      { timeoutMs: 4000 },
+    );
     await postel.stop();
     await server.close();
     // First attempt 503 opens the breaker; the circuit-open skip must NOT
@@ -464,7 +519,13 @@ describe("At-least-once delivery guarantee: cross-endpoint fanout with exhaustio
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(600);
+    await waitFor(
+      async () => {
+        const message = await storage.getMessage(id);
+        return message?.status === "dead-lettered";
+      },
+      { timeoutMs: 3000 },
+    );
     await postel.stop();
     await slowServer.close();
     await fastServer.close();
@@ -512,7 +573,13 @@ describe("Message finalized as dead-lettered on exhaustion", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(
+      async () => {
+        const message = await storage.getMessage(id);
+        return message?.status === "dead-lettered";
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const message = await storage.getMessage(id);
@@ -535,7 +602,16 @@ describe("Message finalized as dead-lettered on exhaustion", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return (
+          attempts.some((a) => a.status === "dead-letter") &&
+          attempts.some((a) => a.status === "success")
+        );
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await deadServer.close();
     await okServer.close();
@@ -583,7 +659,13 @@ describe("Endpoint auto-disable", () => {
     });
     await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () => {
+        const transitions = await storage.endpoints.listStateTransitions(endpointId);
+        return transitions.some((t) => t.reason === "auto-disable");
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const transitions = await storage.endpoints.listStateTransitions(endpointId);
@@ -627,7 +709,13 @@ describe("Endpoint auto-disable", () => {
     });
     await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () => {
+        const transitions = await storage.endpoints.listStateTransitions(endpointId);
+        return transitions.some((t) => t.reason === "auto-disable");
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const transitions = await storage.endpoints.listStateTransitions(endpointId);
@@ -648,9 +736,15 @@ describe("Endpoint auto-disable", () => {
         http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } },
       },
     });
-    await postel.outbound.send({ type: "evt.x" });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return attempts.some((a) => a.status === "failed" || a.status === "dead-letter");
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const transitions = await storage.endpoints.listStateTransitions(endpointId);
@@ -693,7 +787,13 @@ describe("Endpoint state machine with audit trail", () => {
     });
     await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () => {
+        const transitions = await storage.endpoints.listStateTransitions(endpointId);
+        return transitions.some((t) => t.reason === "auto-disable");
+      },
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     const transitions = await storage.endpoints.listStateTransitions(endpointId);

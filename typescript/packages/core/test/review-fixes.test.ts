@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ExponentialBackoff, Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
+import { waitFor } from "./wait-for.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -47,10 +48,6 @@ async function insertSecret(
     encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
     notAfter: null,
   });
-}
-
-async function tick(ms = 150): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 describe("Late-binding fanout", () => {
@@ -107,7 +104,16 @@ describe("Late-binding fanout", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        const okAttempts = attempts.filter((a) => a.endpointId === epOk.id);
+        return (
+          ok.hits().length === 1 && okAttempts.length === 1 && okAttempts[0]?.status === "success"
+        );
+      },
+      { timeoutMs: Math.max(400 * 5, 2000) },
+    );
     await postel.stop();
     await ok.close();
     await flakySrv.close();
@@ -167,7 +173,17 @@ describe("Late-binding fanout", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        const filtered = attempts.filter(
+          (a) => a.endpointId === epFiltered.id && a.status === "filtered",
+        );
+        const flakyAttempts = attempts.filter((a) => a.endpointId === epFlaky.id);
+        return filtered.length === 1 && flakyAttempts.length > 1;
+      },
+      { timeoutMs: Math.max(400 * 5, 2000) },
+    );
     await postel.stop();
     await flakySrv.close();
 
@@ -209,7 +225,13 @@ describe("Late-binding fanout", () => {
     });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(250);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return attempts.some((a) => a.status === "skipped" && a.error === "ENDPOINT_DISABLED");
+      },
+      { timeoutMs: Math.max(250 * 5, 2000) },
+    );
     await postel.stop();
     await server.close();
     expect(server.hits().length).toBe(0);
@@ -249,7 +271,9 @@ describe("Transform produces body to send", () => {
     await insertSecret(storage, ep.id);
     await postel.outbound.send({ type: "order.created", data: { id: "ord_9" } });
     await postel.start();
-    await tick(300);
+    await waitFor(() => JSON.stringify(received) === JSON.stringify({ summary: "order ord_9" }), {
+      timeoutMs: Math.max(300 * 5, 2000),
+    });
     await postel.stop();
     await new Promise<void>((resolve, reject) =>
       server.close((err) => (err ? reject(err) : resolve())),
@@ -270,9 +294,15 @@ describe("Transform produces body to send", () => {
       filter: { dataPath: "vip", equals: true },
     });
     await insertSecret(storage, ep.id);
-    await postel.outbound.send({ type: "order.created", data: { vip: false } });
+    const { id } = await postel.outbound.send({ type: "order.created", data: { vip: false } });
     await postel.start();
-    await tick(250);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return attempts.some((a) => a.status === "filtered");
+      },
+      { timeoutMs: Math.max(250 * 5, 2000) },
+    );
     await postel.stop();
     await server.close();
     expect(server.hits().length).toBe(0);
@@ -324,7 +354,13 @@ describe("Per-message TTL", () => {
     // before the worker (which starts ~tens of ms later) ever dispatches it.
     const { id } = await postel.outbound.send({ type: "evt.x", ttl: 60 });
     await postel.start();
-    await tick(250);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return attempts.some((a) => a.status === "success");
+      },
+      { timeoutMs: Math.max(250 * 5, 2000) },
+    );
     await postel.stop();
     await server.close();
     expect(server.hits().length).toBe(1);
@@ -361,7 +397,13 @@ describe("SSRF protection on outbound delivery", () => {
     const postel = Postel({ outbound: { storage } });
     const { id } = await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(
+      async () => {
+        const attempts = await storage.attempts.latestForMessage(id);
+        return attempts.some((a) => a.status === "dead-letter");
+      },
+      { timeoutMs: Math.max(400 * 5, 2000) },
+    );
     await postel.stop();
     const attempts = await storage.attempts.latestForMessage(id);
     // First attempt ssrf-blocked, then a retry, then dead-letter on exhaustion —

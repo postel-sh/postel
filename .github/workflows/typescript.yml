@@ -51,6 +51,17 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Coverage (report-only)
+        run: pnpm coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: typescript/packages/*/coverage
+          if-no-files-found: ignore
+
   pg-integration:
     name: "@postel/pg integration (real Postgres)"
     runs-on: ubuntu-latest
