@@ -1,2 +1,2 @@
-export { startDriver } from "./server.js";
+export { resolveStorageOptions, startDriver } from "./server.js";
 export type { DriverServer, DriverServerOptions } from "./server.js";

@@ -10,11 +10,11 @@ import (
 )
 
 const (
-	prefixSymmetric     = "whsec_"
-	prefixAsymPrivate   = "whsk_"
-	prefixAsymPublic    = "whpk_"
-	signatureSchemeV1   = "v1"
-	signatureSchemeV1a  = "v1a"
+	prefixSymmetric    = "whsec_"
+	prefixAsymPrivate  = "whsk_"
+	prefixAsymPublic   = "whpk_"
+	signatureSchemeV1  = "v1"
+	signatureSchemeV1a = "v1a"
 )
 
 // SigningInput is the byte content covered by Standard Webhooks v1 / v1a

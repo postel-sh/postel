@@ -20,6 +20,7 @@ import {
   encodeEndpointInsert,
   encodeJson,
   encodeMessageInsert,
+  encodeRequiredJson,
   encodeSecretInsert,
   encodeTimestamp,
   formatIdempotencyKey,
@@ -90,6 +91,22 @@ describe("json codec", () => {
     expect(encodeJson(obj, SQLITE_CODEC)).toBe('{"a":1,"b":["x"]}');
     expect(encodeJson(null, SQLITE_CODEC)).toBeNull();
   });
+
+  it("encodeRequiredJson encodes null/undefined as the JSON text 'null', never a raw SQL NULL", () => {
+    // messages.data is NOT NULL across every dialect; a bare encodeJson(null)
+    // would bind a real SQL NULL and violate that constraint regardless of
+    // codec — this is the one column that needs the JSON-scalar-null encoding.
+    expect(encodeRequiredJson(null, PG_CODEC)).toBe("null");
+    expect(encodeRequiredJson(undefined, PG_CODEC)).toBe("null");
+    expect(encodeRequiredJson(null, SQLITE_CODEC)).toBe("null");
+    expect(encodeRequiredJson(null, MYSQL_CODEC)).toBe("null");
+  });
+
+  it("encodeRequiredJson behaves exactly like encodeJson for a real value", () => {
+    const obj = { a: 1 };
+    expect(encodeRequiredJson(obj, PG_CODEC)).toBe(obj);
+    expect(encodeRequiredJson(obj, SQLITE_CODEC)).toBe('{"a":1}');
+  });
 });
 
 function buildMessage(): NewMessage {
@@ -132,6 +149,26 @@ describe("message row codec", () => {
       expect(reserved.createdAt.toISOString()).toBe("2026-05-26T10:00:00.000Z");
       expect(reserved.attemptNumber).toBe(1);
       expect(reserved.leaseExpiresAt.toISOString()).toBe("2026-05-26T10:01:00.000Z");
+    });
+
+    it(`encodes a message sent with no data as a non-null JSON value over ${name} columns`, () => {
+      // messages.data is NOT NULL over every dialect; the encoded value must
+      // never be a bare JS null/undefined (that binds a real SQL NULL and
+      // violates the constraint) — it must be an actual JSON value ("null"
+      // the 4-character text, for every codec: real drivers cast/parse text
+      // parameters against the jsonb/JSON target column). A full decode
+      // round-trip is only meaningful here for the "text" codecs (sqlite,
+      // mysql), which JSON.parse client-side; the "native" (postgres)
+      // codec's decode assumes the driver already parsed the column —
+      // proven against a real jsonb column in @postel/pg's own conformance
+      // suite, not reproducible in a pure in-memory codec test.
+      const row = encodeMessageInsert({ ...buildMessage(), data: null }, codec);
+      expect(row.data).not.toBeNull();
+      expect(row.data).not.toBeUndefined();
+      if (codec.json === "text") {
+        const decoded = decodeReservedMessage({ ...row, lease_expires_at: null }, codec);
+        expect(decoded.data).toBeNull();
+      }
     });
   }
 });

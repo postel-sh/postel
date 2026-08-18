@@ -173,9 +173,56 @@ jobs:
         working-directory: typescript
         run: pnpm install --frozen-lockfile
 
-      - name: Build @postel/core
+      - name: Build @postel/core, @postel/storage-helpers, @postel/pg
         working-directory: typescript
-        run: pnpm --filter @postel/core build
+        run: |
+          pnpm --filter @postel/core build
+          pnpm --filter @postel/storage-helpers build
+          pnpm --filter @postel/pg build
 
       - name: Run sender compliance corpus
         run: mise run compliance:sender:ts
+
+  compliance-sender-pg:
+    name: '@postel/compliance sender corpus against real Postgres (schema conformance)'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - uses: jdx/mise-action@v2
+
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('compliance/cli/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install TS workspace
+        working-directory: typescript
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @postel/core, @postel/storage-helpers, @postel/pg
+        working-directory: typescript
+        run: |
+          pnpm --filter @postel/core build
+          pnpm --filter @postel/storage-helpers build
+          pnpm --filter @postel/pg build
+
+      - name: Run sender compliance corpus against @postel/pg (Docker/testcontainers)
+        env:
+          POSTEL_PG_TESTCONTAINERS: "1"
+        run: mise run compliance:sender:pg:ts

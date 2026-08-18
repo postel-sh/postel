@@ -3,20 +3,11 @@ requirement:
   capability: receiver
   title: Idempotency dedup helper
 description: |
-  Single-request stand-in for the receiver capability spec's
-  "Concurrent dedup calls" scenario: under two concurrent calls with
-  the same id, exactly one returns non-duplicate and the other
-  returns duplicate. The compliance vector schema models one HTTP
-  exchange per vector, so true concurrent semantics are not directly
-  testable from the suite at v0.1.0; the receiver's own unit tests
-  cover atomicity.
-
-  As a partial HTTP-observable check, this vector sends ONE request
-  with a fresh id (msg_dedup_atomic_b) and asserts accept. The
-  receiver-implementation test suite is responsible for racing two
-  concurrent dispatches and asserting exactly-once non-duplicate. The
-  v0.2.0 vector schema extension for multi-step / concurrent sequences
-  will let this vector grow to its full form.
+  True concurrent-duplicate check for the receiver capability spec's
+  "Concurrent dedup calls" scenario: the runner signs one request with a
+  fresh id (msg_dedup_atomic_b) and fires it twice concurrently
+  (`concurrency: 2`), asserting the two responses are, as an unordered
+  multiset, exactly one `accept` and one `duplicate`.
 input:
   method: POST
   url: /webhooks
@@ -28,5 +19,6 @@ secrets:
   - id: primary
     fixture: hmac_primary.yaml
 signature_mode: computed
+concurrency: 2
 expected:
-  outcome: accept
+  outcomes: [accept, duplicate]

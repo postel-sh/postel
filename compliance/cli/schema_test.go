@@ -284,6 +284,146 @@ description: plain old description without the magic token
 	}
 }
 
+func TestValidateVectorBytes_ConcurrencyRequiresOutcomes(t *testing.T) {
+	s := loadCanonicalSchemas(t)
+	data := []byte(`id: smoke/concurrency-needs-outcomes
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: concurrency without expected.outcomes should fail schema
+input:
+  method: POST
+  url: /webhooks
+  headers: {}
+  body_b64: ""
+secrets: []
+signature_mode: static
+concurrency: 2
+expected:
+  outcome: accept
+`)
+	if err := ValidateVectorBytes(data, s); err == nil {
+		t.Errorf("concurrency vector using singular outcome (not outcomes) should fail schema")
+	}
+}
+
+func TestValidateVectorBytes_ConcurrencyWithOutcomesAccepted(t *testing.T) {
+	s := loadCanonicalSchemas(t)
+	data := []byte(`id: smoke/concurrency-with-outcomes
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: concurrency with matching outcomes multiset
+input:
+  method: POST
+  url: /webhooks
+  headers: {}
+  body_b64: ""
+secrets: []
+signature_mode: static
+concurrency: 2
+expected:
+  outcomes: [accept, duplicate]
+`)
+	if err := ValidateVectorBytes(data, s); err != nil {
+		t.Errorf("concurrency vector with expected.outcomes should pass schema: %v", err)
+	}
+}
+
+func TestValidateVectorBytes_NonConcurrentVectorStillRequiresOutcome(t *testing.T) {
+	s := loadCanonicalSchemas(t)
+	data := []byte(`id: smoke/no-outcome
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: a vector with neither outcome nor outcomes should fail schema
+input:
+  method: POST
+  url: /webhooks
+  headers: {}
+  body_b64: ""
+secrets: []
+signature_mode: static
+expected: {}
+`)
+	if err := ValidateVectorBytes(data, s); err == nil {
+		t.Errorf("vector without concurrency and without outcome should fail schema")
+	}
+}
+
+func TestValidateVectorBytes_SenderModeForbidsConcurrency(t *testing.T) {
+	s := loadCanonicalSchemas(t)
+	data := []byte(`id: sender/smoke/concurrency-forbidden
+mode: sender
+requirement:
+  capability: standard-webhooks-compliance
+  title: Compliant headers, signatures, payload structure, and prefixes by default
+description: sender-mode vectors cannot declare concurrency (receiver-mode only field)
+triggers:
+  - op: register_endpoint
+concurrency: 2
+expected:
+  outcomes: [accept, accept]
+`)
+	if err := ValidateVectorBytes(data, s); err == nil {
+		t.Errorf("sender-mode vector with concurrency should fail schema")
+	}
+}
+
+func TestValidateVectorBytes_ResponseBodySchemaAccepted(t *testing.T) {
+	s := loadCanonicalSchemas(t)
+	data := []byte(`id: smoke/response-body-schema
+requirement:
+  capability: key-management
+  title: JWKS publishes only public keys
+description: response_body_schema is an additive, opaque field
+input:
+  method: GET
+  url: /.well-known/webhooks-keys
+  headers: {}
+  body_b64: ""
+secrets: []
+signature_mode: static
+expected:
+  outcome: accept
+  response_body_schema:
+    type: object
+    required: ["keys"]
+`)
+	if err := ValidateVectorBytes(data, s); err != nil {
+		t.Errorf("response_body_schema should pass schema: %v", err)
+	}
+}
+
+func TestValidateResponseBodyAgainstSchema_NoPrivateKeyMaterial(t *testing.T) {
+	schemaObj := map[string]interface{}{
+		"type":     "object",
+		"required": []interface{}{"keys"},
+		"properties": map[string]interface{}{
+			"keys": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"not": map[string]interface{}{
+						"anyOf": []interface{}{
+							map[string]interface{}{"required": []interface{}{"d"}},
+							map[string]interface{}{"required": []interface{}{"k"}},
+						},
+					},
+				},
+			},
+		},
+	}
+	publicOnly := []byte(`{"keys":[{"kty":"OKP","crv":"Ed25519","x":"abc","kid":"kid_a"}]}`)
+	if err := ValidateResponseBodyAgainstSchema(schemaObj, publicOnly); err != nil {
+		t.Errorf("public-only JWKS body should pass: %v", err)
+	}
+	leaked := []byte(`{"keys":[{"kty":"OKP","crv":"Ed25519","x":"abc","d":"leaked-private-material"}]}`)
+	if err := ValidateResponseBodyAgainstSchema(schemaObj, leaked); err == nil {
+		t.Errorf("JWKS body with a private 'd' field should fail")
+	}
+}
+
 func TestValidateKeyFixtureBytes_WrongPrefix(t *testing.T) {
 	s := loadCanonicalSchemas(t)
 	data := []byte(`id: hmac_wrong_prefix

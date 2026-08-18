@@ -216,6 +216,16 @@ export function runStorageTests(factory: StorageTestFactory): void {
         // this multi-round-trip case well past vitest's 5s default under CI load.
       }, 30_000);
 
+      it("insertMessage with no data (domain null) round-trips without violating the NOT NULL data column", async () => {
+        const { storage, clock } = await factory.create();
+        await storage.insertMessage({
+          ...buildMessage(clock, { id: "msg_no_data_1", tenantId: "t_no_data" }),
+          data: null,
+        });
+        const message = await storage.getMessage("msg_no_data_1");
+        expect(message?.data).toBeNull();
+      });
+
       it("Message finalized as dead-lettered on exhaustion: markMessageFinal + listMessages status filter round-trip", async () => {
         const { storage, clock } = await factory.create();
         await storage.insertMessage(

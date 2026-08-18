@@ -8,6 +8,7 @@ type Vector struct {
 	Input            VectorInput             `yaml:"input,omitempty" json:"input,omitempty"`
 	Secrets          []VectorSecret          `yaml:"secrets,omitempty" json:"secrets,omitempty"`
 	SignatureMode    string                  `yaml:"signature_mode,omitempty" json:"signature_mode,omitempty"`
+	Concurrency      int                     `yaml:"concurrency,omitempty" json:"concurrency,omitempty"`
 	Triggers         []VectorTrigger         `yaml:"triggers,omitempty" json:"triggers,omitempty"`
 	MockReceiver     *VectorMockReceiver     `yaml:"mock_receiver,omitempty" json:"mock_receiver,omitempty"`
 	ExpectedRequests []VectorExpectedRequest `yaml:"expected_requests,omitempty" json:"expected_requests,omitempty"`
@@ -32,8 +33,10 @@ type VectorSecret struct {
 }
 
 type VectorExpected struct {
-	Outcome   string `yaml:"outcome" json:"outcome"`
-	ErrorCode string `yaml:"error_code,omitempty" json:"error_code,omitempty"`
+	Outcome            string                 `yaml:"outcome,omitempty" json:"outcome,omitempty"`
+	ErrorCode          string                 `yaml:"error_code,omitempty" json:"error_code,omitempty"`
+	Outcomes           []string               `yaml:"outcomes,omitempty" json:"outcomes,omitempty"`
+	ResponseBodySchema map[string]interface{} `yaml:"response_body_schema,omitempty" json:"response_body_schema,omitempty"`
 }
 
 type VectorTrigger struct {
@@ -61,17 +64,17 @@ type VectorMockResponse struct {
 }
 
 type VectorExpectedRequest struct {
-	Endpoint           string                 `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
-	Method             string                 `yaml:"method,omitempty" json:"method,omitempty"`
-	Path               string                 `yaml:"path,omitempty" json:"path,omitempty"`
-	HeadersMatch       map[string]string      `yaml:"headers_match,omitempty" json:"headers_match,omitempty"`
-	HeadersPresent     []string               `yaml:"headers_present,omitempty" json:"headers_present,omitempty"`
-	HeadersAbsent      []string               `yaml:"headers_absent,omitempty" json:"headers_absent,omitempty"`
-	BodyB64            string                 `yaml:"body_b64,omitempty" json:"body_b64,omitempty"`
-	BodyJsonEquals     interface{}            `yaml:"body_json_equals,omitempty" json:"body_json_equals,omitempty"`
-	SignatureVerifies  *VectorSignatureVerify `yaml:"signature_verifies,omitempty" json:"signature_verifies,omitempty"`
-	ArrivedWithinMs    *VectorArrivedWithin   `yaml:"arrived_within_ms,omitempty" json:"arrived_within_ms,omitempty"`
-	AttemptStatus      string                 `yaml:"attempt_status,omitempty" json:"attempt_status,omitempty"`
+	Endpoint          string                 `yaml:"endpoint,omitempty" json:"endpoint,omitempty"`
+	Method            string                 `yaml:"method,omitempty" json:"method,omitempty"`
+	Path              string                 `yaml:"path,omitempty" json:"path,omitempty"`
+	HeadersMatch      map[string]string      `yaml:"headers_match,omitempty" json:"headers_match,omitempty"`
+	HeadersPresent    []string               `yaml:"headers_present,omitempty" json:"headers_present,omitempty"`
+	HeadersAbsent     []string               `yaml:"headers_absent,omitempty" json:"headers_absent,omitempty"`
+	BodyB64           string                 `yaml:"body_b64,omitempty" json:"body_b64,omitempty"`
+	BodyJsonEquals    interface{}            `yaml:"body_json_equals,omitempty" json:"body_json_equals,omitempty"`
+	SignatureVerifies *VectorSignatureVerify `yaml:"signature_verifies,omitempty" json:"signature_verifies,omitempty"`
+	ArrivedWithinMs   *VectorArrivedWithin   `yaml:"arrived_within_ms,omitempty" json:"arrived_within_ms,omitempty"`
+	AttemptStatus     string                 `yaml:"attempt_status,omitempty" json:"attempt_status,omitempty"`
 }
 
 type VectorSignatureVerify struct {

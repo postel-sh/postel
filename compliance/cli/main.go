@@ -9,15 +9,15 @@ import (
 )
 
 type cliOpts struct {
-	target            string
-	senderControl     string
-	mockReceiverHost  string
-	mockReceiverPort  int
-	format            string
-	now               time.Time
-	vectorsDir        string
-	schemaDir         string
-	only              string
+	target           string
+	senderControl    string
+	mockReceiverHost string
+	mockReceiverPort int
+	format           string
+	now              time.Time
+	vectorsDir       string
+	schemaDir        string
+	only             string
 }
 
 func parseFlags(progName string, args []string, errOut *os.File) (*cliOpts, error) {

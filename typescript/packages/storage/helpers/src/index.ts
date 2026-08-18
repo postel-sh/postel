@@ -108,6 +108,19 @@ export function encodeJson(value: unknown, codec: ColumnCodec): unknown {
   return codec.json === "text" ? JSON.stringify(value) : value;
 }
 
+// `messages.data` is the one JSON-typed column that's NOT NULL across every
+// dialect (specs/db-schema/0001_init.sql) — sendImpl defaults a message sent
+// without `data` to the domain value `null`, so a plain encodeJson() would
+// bind a real SQL NULL and violate that constraint. Encoding "no data" as
+// the JSON text "null" instead is a value, not an absence of one: every
+// driver parses it into the JSON scalar null on the way in, and decodeJson
+// reads it back out as the domain `null` unchanged either way (already
+// driver-parsed, or via JSON.parse("null")).
+export function encodeRequiredJson(value: unknown, codec: ColumnCodec): unknown {
+  if (value === null || value === undefined) return "null";
+  return encodeJson(value, codec);
+}
+
 export function decodeJson<T = unknown>(value: unknown, codec: ColumnCodec): T | null {
   if (value === null || value === undefined) return null;
   if (codec.json === "text" && typeof value === "string") return JSON.parse(value) as T;
@@ -170,7 +183,7 @@ export function encodeMessageInsert(message: NewMessage, codec: ColumnCodec): Ro
     id: message.id,
     tenant_id: message.tenantId,
     type: message.type,
-    data: encodeJson(message.data, codec),
+    data: encodeRequiredJson(message.data, codec),
     channels: encodeJson(message.channels, codec),
     idempotency_key: message.idempotencyKey,
     version: message.version,
