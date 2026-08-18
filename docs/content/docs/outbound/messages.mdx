@@ -16,7 +16,7 @@ const message = await postel.outbound.messages.get("msg_2k4n8...");
 message?.id;            // "msg_2k4n8..."
 message?.type;          // "order.created"
 message?.data;          // the original event payload
-message?.status;        // "pending" | "dispatched" | "expired"  (outbox lifecycle)
+message?.status;        // "pending" | "dispatched" | "dead-lettered" | "expired"  (outbox lifecycle)
 message?.tenantId;      // the owning tenant, or null
 message?.createdAt;     // Date
 message?.attemptNumber; // dispatch attempt counter

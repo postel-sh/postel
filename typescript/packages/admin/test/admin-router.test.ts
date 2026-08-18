@@ -287,6 +287,20 @@ describe("Admin HTTP handlers", () => {
     expect(nextCursor).toBeNull();
   });
 
+  it("List messages via admin router: GET /messages?status=dead-lettered returns only dead-lettered messages", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage, ...SSRF } });
+    const router = adminRouter(postel, ALLOW);
+    const { id: deadLettered } = await postel.outbound.send({ type: "order.created" });
+    await postel.outbound.send({ type: "order.created" });
+    await storage.markMessageFinal(deadLettered, "dead-lettered");
+
+    const res = await router(req("GET", "/admin/messages?status=dead-lettered"));
+    expect(res.status).toBe(200);
+    const { messages } = (await res.json()) as { messages: Array<{ id: string }> };
+    expect(messages.map((m) => m.id)).toEqual([deadLettered]);
+  });
+
   it("List messages via admin router paginates: nextCursor feeds the next page until exhausted", async () => {
     const { postel, router } = build(ALLOW);
     const sent: string[] = [];

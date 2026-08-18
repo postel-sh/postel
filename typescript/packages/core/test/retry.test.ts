@@ -396,43 +396,43 @@ describe("At-least-once delivery guarantee", () => {
   });
 });
 
-describe("At-least-once delivery guarantee: cross-endpoint fanout with exhaustion", () => {
-  async function seedEndpointWithId(
-    storage: ReturnType<typeof InMemoryStorage>,
-    id: string,
-    url: string,
-    retryPolicy: unknown,
-  ): Promise<string> {
-    const endpoint = await storage.endpoints.create({
-      id,
-      tenantId: null,
-      url,
-      state: "active",
-      types: null,
-      channels: null,
-      filter: null,
-      retryPolicy,
-      headers: null,
-      signing: null,
-      metadata: null,
-      allowHttp: true,
-      maxInflight: null,
-      http: null,
-      circuitBreaker: null,
-      autoDisable: null,
-    });
-    await storage.secrets.insert({
-      id: `sec_${id}`,
-      endpointId: endpoint.id,
-      algorithm: "v1",
-      status: "primary",
-      priority: 0,
-      encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
-      notAfter: null,
-    });
-    return endpoint.id;
-  }
+async function seedEndpointWithId(
+  storage: ReturnType<typeof InMemoryStorage>,
+  id: string,
+  url: string,
+  retryPolicy: unknown,
+): Promise<string> {
+  const endpoint = await storage.endpoints.create({
+    id,
+    tenantId: null,
+    url,
+    state: "active",
+    types: null,
+    channels: null,
+    filter: null,
+    retryPolicy,
+    headers: null,
+    signing: null,
+    metadata: null,
+    allowHttp: true,
+    maxInflight: null,
+    http: null,
+    circuitBreaker: null,
+    autoDisable: null,
+  });
+  await storage.secrets.insert({
+    id: `sec_${id}`,
+    endpointId: endpoint.id,
+    algorithm: "v1",
+    status: "primary",
+    priority: 0,
+    encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+    notAfter: null,
+  });
+  return endpoint.id;
+}
 
+describe("At-least-once delivery guarantee: cross-endpoint fanout with exhaustion", () => {
   async function runFanoutExhaustion(registerFastFirst: boolean): Promise<{
     storage: ReturnType<typeof InMemoryStorage>;
     messageId: string;
@@ -482,7 +482,7 @@ describe("At-least-once delivery guarantee: cross-endpoint fanout with exhaustio
     expect(slowAttempts.some((a) => a.status === "dead-letter")).toBe(true);
     expect(fastAttempts.some((a) => a.status === "dead-letter")).toBe(true);
     const message = await storage.getMessage(messageId);
-    expect(message?.status).toBe("dispatched");
+    expect(message?.status).toBe("dead-lettered");
   });
 
   it("Endpoint order [fast, slow]: fast endpoint's exhaustion does not cancel slow endpoint's remaining retries", async () => {
@@ -496,6 +496,53 @@ describe("At-least-once delivery guarantee: cross-endpoint fanout with exhaustio
     expect(slowAttempts.some((a) => a.status === "dead-letter")).toBe(true);
     expect(fastAttempts.some((a) => a.status === "dead-letter")).toBe(true);
     const message = await storage.getMessage(messageId);
+    expect(message?.status).toBe("dead-lettered");
+  });
+});
+
+describe("Message finalized as dead-lettered on exhaustion", () => {
+  it("Single endpoint exhausts retries: message finalized as dead-lettered", async () => {
+    const server = await startServerWithSequence([503]);
+    const storage = InMemoryStorage();
+    await seedEndpoint(storage, server.url(), {
+      retryPolicy: ExponentialBackoff({ schedule: ["20ms"], maxAttempts: 1, jitter: 0 }),
+    });
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(400);
+    await postel.stop();
+    await server.close();
+    const message = await storage.getMessage(id);
+    expect(message?.status).toBe("dead-lettered");
+  });
+
+  it("Fanout with a surviving success stays dispatched: one endpoint dead-letters while a sibling succeeds", async () => {
+    const deadServer = await startServerWithSequence([503]);
+    const okServer = await startServerWithSequence([200]);
+    const storage = InMemoryStorage();
+    await seedEndpointWithId(
+      storage,
+      "ep_dead",
+      deadServer.url(),
+      ExponentialBackoff({ schedule: ["20ms"], maxAttempts: 1, jitter: 0 }),
+    );
+    await seedEndpointWithId(storage, "ep_ok", okServer.url(), null);
+    const postel = Postel({
+      outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
+    });
+    const { id } = await postel.outbound.send({ type: "evt.x" });
+    await postel.start();
+    await tick(400);
+    await postel.stop();
+    await deadServer.close();
+    await okServer.close();
+    const attempts = await storage.attempts.latestForMessage(id);
+    expect(attempts.some((a) => a.status === "dead-letter")).toBe(true);
+    expect(attempts.some((a) => a.status === "success")).toBe(true);
+    const message = await storage.getMessage(id);
     expect(message?.status).toBe("dispatched");
   });
 });

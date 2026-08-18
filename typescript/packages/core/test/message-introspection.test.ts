@@ -160,6 +160,19 @@ describe("List and filter messages", () => {
     expect(listed.items.map((m) => m.id)).toEqual([dispatched]);
   });
 
+  it("Filter by dead-lettered status", async () => {
+    const { storage, postel } = setup();
+    const { id: deadLettered } = await postel.outbound.send({
+      type: "order.created",
+      data: { n: 1 },
+    });
+    await postel.outbound.send({ type: "order.created", data: { n: 2 } });
+    await storage.markMessageFinal(deadLettered, "dead-lettered");
+
+    const listed = await postel.outbound.messages.list({ status: "dead-lettered" });
+    expect(listed.items.map((m) => m.id)).toEqual([deadLettered]);
+  });
+
   it("Tenant scoping restricts results", async () => {
     const storage = InMemoryStorage();
     const t1 = Postel({ outbound: { storage, defaultTenantId: "t_1" } });
