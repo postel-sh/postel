@@ -120,10 +120,15 @@ import {
 try {
   const { event } = await postel.inbound.vendor.verify(body, headers);
 } catch (err) {
-  if (err instanceof SignatureInvalid)        // no verifier matched
-  else if (err instanceof TimestampTooOld)    // outside the window — replay or clock skew
-  else if (err instanceof MalformedHeader)    // a required header is missing
-  else if (err instanceof UnknownKeyId)       // JWKS: kid not in the keyset
+  if (err instanceof SignatureInvalid) {
+    // no verifier matched
+  } else if (err instanceof TimestampTooOld) {
+    // outside the window — replay or clock skew
+  } else if (err instanceof MalformedHeader) {
+    // a required header is missing, or the body isn't a valid event
+  } else if (err instanceof UnknownKeyId) {
+    // JWKS: kid not in the keyset
+  }
 }
 ```
 

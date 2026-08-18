@@ -10,7 +10,8 @@
       "**/*.tsbuildinfo",
       "**/.next/**",
       "**/src/generated/**",
-      "**/.demo-tmp/**"
+      "**/.demo-tmp/**",
+      "docs-snippets/gen/**"
     ]
   },
   "vcs": {

@@ -28,7 +28,7 @@ The shape this guide targets: your app calls `queue.add()` (BullMQ, Bee-Queue, a
 
 ## Before
 
-```ts
+```ts nocheck
 // Somewhere near a business write:
 await db.orders.insert({ id: "ord_123", status: "paid" });
 await webhookQueue.add("order.created", { orderId: "ord_123" }, {

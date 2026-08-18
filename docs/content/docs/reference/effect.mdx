@@ -67,6 +67,10 @@ const verified = postel.inbound.github.verify(rawBody, headers).pipe(
 
 An error outside that set (a programmer mistake — e.g. the `RangeError` a non-positive `limit` raises) is **not** folded into `PostelErrors`; it surfaces as an Effect defect instead, since it isn't a recoverable webhook-protocol outcome.
 
+## Exported types
+
+`PostelEffectApi` is the service shape behind `PostelTag`; its halves are exported separately — `PostelEffectOutboundApi` / `PostelEffectInboundApi`, and the conditional wrappers `PostelEffectWithOutbound<C>` / `PostelEffectWithInbound<C>` mirror core's `WithOutbound`/`WithInbound` so only the halves your config declares exist on the service type.
+
 ## Scope
 
 This is a TypeScript-port ergonomic: `send` / `replay` / `messages` / `verify` themselves behave identically to their `@postel/core` counterparts (see [Outbound](/docs/outbound) and [Inbound](/docs/inbound)) — `@postel/effect` only changes how you call them. Endpoint/tenant/key management and the raw lifecycle (`health`, `metrics`, `on`/`off`) stay on the underlying `@postel/core` instance for now; reach for the Promise API there if you need them.
