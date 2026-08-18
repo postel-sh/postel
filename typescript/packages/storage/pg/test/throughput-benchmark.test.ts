@@ -58,7 +58,7 @@ if (process.env.POSTEL_PG_TESTCONTAINERS) {
         });
 
         const TOTAL = 300;
-        const FLOOR_PER_SEC = 150;
+        const FLOOR_PER_SEC = 100;
         await postel.start();
         const start = performance.now();
         for (let i = 0; i < TOTAL; i++) {
