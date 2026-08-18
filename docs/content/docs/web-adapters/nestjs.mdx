@@ -43,7 +43,7 @@ export class WebhooksController {
 
 `NestjsWebAdapter(postel)` returns a `WebhookGuard` whose `key` argument is narrowed to your configured source names:
 
-```ts
+```ts nocheck
 const { WebhookGuard } = NestjsWebAdapter(postel);
 // @UseGuards(WebhookGuard("vendor"))  ← "vendor" is checked against your config
 ```

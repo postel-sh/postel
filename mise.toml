@@ -26,9 +26,25 @@ run = "openspec schema validate postel --verbose"
 description = "Check spec-test traceability — every requirement must have a matching test"
 run = "node scripts/check-spec-drift.mjs"
 
+[tasks."check:docs-snippets"]
+description = "Type-check every TypeScript code block in the docs against the real packages"
+depends = ["build"]
+dir = "typescript"
+run = "pnpm --filter @postel/docs-snippets check"
+
+[tasks."check:reference-drift"]
+description = "Verify every public export is named on its docs reference page"
+run = "node scripts/check-reference-drift.mjs"
+
 [tasks."check:all"]
 description = "Run the full spec-level CI gate locally"
-depends = ["spec:validate", "spec:schema-validate", "check:spec-drift"]
+depends = [
+  "spec:validate",
+  "spec:schema-validate",
+  "check:spec-drift",
+  "check:docs-snippets",
+  "check:reference-drift",
+]
 
 # TypeScript port — thin delegations into typescript/ via pnpm.
 # Tooling rationale: decisions/0010-typescript-toolchain.md.

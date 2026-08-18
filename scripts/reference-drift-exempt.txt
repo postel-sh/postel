@@ -1,0 +1,41 @@
+# scripts/reference-drift-exempt.txt
+#
+# Exports deliberately not documented on the reference pages, one
+# 'package :: ExportName' per line. Cite why. An entry whose export no
+# longer exists fails scripts/check-reference-drift.mjs, so this file
+# cannot rot silently.
+
+# Storage SPI — the adapter-author surface ADR 0018 deliberately scopes out
+# of the core reference (decisions/0018-core-api-reference-mechanism.md,
+# "Deliberately out of scope"). Documented conceptually at
+# docs/content/docs/storage/custom-adapters.mdx; the authoritative shapes are
+# the exported types themselves.
+@postel/core :: AttemptId
+@postel/core :: AttemptStatsResult
+@postel/core :: AttemptStatus
+@postel/core :: EndpointId
+@postel/core :: EndpointListFilter
+@postel/core :: EndpointRecord
+@postel/core :: EndpointSecretRecord
+@postel/core :: EndpointSecretStatus
+@postel/core :: EndpointState
+@postel/core :: EndpointStateTransition
+@postel/core :: EndpointWithSecrets
+@postel/core :: HostTxOption
+@postel/core :: InsertOrReuseResult
+@postel/core :: MessageListFilter
+@postel/core :: MessageStatus
+@postel/core :: NewAttempt
+@postel/core :: NewMessage
+@postel/core :: RangeQueryFilter
+@postel/core :: ReconcileFilter
+@postel/core :: RescheduleOpts
+@postel/core :: ReserveBatchOpts
+@postel/core :: ReservedMessage
+@postel/core :: SecretAlgorithm
+@postel/core :: StorageCapabilities
+@postel/core :: StoredMessage
+@postel/core :: TenantId
+@postel/core :: TenantListFilter
+@postel/core :: TenantRecord
+@postel/core :: WorkerId

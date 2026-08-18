@@ -47,7 +47,7 @@ page.nextCursor;  // an opaque string, or null on the last page
 
 ```ts
 let cursor: string | undefined;
-const allTenants = [];
+const allTenants: Tenant[] = [];
 do {
   const page = await postel.outbound.tenants.list({ limit: 100, ...(cursor ? { cursor } : {}) });
   allTenants.push(...page.items);

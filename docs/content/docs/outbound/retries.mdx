@@ -12,10 +12,11 @@ Postel ships three strategies. Pick one at the outbound config level, or overrid
 ### `ExponentialBackoff` (default)
 
 ```ts
-import { ExponentialBackoff } from "@postel/core";
+import { ExponentialBackoff, InMemoryStorage, Postel } from "@postel/core";
 
 const postel = Postel({
   outbound: {
+    storage: InMemoryStorage(), // or your DB adapter
     retryPolicy: ExponentialBackoff({
       maxAttempts: 8,       // default: the schedule length (9)
       jitter:      0.2,     // ± 20%, the default
@@ -80,6 +81,7 @@ Per-endpoint short-circuit when the failure rate crosses a threshold. While the 
 ```ts
 const postel = Postel({
   outbound: {
+    storage: InMemoryStorage(), // or your DB adapter
     circuitBreaker: {
       threshold: 0.5,    // 50% failures across the window
       cooldown:  "5m",
@@ -97,6 +99,7 @@ If an endpoint has been broken long enough that retrying is wasted work, auto-di
 ```ts
 const postel = Postel({
   outbound: {
+    storage: InMemoryStorage(), // or your DB adapter
     autoDisable: {
       failureRate: 0.9,     // 90% over the window
       window:      "1h",

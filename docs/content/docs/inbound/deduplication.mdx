@@ -27,8 +27,9 @@ const postel = Postel({
   },
 });
 
-// In your route handler, after verify returns:
-const { duplicate } = await postel.inbound.vendor.dedup(event.id);
+// In your route handler — the dedup key is the webhook-id header:
+const { event } = await postel.inbound.vendor.verify(body, headers);
+const { duplicate } = await postel.inbound.vendor.dedup(headers["webhook-id"]);
 
 if (duplicate) {
   return new Response("duplicate", { status: 200 });
@@ -89,7 +90,7 @@ Two things this does **not** give you:
 The naive placement is "before the work":
 
 ```ts
-const { duplicate } = await postel.inbound.vendor.dedup(event.id);
+const { duplicate } = await postel.inbound.vendor.dedup(headers["webhook-id"]);
 if (duplicate) return new Response("dup", { status: 200 });
 await processOrder(event.data);
 ```
@@ -100,7 +101,7 @@ The cleanest pattern is the **transactional outbox** in reverse: the dedup inser
 
 ```ts
 await db.transaction(async (tx) => {
-  const { duplicate } = await postel.inbound.vendor.dedup(event.id, { tx });
+  const { duplicate } = await postel.inbound.vendor.dedup(headers["webhook-id"], { tx });
   if (duplicate) return; // tx commits with no work; safe.
 
   await processOrder(tx, event.data);  // joins the same tx

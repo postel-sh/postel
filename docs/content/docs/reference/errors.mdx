@@ -28,6 +28,10 @@ Error
 └── NotImplementedError              code: "NOT_IMPLEMENTED"
 ```
 
+Every code is a member of the exported `PostelErrorCode` union (`"SIGNATURE_INVALID" | "TIMESTAMP_TOO_OLD" | …`) — the cross-port discriminator type.
+
+When an inbound source composes several verifiers and none match, the thrown error additionally carries `errors: ReadonlyArray<VerifierFailure>` — one `{ verifierIndex, error }` entry per rejecting verifier, in configuration order — and its `cause` is an `AggregateError` over the same failures. "Which verifier rejected and why" is a property read, not archaeology.
+
 `ConfigurationError` and `NotImplementedError` are **not** `PostelError` subclasses on purpose — they signal developer mistakes (a misconfigured source, a not-yet-implemented config slot), not verification outcomes. The `if (err instanceof PostelError) return 4xx` pattern deliberately misses them, so a config bug in your integration bubbles as a 500/crash instead of masquerading as a client error.
 
 ## Class reference

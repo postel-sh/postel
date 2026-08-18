@@ -104,11 +104,11 @@ Some endpoints want a subset of the data, or a flattened shape. Pass `transform`
 await postel.outbound.endpoints.create({
   url:    "https://legacy-customer.example.com/webhooks",
   types:  ["order.*"],
-  transform: (event) => ({
-    type: event.type,
-    id:   event.data.id,
-    // Drop everything else.
-  }),
+  // transform receives the event as `unknown` — narrow it yourself
+  transform: (event) => {
+    const e = event as { type: string; data: { id: string } };
+    return { type: e.type, id: e.data.id }; // drop everything else
+  },
 });
 ```
 

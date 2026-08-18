@@ -103,13 +103,13 @@ export const POST = (req: Request) => handler(req);
 
 ```ts title="app.ts"
 import { Hono } from "hono";
-import { verifyWebhook, POSTEL_CONTEXT_KEY } from "@postel/hono";
+import { verifyWebhook, getVerified } from "@postel/hono";
 import { postel } from "./lib/postel";
 
 const app = new Hono();
 
 app.post("/webhooks/acme", verifyWebhook(postel.inbound.acme), (c) => {
-  const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · raw bytes intact
+  const { event } = getVerified(c); // verified · raw bytes intact
   return c.json({ ok: true, type: event.type });
 });
 ```
@@ -120,14 +120,14 @@ app.post("/webhooks/acme", verifyWebhook(postel.inbound.acme), (c) => {
 
 ```ts title="app.ts"
 import express from "express";
-import { verifyWebhook } from "@postel/express";
+import { verifyWebhook, getVerified } from "@postel/express";
 import { postel } from "./lib/postel";
 
 const app = express();
 
 // verifyWebhook mounts express.raw() + the gate — don't put express.json() ahead of it
 app.post("/webhooks/acme", verifyWebhook(postel.inbound.acme), (req, res) => {
-  res.json({ ok: true, type: req.postel?.event.type });
+  res.json({ ok: true, type: getVerified(req).event.type });
 });
 ```
 
@@ -137,7 +137,7 @@ app.post("/webhooks/acme", verifyWebhook(postel.inbound.acme), (req, res) => {
 
 ```ts title="app.ts"
 import Fastify from "fastify";
-import { fastifyPostel, verifyWebhook } from "@postel/fastify";
+import { fastifyPostel, verifyWebhook, getVerified } from "@postel/fastify";
 import { postel } from "./lib/postel";
 
 const app = Fastify();
@@ -146,7 +146,7 @@ await app.register(fastifyPostel); // raw-body parser; register on a webhook-onl
 app.post(
   "/webhooks/acme",
   { preHandler: verifyWebhook(postel.inbound.acme) },
-  async (req) => ({ ok: true, type: req.postel?.event.type }),
+  async (req) => ({ ok: true, type: getVerified(req).event.type }),
 );
 ```
 

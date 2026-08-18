@@ -19,7 +19,7 @@ npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/exporter-t
 
 Register a provider before constructing `Postel({...})` (or anywhere before your first `send()` — spans just no-op until then):
 
-```ts
+```ts nocheck
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 
@@ -72,7 +72,7 @@ A receiver-only instance (no `outbound` slot) has nothing to count — every arr
 
 To feed a real Prometheus scrape, map the snapshot onto `prom-client` (or any client) yourself:
 
-```ts
+```ts nocheck
 import { Counter, Gauge, Histogram } from "prom-client";
 
 const sendTotal = new Counter({ name: "webhook_send_total", labelNames: ["tenant_id", "event_type"], help: "" });
@@ -98,7 +98,7 @@ const postel = Postel({
   observability: {
     logger: (entry) => myJsonLogger[entry.level](entry), // entry.trace_id, when present, lines up with your trace backend
   },
-  outbound: { storage },
+  outbound: { storage: InMemoryStorage() },
 });
 ```
 
@@ -119,7 +119,7 @@ const postel = Postel({
       }
     },
   },
-  outbound: { storage },
+  outbound: { storage: InMemoryStorage() },
 });
 ```
 

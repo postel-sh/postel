@@ -41,6 +41,29 @@ const outcome = await handleInbound(source, { rawBody, headers, method }, opts);
 
 Pass `dedup: { ttl }` (with a dedup adapter configured on the source) and a repeated `webhook-id` is acknowledged `2xx` with `X-Postel-Dedup-Result: duplicate` — checked **after** verification, so an unauthenticated id can never short-circuit handling.
 
+## releaseOnThrow
+
+`releaseOnThrow(source, outcome, fn)` runs a gate's downstream handler and, when it throws after the request wrote a fresh dedup record (`outcome.dedupRecorded`), releases that record before the error propagates. Every framework adapter's handler-wrapping path is built on it; use it when composing your own gate over `handleInbound`.
+
 ## JWKS
 
-`jwksFetchHandler(() => postel.outbound.keys.publicJwks())` returns a Fetch handler that serves your current public keys per request — see [key rotation](/docs/inbound/key-rotation).
+`jwksFetchHandler(provider)` returns a Fetch handler that serves your current public keys per request — the `JwksProvider` is any `() => Awaitable<Jwks>`, typically `() => postel.outbound.keys.publicJwks()`. See [key rotation](/docs/inbound/key-rotation).
+
+## Exports
+
+| Export | What it is |
+|---|---|
+| `fetchWebhook(source, opts?)` | Fetch-native gate: `(req: Request) => Promise<Response>`. |
+| `handleInbound(source, req, opts?)` | The core gate — returns a `WebhookOutcome` instead of writing a response. |
+| `releaseOnThrow(source, outcome, fn)` | Runs a downstream handler; releases a freshly-written dedup record on throw. |
+| `jwksFetchHandler(provider)` | Fetch handler serving a `JwksProvider`'s keys. |
+| `statusForError(err)` / `errorBody(err)` | The [code→status mapping](/docs/reference/errors#http-status-mapping) and the JSON error body. |
+| `WebhookOutcome<TData>` | `{ kind: "verified" \| "duplicate" \| "error" }` union with `status`/`headers`/`body`; the verified variant carries `context` and `dedupRecorded`. |
+| `WebhookContext<TData>` | What a verified request hands your handler: `result`, `event`, `messageId`, `headers`, `rawBody`. |
+| `WebhookHandlerOptions<TData>` | Gate options: `onVerified`, `successStatus`, `dedup` (`DedupAckOptions`: `{ ttl, duplicateStatus? }`). |
+| `GateSource<TData>` | The structural source a gate accepts — `verify` plus optional `dedup`/`dedupRelease`; `postel.inbound.<source>` satisfies it. |
+| `NormalizedRequest` / `RawBody` / `WebhookMethod` | The framework-neutral request shape (`rawBody`, `headers`, `method`), its body type, and the gateable methods (`POST` \| `PUT` \| `PATCH`). |
+| `HandlerResponse` / `HandlerResponseInit` | What `onVerified` may return to override the success response. |
+| `JwksProvider` | `() => Awaitable<Jwks>` for `jwksFetchHandler`. |
+
+From `@postel/http/node`: `headersFromNode(headers)` (flattens Node's `string | string[]` values), `writeOutcomeToNodeRes(res, outcome)`, `writeResponseToNodeRes(res, response)`, and the `NodeResponseLike` shape they write to.

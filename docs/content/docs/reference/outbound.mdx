@@ -369,6 +369,24 @@ interface MessageListOptions extends CursorOptions {
 
 `Message.status` is the message-level outbox lifecycle; each endpoint's own delivery outcome is on `DeliveryAttempt.status` — a message can be `dispatched` overall while one endpoint's attempts are all `failed`. `messages.get` resolves `undefined` for an unknown id; `messages.list`/`attempts` back the message-introspection reads used by [`@postel/admin`](/docs/outbound/admin)'s `GET /messages` routes.
 
+### drain
+
+Bounded, single-pass delivery for [serverless and cron invocations](/docs/outbound/serverless): reserves and dispatches at most `maxMessages` outbox messages, stopping earlier when `deadline` elapses. Never starts a persistent loop — a single call always resolves — and reuses the worker pool's reserve/lease mechanism, so it's safe alongside a running `postel.start()` pool.
+
+```ts nocheck
+drain(opts: DrainOptions): Promise<DrainResult>;
+
+interface DrainOptions {
+  readonly maxMessages: number;
+  readonly deadline: DurationMs;   // "10s", "500ms", or plain milliseconds
+}
+
+interface DrainResult {
+  readonly processed: number;
+  readonly reachedDeadline: boolean;
+}
+```
+
 ## Storage
 
 `OutboundConfig.storage` takes any `Storage` adapter — `InMemoryStorage()` (below) for the in-process reference, or a standalone package (`@postel/pg`, `@postel/sqlite`, `@postel/mysql`, …) per [Storage](/docs/storage). The `Storage` interface itself is the adapter-author SPI, documented separately at [Custom adapters](/docs/storage/custom-adapters) rather than here — it's a different surface than the `OutboundApi` above, aimed at implementers rather than at code calling `postel.outbound.*`.

@@ -28,7 +28,7 @@ const postel = Postel({
 function definePostelConfig<const C extends PostelConfig>(config: C): C;
 ```
 
-Identity function — returns its argument unchanged. Exists only to preserve the config's literal type when you declare it separately from the `Postel(...)` call: annotating a config object with the `PostelConfig` type before passing it in widens the literal, and the `WithInbound`/`WithOutbound` conditional types can no longer see which slots are configured, so `postel.inbound`/`postel.outbound` disappear from the instance type. Wrap the config in `definePostelConfig(...)` instead of typing it directly:
+Identity function — returns its argument unchanged. Exists only to preserve the config's literal type when you declare it separately from the `Postel(...)` call: annotating a config object with the `PostelConfig` type before passing it in widens the literal, and the `WithInbound`/`WithOutbound` conditional types can no longer see which slots are configured, so `postel.inbound`/`postel.outbound` disappear from the instance type. (`EventsOf<OC>` is the same idea for the outbound `events` registry: it extracts the literal event map that types `send()`.) Wrap the config in `definePostelConfig(...)` instead of typing it directly:
 
 ```ts
 const config = definePostelConfig({
