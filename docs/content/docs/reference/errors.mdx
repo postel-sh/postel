@@ -70,7 +70,7 @@ if (err instanceof TimestampTooOld) {
 **Thrown by:** `postel.inbound.<source>.verify` — step 4.
 **When:** No configured verifier matched the request's signature. (When every verifier fails for the same wire-format reason, the composed error is `MalformedHeader` instead — mixed failure reasons surface as `SignatureInvalid`.)
 
-**Recovery:** `400 Bad Request` — the status Postel's own framework gates return. The single most common cause is [body re-serialization](/docs/inbound/raw-bytes) — check whether your framework adapter (or a proxy in front of it) re-serializes JSON before `verify` sees it.
+**Recovery:** `400 Bad Request` — the status Postel's own framework gates return. The single most common cause is [body re-serialization](/docs/concepts/raw-bytes) — check whether your framework adapter (or a proxy in front of it) re-serializes JSON before `verify` sees it.
 
 ```ts
 if (err instanceof SignatureInvalid) {
@@ -138,7 +138,7 @@ if (err instanceof EndpointNotFound) {
 
 ### Reserved codes (defined, not yet emitted by the runtime)
 
-`EndpointDisabled` (`ENDPOINT_DISABLED`) and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them today: a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the storage adapters gate schema drift through their own migration checks. The codes stay reserved so ports and the [admin surface](/docs/outbound/admin) agree on the vocabulary.
+`EndpointDisabled` (`ENDPOINT_DISABLED`) and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them today: a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the storage adapters gate schema drift through their own migration checks. The codes stay reserved so ports and the [admin surface](/docs/operations/admin) agree on the vocabulary.
 
 ### `ConfigurationError`
 
@@ -191,4 +191,4 @@ try {
 }
 ```
 
-The `code` string is part of the [CONTRACT](/docs/reference/specs) — every port (Go, Python, Rust, …) must emit the same codes for the same conditions. The class hierarchy is TypeScript-specific.
+The `code` string is part of the [CONTRACT](/docs/project/specs) — every port (Go, Python, Rust, …) must emit the same codes for the same conditions. The class hierarchy is TypeScript-specific.

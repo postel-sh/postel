@@ -3,6 +3,7 @@ import { Tab } from "fumadocs-ui/components/tabs";
 import { Install } from "@/components/install-tabs";
 import { LangNotes } from "@/components/lang-notes";
 import { LangTabs } from "@/components/lang-tabs";
+import { Mermaid } from "@/components/mermaid";
 import type { MDXComponents } from "mdx/types";
 
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
@@ -12,6 +13,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Tabs: LangTabs,
     LangNotes,
     Install,
+    Mermaid,
     ...components,
   };
 }

@@ -1,0 +1,10 @@
+{
+  "title": "Concepts",
+  "icon": "binary",
+  "description": "The mental model \u2014 the outbox, the lifecycle, the guarantees, and raw bytes.",
+  "pages": [
+    "how-postel-works",
+    "delivery-guarantees",
+    "raw-bytes"
+  ]
+}

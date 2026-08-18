@@ -86,7 +86,7 @@ app.post("/webhooks/vendor", express.raw({ type: "application/json" }), async (r
 1. Add `@postel/core` (and a framework adapter package, if you want the routing facade instead of hand-wiring).
 2. Replace `new Webhook(secret)` with a `Postel({ inbound: { <source>: { verify: Secret(secret) } } })` factory at module scope.
 3. Replace `wh.verify(payload, headers)` with `postel.inbound.<source>.verify(rawBytes, headers)`, and split your single `catch` block into the specific error subclasses you care about distinguishing (most teams only need to tell `SignatureInvalid`/`TimestampTooOld` apart from a 500-worthy bug).
-4. Keep whatever raw-body handling you already have (`express.raw()`, etc.) — see [Raw bytes](/docs/inbound/raw-bytes) if you're not 100% sure your framework isn't re-serializing the body first. This is the one step worth double-checking even though nothing above forces you to touch it.
+4. Keep whatever raw-body handling you already have (`express.raw()`, etc.) — see [Raw bytes](/docs/concepts/raw-bytes) if you're not 100% sure your framework isn't re-serializing the body first. This is the one step worth double-checking even though nothing above forces you to touch it.
 5. If you were rotating secrets by editing an environment variable and redeploying, switch to `verify: [Secret(current), Secret(previous)]` and drop the previous one on your own schedule instead of coordinating with the producer.
 6. Optionally attach a `schema` to get typed, validated `event.data` instead of `unknown`.
 
@@ -97,5 +97,5 @@ Honestly: very little, and mostly in the other direction — this migration adds
 ## Read next
 
 - [Verify a signed request](/docs/inbound/verify) — the full recipe, including custom verifiers.
-- [Raw bytes](/docs/inbound/raw-bytes) — the most common silent failure after a framework migration.
+- [Raw bytes](/docs/concepts/raw-bytes) — the most common silent failure after a framework migration.
 - [Web adapters](/docs/web-adapters) — Hono, Express, Fastify, NestJS routing facades.

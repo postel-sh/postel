@@ -21,7 +21,7 @@ The signed content string is:
 ${webhook-id}.${webhook-timestamp}.${body-bytes}
 ```
 
-`${body-bytes}` is the **raw request body** — byte-identical to what the producer sent. If anything between the network and `verify` mutates those bytes (a JSON middleware re-serializes, a proxy adds a trailing newline), the signature won't match. See [Raw bytes](/docs/inbound/raw-bytes) — it's the single most common silent failure.
+`${body-bytes}` is the **raw request body** — byte-identical to what the producer sent. If anything between the network and `verify` mutates those bytes (a JSON middleware re-serializes, a proxy adds a trailing newline), the signature won't match. See [Raw bytes](/docs/concepts/raw-bytes) — it's the single most common silent failure.
 
 ## What `verify` checks, in order
 
@@ -97,7 +97,7 @@ if (matchedVerifierIndex > 0) {
 
 Mixed-scheme arrays are supported — e.g. `[Secret(LEGACY_HMAC), Keyset({ jwksUri: NEW_JWKS })]` for an HMAC → Ed25519 migration window. The same `matchedVerifierIndex` signal works for both same-scheme rotation and cross-scheme migration. See [Key rotation](/docs/inbound/key-rotation).
 
-`Verifier` is an open contract, so the array can also include your own [custom verifiers](/docs/inbound/verify#custom-verifiers) — they participate in the same ordering and `matchedVerifierIndex`.
+`Verifier` is an open contract, so the array can also include your own [custom verifiers](/docs/inbound/custom-verifiers) — they participate in the same ordering and `matchedVerifierIndex`.
 
 ## Constant-time comparison
 
@@ -137,5 +137,5 @@ Each subclass carries a stable SCREAMING_SNAKE `code` (`'SIGNATURE_INVALID'`, `'
 ## What's next
 
 - [Key rotation](/docs/inbound/key-rotation) — the multi-secret window and JWKS.
-- [Raw bytes](/docs/inbound/raw-bytes) — why framework integration matters.
+- [Raw bytes](/docs/concepts/raw-bytes) — why framework integration matters.
 - [Deduplication](/docs/inbound/deduplication) — at-least-once delivery and the dedup helper.

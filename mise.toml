@@ -71,7 +71,7 @@ run = "pnpm build"
 
 # Sender benchmark harness (issue #143) — testcontainers Postgres + 4
 # in-process workers + a local mock receiver. Requires Docker. Publishes
-# deliveries/sec and send() latency percentiles; see docs/content/docs/reference/benchmarks.mdx.
+# deliveries/sec and send() latency percentiles; see docs/content/docs/project/benchmarks.mdx.
 
 [tasks."bench"]
 description = "Run the sender benchmark harness (testcontainers Postgres, 4 in-process workers)"

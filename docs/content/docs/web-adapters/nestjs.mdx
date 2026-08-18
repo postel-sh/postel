@@ -50,4 +50,4 @@ const { WebhookGuard } = NestjsWebAdapter(postel);
 
 ## JWKS & admin
 
-Mount the framework-agnostic handlers in a controller with `@Res()`: `jwksFetchHandler(() => postel.outbound.keys.publicJwks())` for JWKS, and the [`@postel/admin`](/docs/outbound/admin) `adminRouter` for the control plane.
+Mount the framework-agnostic handlers in a controller with `@Res()`: `jwksFetchHandler(() => postel.outbound.keys.publicJwks())` for JWKS, and the [`@postel/admin`](/docs/operations/admin) `adminRouter` for the control plane.

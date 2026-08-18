@@ -11,11 +11,12 @@ If you're sending webhooks to your customers — that's the [outbound half](/doc
 
 ## Start here
 
-First time? Start with **Verify a signed request**. Before you ship to production, read the middle four — raw bytes, signing, key rotation, deduplication. They are the things that bite every webhook integration eventually.
+First time? Start with **Verify a signed request** — and if your sender is Stripe, GitHub, Shopify, Twilio, or Slack, the **provider verifiers** page has your one-liner. Before you ship to production, read [raw bytes](/docs/concepts/raw-bytes), signing, key rotation, and deduplication — the things that bite every webhook integration eventually.
 
 <Cards>
   <Card icon={<ShieldCheckIcon />} title="Verify a signed request" href="/docs/inbound/verify" description="The basic recipe — start here." />
-  <Card icon={<BinaryIcon />} title="Raw bytes" href="/docs/inbound/raw-bytes" description="Why JSON.stringify(JSON.parse(body)) silently breaks verification. The single most common failure." />
+  <Card icon={<ShieldCheckIcon />} title="Provider verifiers" href="/docs/inbound/providers" description="Stripe, GitHub, Shopify, Twilio, Slack — ready-made, one factory each." />
+  <Card icon={<BinaryIcon />} title="Raw bytes" href="/docs/concepts/raw-bytes" description="Why JSON.stringify(JSON.parse(body)) silently breaks verification. The single most common failure." />
   <Card icon={<PenLineIcon />} title="Signing schemes" href="/docs/inbound/signing" description="What verify() actually checks; v1 (HMAC) vs v1a (Ed25519)." />
   <Card icon={<KeyIcon />} title="Key rotation" href="/docs/inbound/key-rotation" description="The multi-secret window; JWKS for asymmetric verification." />
   <Card icon={<CopyIcon />} title="Deduplication" href="/docs/inbound/deduplication" description="Webhooks are at-least-once; the atomic dedup helper." />
@@ -31,7 +32,8 @@ First time? Start with **Verify a signed request**. Before you ship to productio
 | Ed25519 (`v1a`) signature verification (Postel extension) | Ships | `PublicKey(...)` strategy |
 | JWKS consumer with caching and auto-refresh | Ships | `Keyset({ jwksUri })` strategy |
 | Multi-secret rotation windows and cross-scheme migration | Ships | Pass `[Verifier, Verifier, …]` |
-| Custom verification schemes — plug your own | Ships | Implement the `Verifier` contract |
+| Ready-made Stripe / GitHub / Shopify / Twilio / Slack verifiers | Ships | [`Stripe(...)`, `GitHub(...)`, …](/docs/inbound/providers) |
+| Custom verification schemes — plug your own | Ships | Implement the [`Verifier` contract](/docs/inbound/custom-verifiers) |
 | Skip verification at a trusted boundary | Ships | `Noop()` strategy |
 | Constant-time signature comparison | Ships | (always on) |
 | Structured `PostelError` subclasses for every failure mode | Ships | `SignatureInvalid`, `TimestampTooOld`, `MalformedHeader`, `UnknownKeyId` |

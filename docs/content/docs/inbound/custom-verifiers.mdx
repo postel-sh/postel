@@ -1,0 +1,58 @@
+---
+title: Custom verifiers
+description: Verifier is an open contract — implement it for any sender the built-ins don't cover, or opt out entirely with Noop().
+---
+
+`Verifier` is an open contract, not a fixed set. For any sender the [built-in provider verifiers](/docs/inbound/providers) don't cover, anything implementing the contract works in a `verify` slot — a shared-token check, a call out to a verification service, or another provider's HMAC scheme:
+
+```ts title="lib/postel.ts"
+import { Postel, SignatureInvalid, type Verifier } from "@postel/core";
+import { config } from "./config.js";
+
+function PartnerToken(expected: string): Verifier {
+  return {
+    async verify(rawBody, headers) {
+      if (headers["x-partner-token"] !== expected) {
+        throw new SignatureInvalid("partner token mismatch");
+      }
+      const text = typeof rawBody === "string" ? rawBody : new TextDecoder().decode(rawBody);
+      return { event: JSON.parse(text), matchedSecretIndex: 0 };
+    },
+  };
+}
+
+export const postel = Postel({
+  inbound: {
+    partner: { verify: PartnerToken(config.partnerToken) },
+  },
+});
+```
+
+A verifier returns a `VerifyResult` (`{ event, matchedSecretIndex }`) on success and throws on failure. Throw a `PostelError` subclass — `SignatureInvalid`, `MalformedHeader`, … — so the [framework gate](/docs/web-adapters) maps it to the right HTTP status; any other error bubbles as a 5xx. Custom verifiers compose in arrays alongside the built-ins exactly like `Secret`/`Keyset` do — tried in order, first match wins, and `matchedVerifierIndex` reports which one matched. Two errors short-circuit the array instead of falling through to the next verifier: `TimestampTooOld` (timestamp validity is independent of which key signed) and `ConfigurationError` (a config bug is not evidence about the signature — it rethrows immediately, never folded into `SignatureInvalid`):
+
+```ts nocheck
+verify: [Secret(config.legacySecret), PartnerToken(config.partnerToken)]
+```
+
+## Skipping verification with `Noop()`
+
+If your receiver sits behind a trusted boundary — a private network, or a gateway that already authenticated the caller — and you accept the trade-off, `Noop()` skips the signature check, the timestamp window, and the signing-header requirement entirely:
+
+```ts title="lib/postel.ts"
+import { Postel, Noop } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    internal: { verify: Noop() },
+  },
+});
+```
+
+`Noop()` still parses the Standard Webhooks envelope, so `event.type`, `event.data`, and a source `schema` behave exactly as they do for a verified source — a body that isn't a JSON object with a string `type` is still rejected. What it does *not* do is authenticate the sender.
+
+> **Security.** `Noop()` accepts unauthenticated requests: anyone who can reach the endpoint can deliver an event. Reach for it only when something in front of the receiver already establishes trust.
+
+## What's next
+
+- [Provider verifiers](/docs/inbound/providers) — Stripe, GitHub, Shopify, Twilio, Slack, ready-made.
+- [Signing schemes](/docs/inbound/signing) — what the built-in verifiers actually check.

@@ -66,7 +66,7 @@ interface LifecycleApi {
 
 - **`start()`** starts the in-process worker pool (a no-op on a receive-only config). **`stop()`** stops it.
 - **`health()`** resolves a [`HealthStatus`](#healthstatus). On a receive-only config it always resolves `{ ok: true }` — there is no outbox to probe.
-- **`metrics()`** resolves the current [`MetricsSnapshot`](#metricssnapshot). See [Observability](/docs/outbound/observability).
+- **`metrics()`** resolves the current [`MetricsSnapshot`](#metricssnapshot). See [Observability](/docs/operations/observability).
 - **`on`/`off`** subscribe to the four [`PostelEvent`](#events) names. `on` returns an `Unsubscribe` (`() => void`) as a convenience over calling `off` yourself.
 
 ### HealthStatus
@@ -111,7 +111,7 @@ type LogEvent =
 type LogLevel = LogEvent["level"]; // "debug" | "warn" | "info" | "error"
 ```
 
-`observability.logger` receives the same four events as `postel.on(...)`, each wrapped with a severity `level` and, when a trace is active, an OTel `trace_id`. See [Observability](/docs/outbound/observability) for the forwarding rules.
+`observability.logger` receives the same four events as `postel.on(...)`, each wrapped with a severity `level` and, when a trace is active, an OTel `trace_id`. See [Observability](/docs/operations/observability) for the forwarding rules.
 
 ## Events
 
@@ -176,7 +176,7 @@ interface HistogramSample {
 }
 ```
 
-Returned by `postel.metrics()` — a pull-based snapshot, not a push exporter. The metric names and label semantics are [CONTRACT](/docs/reference/specs); this snapshot shape is the TypeScript-specific exposition mechanism. See [Observability](/docs/outbound/observability) for how to expose it as Prometheus text format.
+Returned by `postel.metrics()` — a pull-based snapshot, not a push exporter. The metric names and label semantics are [CONTRACT](/docs/project/specs); this snapshot shape is the TypeScript-specific exposition mechanism. See [Observability](/docs/operations/observability) for how to expose it as Prometheus text format.
 
 ## Pagination
 

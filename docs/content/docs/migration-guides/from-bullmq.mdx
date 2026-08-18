@@ -24,7 +24,7 @@ The shape this guide targets: your app calls `queue.add()` (BullMQ, Bee-Queue, a
 | A job that exhausts `attempts` and sits in the `failed` set | A message in the `dead_letter` view, re-enqueued via `replay()` |
 | Your own `crypto.createHmac(...)` signing code | `HmacV1()` (or `Ed25519V1a()`) signing strategy |
 | A separate "disable this webhook" flag you check before enqueueing | Endpoint `state: "disabled"` + the built-in circuit breaker / auto-disable |
-| Bull Board / a custom admin page for inspecting jobs | [`@postel/admin`](/docs/outbound/admin)'s `GET /messages`, `GET /messages/:id/attempts` |
+| Bull Board / a custom admin page for inspecting jobs | [`@postel/admin`](/docs/operations/admin)'s `GET /messages`, `GET /messages/:id/attempts` |
 
 ## Before
 
@@ -93,7 +93,7 @@ await postel.outbound.endpoints.create({
 5. Replace every `queue.add(...)` call site with `postel.outbound.send(...)`, passing `{ tx }` if there's a business write to join.
 6. Delete the `Worker` processor, your HMAC signing code, and your retry-counter logic — all three are now the runtime's job.
 7. If you used `opts.jobId` for dedup-on-enqueue, pass the same value as `idempotencyKey`.
-8. Point any internal dashboard at [`@postel/admin`](/docs/outbound/admin)'s `GET /messages` and `GET /messages/:id/attempts` instead of a Bull Board instance.
+8. Point any internal dashboard at [`@postel/admin`](/docs/operations/admin)'s `GET /messages` and `GET /messages/:id/attempts` instead of a Bull Board instance.
 
 ## What you give up
 

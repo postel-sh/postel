@@ -1,0 +1,78 @@
+---
+title: How Postel works
+description: The mental model in one page — the outbox, the worker pool, the delivery lifecycle, and where the receiver fits.
+---
+
+Postel is a library, not a service. Everything below runs inside your application process(es), against your existing relational database. There is no broker, no sidecar, no second deployment — the database you already operate is the queue, the audit trail, and the coordination point.
+
+## The sending path
+
+One `send()` call is a database INSERT. Everything after that is the worker pool's job:
+
+<Mermaid chart={`
+flowchart LR
+    A["your business write"] -->|same transaction| B[("messages\n(the outbox)")]
+    S["postel.outbound.send()"] -->|INSERT| B
+    B -->|"reserve batch\n(FOR UPDATE SKIP LOCKED + lease)"| W["worker pool\n(postel.start())"]
+    W -->|"fan out per matching endpoint\n(types globs · filters · transforms)"| D["sign + HTTP POST"]
+    D -->|2xx| OK["attempt: success"]
+    D -->|"5xx / timeout / 408 / 429"| R["retry schedule\n(5s → 3d, jittered)"]
+    R --> B
+    D -->|"other 4xx"| P["attempt: failed-permanent"]
+    R -->|"maxAttempts exhausted"| DL[("dead_letter view\nstatus: dead-lettered")]
+`} />
+
+Three properties fall out of this shape:
+
+- **Atomicity.** `send()` takes your transaction handle (`{ tx }`), so the outbox row commits or rolls back with the business write that caused it. No dual-write race, no two-phase commit — the [delivery guarantees](/docs/concepts/delivery-guarantees) page walks through why this is the whole point.
+- **Crash safety.** A worker *leases* a message (default 60s, renewed while working) rather than deleting it. A worker that dies mid-delivery just lets its lease expire; another worker picks the row up. Nothing is lost because nothing left the database until it was delivered.
+- **Horizontal scale without coordination.** Multiple app instances each run a pool; `FOR UPDATE SKIP LOCKED` (single-writer `BEGIN IMMEDIATE` on SQLite) makes them race safely for rows without talking to each other.
+
+## The message lifecycle
+
+A message's `status` is the outbox-level lifecycle. Each endpoint's individual delivery outcome lives on its attempts — one message fanning out to three endpoints produces three attempt chains under one message:
+
+<Mermaid chart={`
+stateDiagram-v2
+    direction LR
+    [*] --> pending: send() commits
+    pending --> dispatched: every matching endpoint reached a terminal outcome
+    pending --> deadLettered: an endpoint exhausted its retry schedule
+    pending --> expired: ttl elapsed before delivery
+    deadLettered --> pending: replay()
+    dispatched --> pending: replay()
+    deadLettered: dead-lettered
+`} />
+
+The dispatcher decides each attempt from the response status: `2xx` is success; `408`/`429` are retryable and honor a `Retry-After` header; any other `4xx` is **failed-permanent** (the request itself is wrong — retrying is wasted work); `5xx`, timeouts, and network errors retry on the [schedule](/docs/outbound/retries). Everything is recorded — `postel.outbound.messages.attempts(id)` returns the full audit trail, and [replay](/docs/outbound/replay) re-enqueues anything by id, endpoint + time range, or predicate.
+
+## The endpoint state machine
+
+Endpoints protect the pool from broken receivers in two independent ways:
+
+<Mermaid chart={`
+stateDiagram-v2
+    direction LR
+    active --> circuitOpen: failure rate over threshold
+    circuitOpen --> active: cooldown elapses, probe succeeds
+    active --> disabled: autoDisable fires / endpoints.disable()
+    disabled --> active: endpoints.enable()
+    circuitOpen: circuit open
+`} />
+
+The **circuit breaker** is temporary and automatic — while open, attempts skip the HTTP call and re-enqueue, so one down endpoint can't saturate worker capacity. **Auto-disable** is the long-term version: an endpoint broken for long enough moves to `disabled` and leaves delivery rotation until a human (or reconciliation job) re-enables it. Both are per-endpoint state in the database, so they survive restarts and are shared across instances.
+
+## The receiving path
+
+The receiver is the same library run from the other side, and it's deliberately simpler — no storage required for the basic path:
+
+1. A [framework gate](/docs/web-adapters) captures the **exact received bytes** ([why that matters](/docs/concepts/raw-bytes)) and hands them to `verify()`.
+2. `verify()` checks headers, timestamp window, and signature — in [constant time](/docs/inbound/signing), against every configured [verifier](/docs/inbound/verify) until one matches.
+3. Optionally, [dedup](/docs/inbound/deduplication) records the `webhook-id` so an at-least-once producer's retry doesn't run your handler twice.
+4. Your handler runs, with the verified, typed event.
+
+## What's next
+
+- [Delivery guarantees](/docs/concepts/delivery-guarantees) — at-least-once, idempotency, and the two dedup contracts, stated precisely.
+- [Sending & the outbox](/docs/outbound/send) — the transactional contract in code.
+- [Retries & backoff](/docs/outbound/retries) — the schedule, the circuit breaker, auto-disable.

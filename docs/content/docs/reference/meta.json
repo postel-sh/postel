@@ -1,7 +1,8 @@
 {
   "title": "Reference",
   "icon": "book",
-  "description": "Packages, errors, and specs.",
+  "root": true,
+  "description": "The complete API surface — packages, types, errors.",
   "pages": [
     "index",
     "packages",
@@ -11,8 +12,6 @@
     "strategies",
     "http",
     "effect",
-    "errors",
-    "specs",
-    "benchmarks"
+    "errors"
   ]
 }

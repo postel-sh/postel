@@ -3,41 +3,45 @@ title: Welcome
 description: A polyglot library for sending and receiving webhooks reliably and securely. It does two halves — inbound and outbound — and you can use either alone.
 ---
 
-import { CompassIcon, RocketIcon, BookIcon, GlobeIcon } from "@/components/icons";
+import { CompassIcon, RocketIcon, BookIcon, BinaryIcon, InboxIcon, SendIcon, PlugIcon, DatabaseIcon } from "@/components/icons";
 
-Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. It runs inside your application against your existing relational database (Postgres, MySQL, SQLite, …) — no Redis, no broker, no separate dispatcher process.
-
-> Svix is for when webhooks are your **product**.
-> Postel is for when webhooks are a **feature** of your product.
+Sending and receiving webhooks is easy. Doing it **reliably and securely** is hard — retries, replay, signature verification, key rotation, idempotency, raw-bytes preservation. Postel is a library that handles those for you, inside your application, against your existing relational database (Postgres, MySQL, SQLite, …) — no Redis, no broker, no separate dispatcher process.
 
 ## Two halves, one library
 
 Postel has two independent halves. Use either alone, or both together.
 
-| Half | What it does | Status |
-|---|---|---|
-| **[Inbound](/docs/inbound)** | Verify Standard Webhooks-signed requests other services send to you. Constant-time signature checks, multi-secret rotation windows, JWKS, idempotent dedup, raw-bytes preservation. | **Available** in `@postel/core`. |
-| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter. | **Available** in `@postel/core`, with durable Postgres, MySQL, and SQLite [storage adapters](/docs/storage). |
+| Half | What it does |
+|---|---|
+| **[Inbound](/docs/inbound)** | Verify webhooks other services send you — Standard Webhooks, plus ready-made [Stripe / GitHub / Shopify / Twilio / Slack verifiers](/docs/inbound/providers). Constant-time checks, rotation windows, JWKS, dedup. |
+| **[Outbound](/docs/outbound)** | Deliver Standard Webhooks to your customers' endpoints. Transactional outbox, retries, replay, fanout, key rotation, JWKS publication, circuit breaker, dead-letter — durable on [Postgres, MySQL, or SQLite](/docs/storage). |
 
-The `Postel({ inbound, outbound })` factory composes both — but everywhere else in these docs they're separated. You shouldn't have to wade through outbound material to integrate the receiver, or vice versa.
+The `Postel({ inbound, outbound })` factory composes both — but everywhere else in these docs they're separated, so you never wade through sender material to integrate the receiver, or vice versa.
 
-## Picking a starting point
+## Start here
 
 <Cards>
-  <Card icon={<CompassIcon />} title="Is Postel for me?" href="/docs/get-started/is-postel-for-me" description="A six-line decision gate. Run it before you read more." />
-  <Card icon={<RocketIcon />} title="Quickstart" href="/docs/get-started/quickstart" description="A few minutes — verify your first signed webhook with @postel/core." />
-  <Card icon={<BookIcon />} title="Why Postel" href="/docs/get-started/why" description="The tradeoffs; comparison vs Svix, comparison vs hand-rolled." />
-  <Card icon={<GlobeIcon />} title="Polyglot" href="/docs/get-started/polyglot" description="For port authors — what conformance means and where the suite lives." />
+  <Card icon={<RocketIcon />} title="Quickstart" href="/docs/get-started/quickstart" description="Verify an inbound webhook and send an outbound one, from scratch." />
+  <Card icon={<CompassIcon />} title="Is Postel for me?" href="/docs/get-started/is-postel-for-me" description="The decision gate — run it before you spend more time evaluating." />
+  <Card icon={<BinaryIcon />} title="How Postel works" href="/docs/concepts/how-postel-works" description="The mental model: outbox, worker pool, delivery lifecycle, receiver." />
+  <Card icon={<BookIcon />} title="Why Postel" href="/docs/project/why" description="The design rationale and the comparison vs Svix, Outpost, Convoy, DIY." />
+</Cards>
+
+## Go deeper
+
+<Cards>
+  <Card icon={<InboxIcon />} title="Inbound" href="/docs/inbound" description="Verification, provider verifiers, key rotation, deduplication." />
+  <Card icon={<SendIcon />} title="Outbound" href="/docs/outbound" description="send(), retries, replay, endpoints, introspection, tenants." />
+  <Card icon={<PlugIcon />} title="Web adapters" href="/docs/web-adapters" description="Hono, Express, Fastify, NestJS, Next.js — or any Fetch runtime." />
+  <Card icon={<DatabaseIcon />} title="Storage" href="/docs/storage" description="pg / sqlite / mysql, or your Kysely, Drizzle, Prisma, TypeORM, MikroORM instance." />
 </Cards>
 
 ## Where the project stands
 
-Both halves are implemented and exercised end-to-end by the [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) suite. The receiver verifies any Standard Webhooks producer. The sender runs the transactional outbox, retries, replay, fanout, and signing against durable [Postgres, MySQL, and SQLite adapters](/docs/storage) — or the in-process `InMemoryStorage` for tests and demos.
+Both halves are implemented and exercised end-to-end by the [`@postel/compliance`](https://github.com/postel-sh/postel/tree/main/compliance) suite. Three things to know before you build on it:
 
-What's still ahead is tracked honestly, not hidden:
+- **No release is cut yet** — nothing is on npm. [Run it from source](/docs/get-started/quickstart) today; pin to a minor once releases ship.
+- **Unwired config slots fail fast**: external job-queue workers, KMS-backed keys, retention, ephemeral keys, and a few HTTP knobs throw `NotImplementedError` instead of silently no-opping. [Outbound](/docs/outbound) marks each one.
+- **Go, Python, and Rust ports** follow the TypeScript implementation, each gated on the same compliance suite — see [Polyglot](/docs/project/polyglot).
 
-- **No release is cut yet.** Every `@postel/*` package sits at `0.0.0` with no git tag, so nothing is on npm. Clone the repo to use it today; pin to a minor once releases ship.
-- **Unwired config slots fail fast instead of lying.** External job-queue workers (BullMQ, PgBoss), KMS-backed keys (`AwsKms` / `GcpKms` / `Vault`), retention, ephemeral keys, and the `http.tls` / `http.dns` knobs aren't wired yet — configuring any of them throws `NotImplementedError` rather than silently no-opping. `observability.logger` *is* wired and receives delivery / circuit events (with a `trace_id` field when a trace is active), [OpenTelemetry spans](/docs/outbound/observability) ship for the sender path, and `postel.metrics()` exposes Prometheus-named counters/histograms/gauges. [Outbound](/docs/outbound) marks each one.
-- **Other languages are on the way.** Go, Python, and Rust are on the [roadmap](/docs/get-started/polyglot); TypeScript ships first.
-
-This site is the public surface of that work. If a page describes behavior the source doesn't have, [open an issue](https://github.com/postel-sh/postel/issues).
+If a page describes behavior the source doesn't have, [open an issue](https://github.com/postel-sh/postel/issues).

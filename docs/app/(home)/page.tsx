@@ -220,7 +220,7 @@ const personas: ReadonlyArray<Persona> = [
     icon: <GlobeIcon className="size-5" />,
     title: "I'm porting to another language",
     body: "TypeScript ships today; Go, Python, and Rust follow. One compliance suite is the contract.",
-    href: "/docs/get-started/polyglot",
+    href: "/docs/project/polyglot",
   },
 ];
 
@@ -593,8 +593,8 @@ export default async function HomePage() {
             links={[
               { label: "Quickstart", href: "/docs/get-started/quickstart" },
               { label: "Is Postel for me?", href: "/docs/get-started/is-postel-for-me" },
-              { label: "Why Postel", href: "/docs/get-started/why" },
-              { label: "Polyglot", href: "/docs/get-started/polyglot" },
+              { label: "Why Postel", href: "/docs/project/why" },
+              { label: "Polyglot", href: "/docs/project/polyglot" },
             ]}
           />
           <FooterColumn
@@ -610,7 +610,7 @@ export default async function HomePage() {
             title="Project"
             links={[
               { label: "GitHub", href: "https://github.com/postel-sh/postel" },
-              { label: "Specs & standards", href: "/docs/reference/specs" },
+              { label: "Specs & standards", href: "/docs/project/specs" },
               {
                 label: "Standard Webhooks",
                 href: "https://www.standardwebhooks.com",

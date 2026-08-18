@@ -1,0 +1,57 @@
+---
+title: Delivery guarantees
+description: What Postel promises, precisely — at-least-once delivery, transactional enqueue, and the two idempotency contracts that make it once-effectively.
+---
+
+Webhook delivery over HTTP is **at-least-once** or it is unreliable — those are the only two options. A response can be lost after the receiver processed the request; a timeout tells the sender nothing; the only safe policy is to retry until acknowledged, which means the same event will occasionally arrive twice. Postel doesn't pretend otherwise. Instead it gives you one guarantee and two idempotency contracts, and every page in these docs builds on them.
+
+## Guarantee: the outbox is transactional
+
+`send()` is an INSERT into the `messages` table through your own database connection. Pass your transaction handle and the webhook is queued **iff** the business write commits:
+
+```ts
+await db.transaction(async (tx) => {
+  await db.orders.insert({ id: "ord_123", status: "paid" }, { tx });
+  await postel.outbound.send({ type: "order.created", data: { id: "ord_123" } }, { tx });
+});
+```
+
+Kill the process anywhere in that block and either both happened or neither did. This is the [transactional outbox](https://microservices.io/patterns/data/transactional-outbox.html) pattern — the thing a Redis queue architecturally cannot give you, because `queue.add()` and your database commit are two systems with no shared transaction. It's the reason Postel insists on running against *your* database instead of bringing its own store.
+
+Delivery is then asynchronous: a committed row **will** be picked up by a worker (in-process pool or a [bounded serverless drain](/docs/operations/serverless)) and attempted until it succeeds, permanently fails, or exhausts its [retry schedule](/docs/outbound/retries). The full journey is on [How Postel works](/docs/concepts/how-postel-works).
+
+## Contract 1 — send-side idempotency (at-most-once *enqueue*)
+
+Retrying your own request handler can call `send()` twice. Pass an `idempotencyKey` and the outbox enforces a unique constraint on `(tenant_id, idempotency_key)`:
+
+```ts
+const { id, reused } = await postel.outbound.send(
+  { type: "order.created", data: { id: "ord_123" }, idempotencyKey: "order-created-ord_123" },
+);
+// second call with the same key (same tenant): same id, reused: true, no second row
+```
+
+The `reused` flag on [`SendResult`](/docs/outbound/send#what-about-idempotency-on-send) distinguishes "accepted" from "deduplicated". The key is scoped **per tenant** — the same key under two `tenantId`s creates two messages. No key, no constraint: Postel still mints a stable `webhook-id` for the receiver, but repeated `send()` calls create repeated messages.
+
+## Contract 2 — receive-side dedup (once-effectively *processing*)
+
+On the wire the contract is the `webhook-id` header: retries of the same message carry the same id (unless a [replay](/docs/outbound/replay) explicitly asks for a fresh one). The receiver indexes receipts on it:
+
+- `dedup(messageId, { ttl })` returns `{ duplicate }` **atomically** — two concurrent calls with the same id see exactly one `duplicate: false`, across workers and crashes. The compliance suite tests this.
+- The [gate-level sugar](/docs/inbound/deduplication#delivery-semantics-of-gate-level-dedup) records the id, runs your handler, and **releases the record if the handler throws** — so a failed processing attempt never permanently burns the id, and the producer's retry gets processed.
+- For side effects that must commit exactly once (charging a card), the dedup insert joins your transaction via `{ tx }` — dedup row and work commit or roll back together.
+
+Pick the strength you need: gate-level dedup for idempotent-ish handlers, the transactional pattern for money-shaped ones.
+
+## What is *not* promised
+
+- **Ordering.** Retries, fan-out, and concurrent workers mean cross-message order is not preserved. Sequence-sensitive consumers should order on the event's own data (`timestamp`, a sequence number you put in `data`), not on arrival.
+- **Exactly-once on the wire.** No HTTP system delivers exactly-once; both dedup contracts exist precisely because the wire is at-least-once.
+- **Delivery latency bounds.** A healthy pool delivers in milliseconds, but the guarantee is *eventual* — a receiver that's down simply moves the message along the retry schedule. The [benchmarks](/docs/project/benchmarks) publish real numbers.
+
+## Reading lists by symptom
+
+- "The same webhook ran twice" → [Deduplication](/docs/inbound/deduplication)
+- "A webhook never arrived" → [Message introspection](/docs/outbound/messages), then [Replay](/docs/outbound/replay)
+- "Signatures fail intermittently" → [Raw bytes](/docs/concepts/raw-bytes)
+- "One customer's endpoint is down and everything is slow" → [Retries & backoff](/docs/outbound/retries) (circuit breaker)
