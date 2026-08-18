@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@postel/core";
-import { InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
+import { InMemoryDedup, InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
 import { describe, expect, it } from "vitest";
 
 import { NextjsWebAdapter, withWebhook } from "../src/index.js";
@@ -199,5 +199,66 @@ describe("Admin router binding", () => {
     ).admin.bindAdminRoutes({ authorize: () => false });
     const res = await GET(new Request("http://localhost/admin/endpoints"));
     expect(res.status).toBe(403);
+  });
+});
+
+describe("Framework adapters offer optional dedup-acknowledgement", () => {
+  const dedupVendor = () =>
+    Postel({
+      inbound: {
+        vendor: { verify: Secret(SECRET), clock: fixedClock(NOW), dedup: InMemoryDedup() },
+      },
+    });
+
+  it("Handler failure releases the dedup record: a throwing route handler leaves the retry unseen", async () => {
+    const postel = dedupVendor();
+    let calls = 0;
+    const handler = withWebhook(
+      postel.inbound.vendor,
+      () => {
+        calls += 1;
+        if (calls === 1) throw new Error("downstream write failed");
+        return Response.json({ ok: true });
+      },
+      { dedup: { ttl: "1h" } },
+    );
+
+    const sig = await signed("order.created", "rel_1");
+    const makeReq = () =>
+      new Request(URL, {
+        method: "POST",
+        headers: { ...sig.headers, "content-type": "application/json" },
+        body: sig.body,
+      });
+    await expect(handler(makeReq())).rejects.toThrow("downstream write failed");
+    const retry = await handler(makeReq());
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get("x-postel-dedup-result")).toBeNull();
+    expect(calls).toBe(2);
+  });
+
+  it("a successful handler keeps the record: the second delivery is acknowledged as duplicate", async () => {
+    const postel = dedupVendor();
+    let calls = 0;
+    const handler = withWebhook(
+      postel.inbound.vendor,
+      () => {
+        calls += 1;
+        return Response.json({ ok: true });
+      },
+      { dedup: { ttl: "1h" } },
+    );
+
+    const sig = await signed("order.created", "rel_2");
+    const makeReq = () =>
+      new Request(URL, {
+        method: "POST",
+        headers: { ...sig.headers, "content-type": "application/json" },
+        body: sig.body,
+      });
+    expect((await handler(makeReq())).status).toBe(200);
+    const dup = await handler(makeReq());
+    expect(dup.headers.get("x-postel-dedup-result")).toBe("duplicate");
+    expect(calls).toBe(1);
   });
 });

@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@postel/core";
-import { InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
+import { InMemoryDedup, InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
 import express, { type ErrorRequestHandler } from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
@@ -208,5 +208,74 @@ describe("Admin router binding", () => {
       .send(JSON.stringify({ hi: 1 }));
     expect(res.status).toBe(201);
     expect(res.body.method).toBe("POST");
+  });
+});
+
+describe("Framework adapters offer optional dedup-acknowledgement", () => {
+  const dedupVendor = () =>
+    Postel({
+      inbound: {
+        vendor: { verify: Secret(SECRET), clock: fixedClock(NOW), dedup: InMemoryDedup() },
+      },
+    });
+
+  it("Handler failure releases the dedup record: a throwing facade handler leaves the retry unseen", async () => {
+    const app = express();
+    let calls = 0;
+    ExpressWebAdapter(dedupVendor(), app).inbound.vendor.post(
+      "/webhooks/vendor",
+      (_req, res) => {
+        calls += 1;
+        if (calls === 1) throw new Error("downstream write failed");
+        res.json({ ok: true });
+      },
+      { dedup: { ttl: "1h" } },
+    );
+    const swallow: ErrorRequestHandler = (_err, _req, res, _next) => {
+      res.status(500).json({ ok: false });
+    };
+    app.use(swallow);
+
+    const sig = await signed("order.created", "rel_1");
+    const first = await request(app)
+      .post("/webhooks/vendor")
+      .set(sig.headers)
+      .set("content-type", "application/json")
+      .send(sig.body);
+    expect(first.status).toBe(500);
+
+    const retry = await request(app)
+      .post("/webhooks/vendor")
+      .set(sig.headers)
+      .set("content-type", "application/json")
+      .send(sig.body);
+    expect(retry.status).toBe(200);
+    expect(retry.headers["x-postel-dedup-result"]).toBeUndefined();
+    expect(calls).toBe(2);
+  });
+
+  it("a successful handler keeps the record: the second delivery is acknowledged as duplicate", async () => {
+    const app = express();
+    let calls = 0;
+    ExpressWebAdapter(dedupVendor(), app).inbound.vendor.post(
+      "/webhooks/vendor",
+      (_req, res) => {
+        calls += 1;
+        res.json({ ok: true });
+      },
+      { dedup: { ttl: "1h" } },
+    );
+
+    const sig = await signed("order.created", "rel_2");
+    const send = () =>
+      request(app)
+        .post("/webhooks/vendor")
+        .set(sig.headers)
+        .set("content-type", "application/json")
+        .send(sig.body);
+    expect((await send()).status).toBe(200);
+    const dup = await send();
+    expect(dup.headers["x-postel-dedup-result"]).toBe("duplicate");
+    expect(calls).toBe(1);
   });
 });

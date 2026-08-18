@@ -15,6 +15,7 @@ import {
   type WebhookMethod,
   handleInbound,
   jwksFetchHandler,
+  releaseOnThrow,
 } from "@postel/http";
 
 export type { ComposedVerifyResult } from "@postel/core";
@@ -85,10 +86,10 @@ function gate<TData>(
       { rawBody: rawBuffer(req.body), headers: headersFromNode(req.headers), method: req.method },
       opts,
     )
-      .then((outcome) => {
+      .then(async (outcome) => {
         if (outcome.kind === "verified") {
           setVerified(req, outcome.context.result);
-          onVerified(req, res, next);
+          await releaseOnThrow(source, outcome, () => onVerified(req, res, next));
           return;
         }
         writeOutcomeToNodeRes(res, outcome);

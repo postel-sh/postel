@@ -70,7 +70,14 @@ app.post(
 );
 ```
 
-The ordering: the gate records the id, THEN runs your handler. If your handler throws, the gate releases the record it just wrote before the error propagates, so the producer's retry (issued because it saw your 5xx) is treated as unseen and reaches the handler again — a throwing handler never permanently burns the id. This release is automatic and requires no extra configuration; it works out of the box with `InMemoryDedup`, `PgDedup`, `SqliteDedup`, and `MysqlDedup`. A custom `DedupAdapter` that doesn't implement `release` simply keeps the id recorded on handler failure, same as before this existed.
+The ordering: the gate records the id, THEN runs your handler. If your handler throws, the gate releases the record it just wrote before the error propagates, so the producer's retry (issued because it saw your 5xx) is treated as unseen and reaches the handler again — a throwing handler never permanently burns the id. It works out of the box with `InMemoryDedup`, `PgDedup`, `SqliteDedup`, and `MysqlDedup`. A custom `DedupAdapter` that doesn't implement `release` simply keeps the id recorded on handler failure.
+
+The release is automatic on every path where the gate wraps your handler — `handleInbound({ onVerified })`, `withWebhook`, every `XxxWebAdapter` facade route, and Hono's `verifyWebhook` middleware. Two gate forms run *before* your handler and can't observe its failure by themselves, so they need one extra line:
+
+- **Fastify's bare `verifyWebhook` preHandler** — attach the exported `releaseDedupOnError` hook as the route's `onError`. (Routes registered through `FastifyWebAdapter` install it for you.)
+- **NestJS's `WebhookGuard`** — pair it with `@UseInterceptors(WebhookReleaseInterceptor)` on dedup-gated routes.
+
+One gate form can't release at all: **Express's bare `verifyWebhook` middleware** — Express routes a downstream handler's error to error middleware without re-entering earlier middleware, so a throw there keeps the id recorded for its TTL. Use the `ExpressWebAdapter` facade (or `withWebhook`) with dedup instead.
 
 Two things this does **not** give you:
 

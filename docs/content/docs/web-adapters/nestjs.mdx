@@ -37,7 +37,7 @@ export class WebhooksController {
 }
 ```
 
-`WebhookGuard(key)` verifies before the controller method runs and maps a failure to an `HttpException` with the right status; a non-`PostelError` bubbles as 5xx. `@Event()` / `@WebhookResult()` read the verified result off the request.
+`WebhookGuard(key)` verifies before the controller method runs and maps a failure to an `HttpException` with the right status; a non-`PostelError` bubbles as 5xx. `@Event()` / `@WebhookResult()` read the verified result off the request. Using the guard's `dedup` option? Pair it with `@UseInterceptors(WebhookReleaseInterceptor)` so a throwing handler [releases the dedup record](/docs/inbound/deduplication#delivery-semantics-of-gate-level-dedup) — a guard runs before the handler and can't observe its failure on its own.
 
 ## Type-checked source keys
 
