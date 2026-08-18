@@ -19,6 +19,9 @@ import type {
   PostelInstance,
 } from "@postel/core";
 import { type GateSource, type WebhookHandlerOptions, handleInbound } from "@postel/http";
+
+export type { ComposedVerifyResult } from "@postel/core";
+export type { WebhookContext, WebhookHandlerOptions } from "@postel/http";
 import { headersFromNode } from "@postel/http/node";
 
 export const POSTEL_INSTANCE = Symbol.for("postel:instance");

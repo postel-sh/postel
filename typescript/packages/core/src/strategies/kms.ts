@@ -8,6 +8,11 @@ export interface AwsKmsOptions {
   readonly keyId: string;
 }
 
+/**
+ * @deprecated Not implemented yet — envelope encryption has not shipped. Configuring
+ * `outbound.kms` with this strategy throws `NotImplementedError` at construction. Use
+ * `PlaintextKms()` instead.
+ */
 export function AwsKms(options: AwsKmsOptions): KmsStrategy {
   return { kind: "aws-kms", keyId: options.keyId };
 }
@@ -16,6 +21,11 @@ export interface GcpKmsOptions {
   readonly keyName: string;
 }
 
+/**
+ * @deprecated Not implemented yet — envelope encryption has not shipped. Configuring
+ * `outbound.kms` with this strategy throws `NotImplementedError` at construction. Use
+ * `PlaintextKms()` instead.
+ */
 export function GcpKms(options: GcpKmsOptions): KmsStrategy {
   return { kind: "gcp-kms", keyName: options.keyName };
 }
@@ -25,6 +35,11 @@ export interface VaultOptions {
   readonly keyName: string;
 }
 
+/**
+ * @deprecated Not implemented yet — envelope encryption has not shipped. Configuring
+ * `outbound.kms` with this strategy throws `NotImplementedError` at construction. Use
+ * `PlaintextKms()` instead.
+ */
 export function Vault(options: VaultOptions): KmsStrategy {
   return { kind: "vault", transitPath: options.transitPath, keyName: options.keyName };
 }

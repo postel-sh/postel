@@ -3,7 +3,12 @@ import { ConfigurationError } from "./errors.js";
 const SUFFIXES: Record<string, number> = { s: 1, m: 60, h: 60 * 60, d: 24 * 60 * 60 };
 const TTL_RE = /^(\d+)\s*([smhd])$/u;
 
-export function ttlToSeconds(ttl: number | string): number {
+// Shared duration grammar (see api-surface-typescript spec): an integer number
+// of seconds, or a `"<integer><s|m|h|d>"` string. Catches "5 minutes"-style
+// typos at compile time instead of at runtime.
+export type Duration = number | `${number}${"s" | "m" | "h" | "d"}`;
+
+export function ttlToSeconds(ttl: Duration): number {
   if (typeof ttl === "number") {
     if (!Number.isFinite(ttl) || ttl <= 0 || !Number.isInteger(ttl)) {
       throw new ConfigurationError("duration number must be a positive integer (seconds)");

@@ -2,6 +2,7 @@ import { type IncomingMessage, type ServerResponse, createServer } from "node:ht
 import type { AddressInfo } from "node:net";
 import {
   type Clock,
+  type DurationMs,
   ExponentialBackoff,
   InMemoryStorage,
   InProcess,
@@ -14,8 +15,8 @@ import {
 function normalizeRetryPolicy(raw: unknown): RetryStrategy | undefined {
   if (raw === null || typeof raw !== "object") return undefined;
   const obj = raw as {
-    schedule?: ReadonlyArray<string | number>;
-    step?: string | number;
+    schedule?: ReadonlyArray<DurationMs>;
+    step?: DurationMs;
     jitter?: number;
     maxAttempts?: number;
   };
@@ -187,7 +188,7 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
             data?: unknown;
             channels?: string[];
             idempotencyKey?: string;
-            ttl?: string;
+            ttl?: DurationMs;
             tenantId?: string;
           };
           const event: {
@@ -195,7 +196,7 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
             data?: unknown;
             channels?: string[];
             idempotencyKey?: string;
-            ttl?: string;
+            ttl?: DurationMs;
             tenantId?: string;
           } = { type: body.type };
           if (body.data !== undefined) event.data = body.data;

@@ -7,6 +7,7 @@ import {
   type PostelErrorCode,
 } from "@postel/core";
 import type {
+  DurationMs,
   Endpoint,
   EndpointCreateOptions,
   EndpointUpdateOptions,
@@ -111,8 +112,8 @@ function normalizeStructuralFilter(raw: unknown): StructuralFilter | undefined {
 function normalizeRetryPolicy(raw: unknown): RetryStrategy | undefined {
   if (raw === null || typeof raw !== "object") return undefined;
   const obj = raw as {
-    schedule?: ReadonlyArray<string | number>;
-    step?: string | number;
+    schedule?: ReadonlyArray<DurationMs>;
+    step?: DurationMs;
     jitter?: number;
     maxAttempts?: number;
   };
@@ -280,7 +281,7 @@ export function adminRouter(
       const id = rotate[1] as string;
       await endpointForTenant(id, tenantId);
       const body = await readJson(req);
-      const keepPreviousFor = (body.keepPreviousFor as string | number | undefined) ?? "24h";
+      const keepPreviousFor = (body.keepPreviousFor as DurationMs | undefined) ?? "24h";
       await out.endpoints.rotateSecret(id, { keepPreviousFor });
       return json(200, { id, rotated: true });
     }

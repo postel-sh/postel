@@ -1,28 +1,30 @@
+import type { DurationMs } from "../sender/internal/duration.js";
+
 export type RetryStrategy =
   | {
       readonly kind: "exponential";
-      readonly schedule: ReadonlyArray<string | number>;
+      readonly schedule: ReadonlyArray<DurationMs>;
       readonly jitter: number;
       readonly maxAttempts: number;
     }
   | {
       readonly kind: "linear";
-      readonly step: string | number;
+      readonly step: DurationMs;
       readonly maxAttempts: number;
     }
   | {
       readonly kind: "custom";
-      readonly compute: (attempt: number) => string | number;
+      readonly compute: (attempt: number) => DurationMs;
       readonly maxAttempts: number;
     };
 
 export interface ExponentialBackoffOptions {
-  readonly schedule?: ReadonlyArray<string | number>;
+  readonly schedule?: ReadonlyArray<DurationMs>;
   readonly jitter?: number;
   readonly maxAttempts?: number;
 }
 
-const DEFAULT_EXPONENTIAL_SCHEDULE: ReadonlyArray<string> = [
+const DEFAULT_EXPONENTIAL_SCHEDULE: ReadonlyArray<DurationMs> = [
   "5s",
   "5m",
   "30m",
@@ -45,7 +47,7 @@ export function ExponentialBackoff(options?: ExponentialBackoffOptions): RetrySt
 }
 
 export interface LinearBackoffOptions {
-  readonly step: string | number;
+  readonly step: DurationMs;
   readonly maxAttempts: number;
 }
 
@@ -54,7 +56,7 @@ export function LinearBackoff(options: LinearBackoffOptions): RetryStrategy {
 }
 
 export interface CustomRetryOptions {
-  readonly compute: (attempt: number) => string | number;
+  readonly compute: (attempt: number) => DurationMs;
   readonly maxAttempts: number;
 }
 

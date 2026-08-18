@@ -3,7 +3,7 @@ import { EventValidation } from "../errors.js";
 import type { OutboundEventRegistry } from "../outbound.js";
 import type { SendResult } from "../outbound.js";
 import type { NewMessage, Storage } from "../storage/types.js";
-import { durationToMs } from "./internal/duration.js";
+import { type DurationMs, durationToMs } from "./internal/duration.js";
 import { newMessageId } from "./internal/id.js";
 
 export interface SendInput {
@@ -13,7 +13,7 @@ export interface SendInput {
   readonly idempotencyKey?: string;
   readonly version?: string;
   readonly timestamp?: string | Date;
-  readonly ttl?: number | string;
+  readonly ttl?: DurationMs;
   readonly tenantId?: string;
 }
 

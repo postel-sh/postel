@@ -6,6 +6,7 @@ import type { CursorOptions, Page } from "./pagination.js";
 import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
 import { buildEndpointApi } from "./sender/endpoint/crud.js";
 import { PostelEventEmitter } from "./sender/events.js";
+import type { DurationMs } from "./sender/internal/duration.js";
 import { generateAsymmetric, generateSymmetric } from "./sender/keys/generate.js";
 import { rotateSecret } from "./sender/keys/rotation.js";
 import { reconcileImpl, replayImpl } from "./sender/replay/replay.js";
@@ -74,8 +75,8 @@ export interface OutboundConfig<
 }
 
 export interface HttpDefaults {
-  readonly requestTimeout?: number | string;
-  readonly overallDeadline?: number | string;
+  readonly requestTimeout?: DurationMs;
+  readonly overallDeadline?: DurationMs;
   readonly tls?: { readonly verify?: boolean };
   readonly dns?: { readonly pinResolution?: boolean };
   readonly ssrf?: {
@@ -88,12 +89,12 @@ export interface HttpDefaults {
 
 export interface CircuitBreakerDefaults {
   readonly threshold?: number;
-  readonly cooldown?: number | string;
+  readonly cooldown?: DurationMs;
 }
 
 export interface AutoDisableDefaults {
   readonly failureRate?: number;
-  readonly window?: number | string;
+  readonly window?: DurationMs;
   readonly minAttempts?: number;
 }
 
@@ -107,7 +108,7 @@ export interface RetentionDefaults {
 }
 
 export interface EphemeralKeysDefaults {
-  readonly rotateEvery: number | string;
+  readonly rotateEvery: DurationMs;
 }
 
 export type { MessageId };
@@ -124,7 +125,7 @@ export interface SendEvent<TData = unknown> {
   readonly idempotencyKey?: string;
   readonly version?: string;
   readonly timestamp?: string | Date;
-  readonly ttl?: number | string;
+  readonly ttl?: DurationMs;
   readonly tenantId?: string;
 }
 
@@ -219,7 +220,7 @@ export interface Endpoint {
 }
 
 export interface RotateSecretOptions<TTx = unknown> {
-  readonly keepPreviousFor: number | string;
+  readonly keepPreviousFor: DurationMs;
   readonly tx?: TTx;
 }
 
