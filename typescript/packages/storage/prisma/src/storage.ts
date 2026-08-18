@@ -83,6 +83,7 @@ export interface PrismaStorageOptions {
 }
 
 const PG_CODEC: ColumnCodec = { time: "native", json: "text" };
+const NEW_MESSAGE_CHANNEL = "postel_messages_new";
 
 function quote(ident: string): string {
   return `"${ident.replace(/"/g, '""')}"`;
@@ -136,6 +137,13 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
 
   function exec(opts?: HostTxOption<PrismaLike>): PrismaLike {
     return opts?.tx ?? prisma;
+  }
+
+  // NOTIFY on the same executor as the insert: outside a tx it fires
+  // immediately, inside the host tx Postgres queues it and delivers on commit.
+  async function notifyNewMessage(q: PrismaLike, messageId: string): Promise<void> {
+    if (!isPg) return;
+    await q.$executeRawUnsafe("select pg_notify($1, $2)", NEW_MESSAGE_CHANNEL, messageId);
   }
 
   async function atomic<R>(
@@ -234,7 +242,9 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
 
     async insertMessage(msg: NewMessage, opts?: HostTxOption<PrismaLike>) {
       await ready();
-      await insert(exec(opts), "messages", encodeMessageInsert(msg, codec));
+      const q = exec(opts);
+      await insert(q, "messages", encodeMessageInsert(msg, codec));
+      await notifyNewMessage(q, msg.id);
       return msg.id;
     },
 
@@ -253,6 +263,7 @@ export function PrismaStorage(options: PrismaStorageOptions): Storage<PrismaLike
         const existing = await q.$queryRawUnsafe<{ id: string }>(text, ...p.values);
         if (existing[0]?.id !== undefined) return { id: existing[0].id, reused: true };
         await insert(q, "messages", encodeMessageInsert(msg, codec));
+        await notifyNewMessage(q, msg.id);
         return { id: msg.id, reused: false };
       });
     },

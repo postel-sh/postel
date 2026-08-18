@@ -216,8 +216,11 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
     async insertMessage(msg: NewMessage, opts?: HostTxOption<PgQueryable>) {
       await ready();
       const [text, values] = buildInsert("messages", encodeMessageInsert(msg, codec));
-      await exec(opts).query(text, values);
-      if (!opts?.tx) await pool().query("SELECT pg_notify($1, $2)", [NEW_MESSAGE_CHANNEL, msg.id]);
+      const q = exec(opts);
+      await q.query(text, values);
+      // NOTIFY on the same connection as the insert: outside a tx it fires
+      // immediately, inside the host tx Postgres queues it and delivers on commit.
+      await q.query("SELECT pg_notify($1, $2)", [NEW_MESSAGE_CHANNEL, msg.id]);
       return msg.id;
     },
 
@@ -238,6 +241,7 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
         if (existing.rows[0]?.id !== undefined) return { id: existing.rows[0].id, reused: true };
         const [text, values] = buildInsert("messages", encodeMessageInsert(msg, codec));
         await q.query(text, values);
+        await q.query("SELECT pg_notify($1, $2)", [NEW_MESSAGE_CHANNEL, msg.id]);
         return { id: msg.id, reused: false };
       });
     },

@@ -89,6 +89,7 @@ export interface MikroOrmStorageOptions {
 }
 
 const PG_CODEC: ColumnCodec = { time: "native", json: "text" };
+const NEW_MESSAGE_CHANNEL = "postel_messages_new";
 
 function statements(migrationSql: string): string[] {
   return migrationSql
@@ -189,6 +190,13 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
     );
   }
 
+  // NOTIFY on the same executor as the insert: outside a tx it fires
+  // immediately, inside the host tx Postgres queues it and delivers on commit.
+  async function notifyNewMessage(messageId: string, ctx?: MikroOrmTransaction): Promise<void> {
+    if (!isPg) return;
+    await run("select pg_notify($1, $2)", [NEW_MESSAGE_CHANNEL, messageId], ctx);
+  }
+
   async function loadEndpointRecord(
     id: EndpointId,
     ctx?: MikroOrmTransaction,
@@ -241,6 +249,7 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
     async insertMessage(msg: NewMessage, opts?: HostTxOption<MikroOrmTransaction>) {
       await ready();
       await insert("messages", encodeMessageInsert(msg, codec), opts?.tx);
+      await notifyNewMessage(msg.id, opts?.tx);
       return msg.id;
     },
 
@@ -259,6 +268,7 @@ export function MikroOrmStorage(options: MikroOrmStorageOptions): Storage<MikroO
         const existing = await rows<{ id: string }>(text, p.values, ctx);
         if (existing[0]?.id !== undefined) return { id: existing[0].id, reused: true };
         await insert("messages", encodeMessageInsert(msg, codec), ctx);
+        await notifyNewMessage(msg.id, ctx);
         return { id: msg.id, reused: false };
       });
     },

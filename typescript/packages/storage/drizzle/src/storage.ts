@@ -97,6 +97,7 @@ export interface DrizzleStorageOptions {
 }
 
 const PG_CODEC: ColumnCodec = { time: "native", json: "text" };
+const NEW_MESSAGE_CHANNEL = "postel_messages_new";
 
 function statements(migrationSql: string): string[] {
   return migrationSql
@@ -203,6 +204,13 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
     return opts?.tx ?? db;
   }
 
+  // NOTIFY on the same executor as the insert: outside a tx it fires
+  // immediately, inside the host tx Postgres queues it and delivers on commit.
+  async function notifyNewMessage(q: DrizzleDb, messageId: string): Promise<void> {
+    if (!isPg) return;
+    await run(q, sql`select pg_notify(${NEW_MESSAGE_CHANNEL}, ${messageId})`);
+  }
+
   async function atomic<R>(
     tx: DrizzleDb | undefined,
     fn: (q: DrizzleDb) => Promise<R>,
@@ -264,7 +272,9 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
 
     async insertMessage(msg: NewMessage, opts?: HostTxOption<DrizzleDb>) {
       await ready();
-      await insert(exec(opts), "messages", encodeMessageInsert(msg, codec));
+      const q = exec(opts);
+      await insert(q, "messages", encodeMessageInsert(msg, codec));
+      await notifyNewMessage(q, msg.id);
       return msg.id;
     },
 
@@ -285,6 +295,7 @@ export function DrizzleStorage(options: DrizzleStorageOptions): Storage<DrizzleD
         );
         if (existing[0]?.id !== undefined) return { id: existing[0].id, reused: true };
         await insert(q, "messages", encodeMessageInsert(msg, codec));
+        await notifyNewMessage(q, msg.id);
         return { id: msg.id, reused: false };
       });
     },
