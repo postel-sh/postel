@@ -1,16 +1,35 @@
 # scripts/spec-drift-deferred.txt
 #
-# Requirements deferred to a later release. The companion script
-# scripts/check-spec-drift.mjs exempts these from its drift check until
-# they land tests in `typescript/packages/`. The file is auditable and
-# grep-able; an entry naming a requirement that no longer exists in any
-# `openspec/specs/<cap>/spec.md` is itself a drift failure.
+# Scenarios (and, where noted, whole requirements) deferred from the drift
+# check. The companion script scripts/check-spec-drift.mjs exempts these
+# until they land literal-name coverage in typescript/packages/,
+# compliance/cli/, or the compliance/vectors/ corpus. The file is auditable
+# and grep-able; an entry citing a requirement or scenario that no longer
+# exists in any openspec/specs/<cap>/spec.md is itself a drift failure.
 #
 # Lines starting with `#` are comments. Blank lines are ignored. Each
-# remaining line is the verbatim title from a `### Requirement:` block.
+# remaining line is one of:
+#   Requirement title
+#   Requirement title :: Scenario title
+# The first form defers every scenario under the requirement (use for
+# requirements with no coverage at all, or out-of-scope wholesale). The
+# second defers just that one scenario — use when a sibling scenario under
+# the same requirement IS covered.
 #
 # Reduction discipline: when a PR adds a test that covers a deferred
-# requirement, REMOVE the corresponding line in the same PR.
+# requirement or scenario, REMOVE the corresponding line in the same PR.
+#
+# "Covered under a different name" entries: the checker's match is a literal
+# substring of the scenario title in test source (see check-spec-drift.mjs
+# header) — a deliberately loose, mechanical gate, not semantic review. A
+# large share of the entries below are scenarios that ARE exercised by an
+# existing test, just not under the scenario's literal wording (this
+# repo's tests predate the scenario-level convention this file now follows).
+# Each such line names the covering test so a future rename-only PR can
+# close it without re-deriving the mapping. Renaming ~50 existing tests is
+# out of scope for the PR that introduced scenario-level matching (issue
+# #133) — it touches every package, not scripts/ — so it's tracked here
+# instead of attempted inline.
 #
 # Out-of-scope categories for the v0.1.0 TS receiver track:
 #   - sender / outbox / retry / fanout / replay / endpoint state machine
@@ -27,19 +46,97 @@
 # api-surface-typescript
 Effect-TS layer
 
+# Genuinely untested: no test proves the outbound tenant-read surface is
+# well-typed on the Postel instance, or exercises send() with only `type` set.
+Postel factory returns the library instance :: Outbound tenant read surface is present
+Public function signatures match Standard Webhooks event shape :: Event with only the required `type` field
+# keys-replay.test.ts:650 is a placeholder assertion (`expect(true).toBe(true)`),
+# not a real check that AwsKms/GcpKms/Vault throw NotImplementedError.
+Unimplemented config slots fail fast at construction [PORT-SPECIFIC] :: Built-in KMS adapter fails fast
+# No test imports PostelEventMap/AttemptPayload/CircuitTransitionPayload from
+# the package root to prove they're exported.
+Typed lifecycle event emitter [PORT-SPECIFIC] :: Payload types are exported
+
+# Covered under a different name — rename-only follow-up, not a real gap:
+Structured error classes :: EventValidation discrimination
+# inbound-schema.test.ts:56 "EventValidation carries the schema issues and the EVENT_VALIDATION code"
+Structured error classes :: EventValidation on the send path uses the same class and code
+# outbound-schema.test.ts:49, same title, send path
+No string matching on errors :: Stable code property
+# errors.test.ts:60 "code property discrimination: every class exposes its stable SCREAMING_SNAKE code"
+Per-source event schema validation :: Schema output flows to the verified result type
+# inbound-schema.test.ts:20 "a valid payload passes and verified data is typed as the schema output"
+Per-source event schema validation :: Invalid payload throws EventValidation
+# inbound-schema.test.ts:40 "a payload that fails the schema throws EventValidation after the signature check"
+Per-source event schema validation :: No schema leaves behavior unchanged
+# inbound-schema.test.ts:78 "a source without a schema verifies unchanged"
+Unimplemented config slots fail fast at construction [PORT-SPECIFIC] :: Non-in-process worker strategies fail fast
+# keys-replay.test.ts:624,634,641 — separate External/BullMQ/PgBoss fail-fast tests
+Unimplemented config slots fail fast at construction [PORT-SPECIFIC] :: PlaintextKms and a fully-wired config construct without throwing
+# config-audit.test.ts:137 "PlaintextKms (or an omitted kms) and a fully-wired config construct without throwing"
+Unimplemented config slots fail fast at construction [PORT-SPECIFIC] :: Retention and ephemeral-keys slots fail fast
+# config-audit.test.ts:155 "retention and ephemeralKeys slots throw NotImplementedError"
+Unimplemented config slots fail fast at construction [PORT-SPECIFIC] :: Unwired HTTP security knobs fail fast
+# config-audit.test.ts:164 "unwired HTTP security knobs (http.tls / http.dns) throw at the org level"
+Typed lifecycle event emitter [PORT-SPECIFIC] :: Event name correlates to payload type
+# retry.test.ts:255 "on('dead-letter') hands the handler a typed DeadLetterPayload and returns an Unsubscribe"
+Typed lifecycle event emitter [PORT-SPECIFIC] :: on returns an Unsubscribe
+# retry.test.ts:280 "the Unsubscribe returned by on() stops further delivery of events"
+`definePostelConfig` preserves literal config inference [PORT-SPECIFIC] :: definePostelConfig keeps inbound/outbound on the instance type
+# postel-factory.test.ts:654 "keeps inbound/outbound on the instance type for a separately-declared config"
+Outbound event schema registry :: Invalid data throws EventValidation before persistence
+# outbound-schema.test.ts:40 "Registered type with invalid data is rejected before persistence"
+Outbound event schema registry :: Unregistered type stays permissive
+# outbound-schema.test.ts:62 "Unregistered type is fully permissive"
+
 # compliance — runner / suite infra (Track A owns these)
 Suite identity — vendor-neutral oracle for CONTRACT-level behavior
 Two-layer architecture — vectors + runner
-Vector file schema
 CLI surface
-Test categorization by capability and sub-category
 Lockstep versioning with the `@postel/*` release train
 Structured changelog at compliance/CHANGELOG.md
 v0.1.0 initial test scope — receiver-side wire-format and signing behavior
 Out-of-scope behaviors at the current MINOR
 Test ↔ requirement traceability is enforced
-Sender-side compliance driver mechanism
 v0.2.0 sender-side initial test scope
+
+# Vector file schema: "Time templates resolve against --now" is covered
+# verbatim (compliance/cli/template_test.go:32, in a comment naming the
+# scenario). The rest are covered under differently-named Go tests — e.g.
+# TestLoadVectorYAML_SafeSubsetRejections ~ "YAML safe-subset only",
+# TestValidateVectorBytes_AmbiguousStringsCaughtAsTypeError ~ "Ambiguous
+# strings are explicitly quoted", TestCorpus_EveryVectorCitesARealRequirement
+# ~ "Vector cites a valid requirement" — except "Schema field addition" and
+# "Schema breaking change", which are changelog-discipline process scenarios
+# with no automated check.
+Vector file schema :: Sender vector declares mode: sender
+Vector file schema :: Receiver-mode vectors continue to validate against the schema unchanged
+Vector file schema :: Triggers execute in document order
+Vector file schema :: Signature verifies against fixture key material
+Vector file schema :: YAML safe-subset only
+Vector file schema :: Ambiguous strings are explicitly quoted
+Vector file schema :: JSON-Schema validation enforces field shape
+Vector file schema :: Static-signature vector is byte-stable
+Vector file schema :: Test keys are isolated from production keys
+Vector file schema :: Schema field addition
+Vector file schema :: Schema breaking change
+Vector file schema :: Duplicate-outcome verdict has a wire-level signal
+Vector file schema :: Receiver MUST emit the dedup header on the second receipt
+Vector file schema :: Vector cites a valid requirement
+
+# "Categorization filters in CLI" is covered verbatim (runner_test.go:375,
+# in a comment naming the scenario); "Stable test paths" has no test.
+Test categorization by capability and sub-category :: Stable test paths
+
+# Sender-side compliance driver mechanism: 3 of 5 scenarios are covered
+# verbatim in typescript/packages/compliance-driver/test/server.test.ts
+# (this entry used to defer the whole requirement, which was stale — see
+# issue #133). The remaining two ARE functionally tested, just under
+# different wording:
+Sender-side compliance driver mechanism :: register_endpoint validates URL per endpoint-management
+# server.test.ts:59 "a private-IP endpoint is rejected at registration with a structured 422 error_code"
+Sender-side compliance driver mechanism :: clock advance is honored by retry scheduler
+# server.test.ts:48 "clock advance is honored by the host"
 
 # distribution-packaging-typescript — lifecycle / policy / DB-bound
 Package map
@@ -56,21 +153,66 @@ Six-month deprecation period
 Wire format spec versioning
 Spec-test traceability is enforced in CI
 
+# Covered under a different name (distribution-packaging.test.ts:58 is both
+# the "stays private" assertion and the CI guard itself; no separate
+# leak-simulation test exists, but the assertion IS the guard):
+Empty placeholder packages are pre-alpha and unpublished [PORT-SPECIFIC] :: A name-only package stays private
+Empty placeholder packages are pre-alpha and unpublished [PORT-SPECIFIC] :: Guard fails CI on a published empty package
+
 # endpoint-management — sender-side. Most entries are covered by dispatcher.test.ts
 # + retry.test.ts; the queue-depth cap below is genuinely NOT implemented yet (no
 # back-pressure path) and is deferred until the scheduler work lands.
 Per-endpoint queue depth cap
 
-# filtering-transformation — sender-side (`Late binding at dispatch time` covered in sender.test.ts)
+# Genuinely untested:
+Endpoint deletion semantics :: Purge variant removes history
+Endpoint deletion semantics :: In-flight attempt isn't aborted
 
-# key-management — generation / rotation / KMS / ephemeral (covered by keys-replay.test.ts; KMS+ephemeral remain deferred)
-Encryption at rest with KMS adapter
+# Covered under a different name:
+Endpoint state machine with audit trail :: Circuit breaker opens
+# retry.test.ts:304 "Open circuit: K consecutive failures open the breaker and record a circuit-open transition"
+Endpoint creation provisions the initial signing secret [PORT-SPECIFIC] :: v1a endpoint publishes its key without rotation
+# provision-secret.test.ts:11,34 "v1a endpoint publishes its key via publicJwks with no prior rotation"
+Endpoint creation provisions the initial signing secret [PORT-SPECIFIC] :: Default HMAC secret on create
+# provision-secret.test.ts:46 "default HMAC secret on create: one primary v1 secret, excluded from publicJwks"
+Endpoint creation provisions the initial signing secret [PORT-SPECIFIC] :: Opt out of provisioning
+# provision-secret.test.ts:62 "opt out of provisioning: provisionSecret false writes no secret"
+
+# filtering-transformation — sender-side
+# Genuinely untested: no test asserts the typed-envelope shape passed to a
+# predicate filterFn, or a transform changing between retry attempts.
+Predicate filter :: Predicate receives a typed envelope
+Late binding at dispatch time :: Change transform between retries
+
+# key-management — generation / rotation / KMS / ephemeral
+# "Encryption at rest with KMS adapter" (single scenario "Production KMS")
+# is now covered by keys-replay.test.ts:650's interim-behavior test and no
+# longer deferred — see api-surface-typescript's "Built-in KMS adapter
+# fails fast" entry above for the placeholder-assertion caveat on that test.
 # Ephemeral keys via auto-rotation: the config slot exists but timer-driven
 # rotation is not implemented (it lands with the scheduler). Deferred rather
 # than asserted by a placeholder.
 Ephemeral keys via auto-rotation
 
-# multi-tenancy — sender / dispatch side (entries covered by keys-replay.test.ts; scheduler/circuit isolation covered in retry/circuit.ts)
+# Covered under a different name:
+JWKS endpoint mounter :: Fastify JWKS handler
+# fastify-adapter.test.ts:163 "outbound.bindJwks() serves the JWKS document on GET (default provider)"
+JWKS endpoint mounter :: Per-request key refresh
+# http/test/jwks.test.ts:20 "jwksFetchHandler reflects an updated key set on a later request"
+Current public signing keys are retrievable :: publicJwks returns active public keys with kid
+# jwks-publish.test.ts:30
+Current public signing keys are retrievable :: Symmetric secrets are excluded
+# jwks-publish.test.ts:82 "publicJwks excludes symmetric (v1) secrets"
+Outbound asymmetric signatures carry a key id :: v1a request stamps the key id
+# jwks-publish.test.ts:101 "a v1a signature stamps webhook-key-id equal to the published JWK kid"
+Outbound asymmetric signatures carry a key id :: HMAC request carries no key id
+# jwks-publish.test.ts:126 "an HMAC (v1) signature carries no webhook-key-id"
+
+# multi-tenancy — sender / dispatch side
+# "Per-tenant rate limits :: Tenant cap with queue back-pressure" was issue
+# #133's own proof case (persistence tested, enforcement absent, gate
+# green). It landed with a real test (retry.test.ts:763) while this PR was
+# in flight and needs no deferral.
 
 # observability — sender / dispatch side
 OpenTelemetry spans on every operation
@@ -78,16 +220,79 @@ Prometheus metrics
 Structured JSON logs with trace correlation
 Replay UI handler with dry run
 
+# Genuinely untested: no perf/load benchmark harness exists (consistent
+# with receiver's already-deferred "Verify latency budgets" below).
+Health check endpoint :: p99 latency under load
+
+# Covered under a different name:
+Admin HTTP handlers :: Endpoint CRUD via admin router
+# admin-router.test.ts:55 "create, list, and get endpoints through the router"
+Admin HTTP handlers :: Unknown endpoint maps to 404
+# admin-router.test.ts:105 "a missing endpoint id maps to 404 (EndpointNotFound)"
+Admin HTTP handlers :: Default-deny without an authorize hook
+# admin-router.test.ts:26 "default-deny: with no authorize hook configured, every request is 403"
+Admin HTTP handlers :: Read of an unknown or cross-tenant tenant maps to 404
+# admin-router.test.ts:462 (unknown tenant 404) and :469 (cross-tenant 404)
+Admin HTTP handlers :: A malformed list cursor maps to 400 on every cursor-accepting route
+# admin-router.test.ts:298 (endpoints), :431 (messages), :515 (tenants)
+Logger pass-through for runtime events [PORT-SPECIFIC] :: Logger receives a real delivery event
+# config-audit.test.ts:205 "observability.logger receives a real delivery (attempt) event"
+Logger pass-through for runtime events [PORT-SPECIFIC] :: No logger is a no-op
+# config-audit.test.ts:225 "omitting observability.logger is a no-op (dispatch still proceeds)"
+
 # receiver — perf benchmark (deferred until perf harness lands)
 Verify latency budgets
 
-# (All v0.1.0 in-series receiver / key-management / standard-webhooks-
-# compliance requirements are now covered by tests; nothing remains
-# staged across the receiver PR series.)
+# Genuinely untested: signFixture is used pervasively as a test helper but
+# no test asserts the fixture-generator scenario itself.
+Test fixtures for signed payloads :: Generate fixture
 
-# replay-reconciliation — operator-facing (entries covered by keys-replay.test.ts)
+# Covered under a different name:
+Constant-time signature comparison :: Equal-length differing inputs take same time
+# timing.test.ts:20 "walks every byte regardless of mismatch position (no early exit)"
+No payload contents in logs by default :: Default logs
+# log-elision.test.ts:29 "verify() does not log the payload body on success"
+Framework adapters gate verification and map protocol errors to HTTP status :: Bad signature maps to 400
+Framework adapters gate verification and map protocol errors to HTTP status :: Stale timestamp maps to 400
+Framework adapters gate verification and map protocol errors to HTTP status :: Malformed header maps to 400
+Framework adapters gate verification and map protocol errors to HTTP status :: Unknown key id maps to 401
+Framework adapters gate verification and map protocol errors to HTTP status :: Schema-invalid payload maps to 422
+# error-policy.test.ts:17 — one table-driven test asserting all five status mappings
+Framework adapters gate verification and map protocol errors to HTTP status :: Successful verification preserves the adopter handler
+# handle-inbound.test.ts:39 "lets the verified handler return a custom response"
+Framework adapters gate verification and map protocol errors to HTTP status :: Non-PostelError bubbles as 5xx
+# handle-inbound.test.ts:82 and error-policy.test.ts:34
+Framework adapters offer optional dedup-acknowledgement :: First receipt invokes the handler
+# dedup-ack.test.ts:34 "invokes the handler on first receipt with no dedup header"
+Framework adapters offer optional dedup-acknowledgement :: Duplicate receipt is acknowledged without invoking the handler
+# dedup-ack.test.ts:51 "acknowledges a duplicate with 2xx + X-Postel-Dedup-Result and skips the handler"
+Framework adapters offer optional dedup-acknowledgement :: Dedup disabled is a pass-through
+# dedup-ack.test.ts:71 "is a pass-through when no dedup adapter is configured"
+Framework adapters offer optional dedup-acknowledgement :: Dedup runs only after verification
+# dedup-ack.test.ts:81 "records no dedup state for a request that fails verification"
+Framework adapters offer optional dedup-acknowledgement :: Handler failure releases the dedup record
+# dedup-ack.test.ts "handler failure releases the dedup record so a retry reaches the handler again" (lowercase-only mismatch)
+Framework adapters offer optional dedup-acknowledgement :: Release failure does not mask the handler's error
+# dedup-ack.test.ts "release failure does not mask the handler's error" (lowercase-only mismatch)
+Framework adapters offer optional dedup-acknowledgement :: Handler failure is a no-op for an already-answered duplicate
+# dedup-ack.test.ts "handler failure is a no-op for an already-answered duplicate" (lowercase-only mismatch)
+
+# replay-reconciliation — operator-facing
+# Covered under a different name:
+Default replay throughput :: Throttle overridden
+# keys-replay.test.ts:301 "Throttled replay: replayThroughput caps re-enqueue rate per second"
 
 # retry-policy — sender-side (entries covered by retry.test.ts)
+
+# sender — sender-side (other entries covered by sender/dispatcher tests).
+# DNS rebinding protection, TLS verification by default, and HTTP client
+# implementation [PORT-SPECIFIC] are all fully covered now (dns-pinning.test.ts,
+# tls-verification.test.ts, dispatcher.test.ts:852) and no longer deferred.
+
+# Genuinely untested: the real BullMQ dispatch runtime doesn't exist yet;
+# only the interim NotImplementedError throw is tested (see
+# api-surface-typescript's "Non-in-process worker strategies fail fast" above).
+Adapter mode for external job queues :: BullMQ adapter
 
 # standard-webhooks-compliance — non-v0.1.0 extensions / wrap
 Wraps the official signing library
@@ -95,10 +300,46 @@ Versioning extension via webhook-version header
 IETF-alignment compatibility mode on the receiver
 Compliance test suite
 
+# "Other specs cross-reference this requirement" is meta-documentation
+# about spec cross-referencing discipline, not a runtime WHEN/THEN scenario
+# — no code can assert it.
+JWKS discovery extension :: Other specs cross-reference this requirement
+
+# Covered under a different name:
+JWKS discovery extension :: JWKS exposes not_after
+# jwks-handler.test.ts:46 "preserves the optional not_after field on each JWK"
+
 # storage-layer — adapter matrix / outbox
-# Adapter matrix, Postgres/SQLite support, and migrations are covered by the
-# @postel/pg and @postel/sqlite adapters.
 Worker fairness across tenants
 Worker throughput target
-HTTP client implementation [PORT-SPECIFIC]
 Configurable retention with automatic pruning
+
+# Genuinely untested — no test asserts DDL shape or column presence directly
+# (behavior is exercised indirectly through the storage-testkit conformance
+# suite, but no test inspects the schema itself):
+Schema is a fixed set of canonical tables :: Canonical DDL inspectable
+Schema is a fixed set of canonical tables :: messages carries dispatch-state columns
+Schema is a fixed set of canonical tables :: endpoints carries delivery-config columns
+Schema is a fixed set of canonical tables :: endpoints carries the structural filter column
+
+# Genuinely untested — no Postgres-dialect Drizzle test exists (only sqlite
+# and Docker-gated mysql); no CLI schema-generator exists yet (@postel/cli
+# is a pre-alpha placeholder); Drizzle-wraps-host-db and transaction-degrade
+# behavior have no test; the helpers package has no dependency-graph check;
+# and the MySQL-through-ORM path is entirely Docker-gated (`it.skip`):
+Postgres support across the adapter matrix :: Drizzle ORM adapter shares the host's Postgres pool
+Migrations runnable from CLI and programmatic API :: ORM schema generation
+Adapter matrix with three categories :: Drizzle host wraps its own db
+Host transaction passthrough :: Adapter without real transaction support degrades gracefully
+Helpers package for adapter authors :: Helpers package has no DB dependency
+MySQL support across the adapter matrix :: MySQL through an ORM adapter shares the host's pool
+
+# Functionally proven but not under the literal scenario name: the shared
+# storage-testkit conformance suite runs against a real Drizzle-sqlite
+# instance (drizzle/test/conformance.test.ts:11), but no test names
+# "Drizzle SQLite adapter" itself.
+SQLite support across the adapter matrix :: Drizzle SQLite adapter
+
+# Covered under a different name:
+Adapter matrix with three categories :: Drop-in standalone usage
+# pg/test/adapter.test.ts:11 (standalone reserve) + sqlite/test/adapter.test.ts:51 "Idempotent standalone boot: re-running migrations is a no-op"
