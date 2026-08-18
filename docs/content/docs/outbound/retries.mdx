@@ -17,16 +17,24 @@ import { ExponentialBackoff } from "@postel/core";
 const postel = Postel({
   outbound: {
     retryPolicy: ExponentialBackoff({
-      maxAttempts: 8,
-      initialDelay: "1s",
-      maxDelay:     "1h",
-      jitter:       0.2,     // ± 20%
+      maxAttempts: 8,       // default: the schedule length (9)
+      jitter:      0.2,     // ± 20%, the default
     }),
   },
 });
 ```
 
-Doubles the delay between attempts up to `maxDelay`. Jitter de-correlates retries across a stampede.
+The delay for attempt *n* is read from a fixed schedule, not computed by doubling. The default schedule spans three days:
+
+| Attempt | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| Delay before it | 5s | 5m | 30m | 2h | 5h | 10h | 1d | 2d | 3d |
+
+Pass your own `schedule` (an array of durations) to replace it; `maxAttempts` defaults to the schedule length, and attempts past the end of a shorter schedule reuse its last delay. Jitter de-correlates retries across a stampede.
+
+```ts
+ExponentialBackoff({ schedule: ["10s", "1m", "10m", "1h"] }); // 4 attempts
+```
 
 ### `LinearBackoff`
 
@@ -48,11 +56,22 @@ import { Custom } from "@postel/core";
 
 Custom({
   maxAttempts: 6,
-  delay: (attempt) => Math.min(60 * 60, attempt ** 2 * 5),  // seconds
+  compute: (attempt) => `${Math.min(3600, attempt ** 2 * 5)}s`,
 });
 ```
 
-For SLAs that don't fit the canned strategies.
+For SLAs that don't fit the canned strategies. `compute` receives the number of failed attempts so far and returns the delay before the next one, as a duration (`"30s"`, `"5m"`, or plain milliseconds).
+
+## What counts as a failure
+
+The dispatcher decides from the response status:
+
+| Response | Outcome |
+|---|---|
+| `2xx` | Success — done. |
+| `408`, `429` | Failed, retryable. A `Retry-After` header (seconds or HTTP-date) is honored: when it asks for longer than the strategy's next delay, it wins. |
+| Any other `4xx` | Failed **permanently** — the request itself is wrong, so retrying is wasted work. No further attempts. |
+| `5xx`, network error, timeout | Failed, retryable on the strategy's schedule. |
 
 ## Circuit breaker
 
@@ -89,7 +108,16 @@ const postel = Postel({
 
 ## Dead-letter
 
-Messages that exhaust `maxAttempts` move to the dead-letter table. `postel.outbound.replay({ filter: m => m.deadLetter, freshWebhookId: false })` re-enqueues them. The receiver sees the same `webhook-id` (or a fresh one if you ask for it).
+Messages that exhaust `maxAttempts` move to `status: "dead-lettered"` (the `dead_letter` database view collects them for ops queries). Replay re-enqueues them:
+
+```ts
+await postel.outbound.replay({
+  filter: (msg) => (msg as { status: string }).status === "dead-lettered",
+  freshWebhookId: false,
+});
+```
+
+The receiver sees the same `webhook-id` (or a fresh one if you pass `freshWebhookId: true`).
 
 ## Per-endpoint overrides
 

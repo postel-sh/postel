@@ -39,11 +39,15 @@ export const postel = Postel({
 
 ## Shared transactions
 
-`Postel({...}).outbound.transaction(cb)` hands your callback a connection-bound executor you thread into `send()`, so the outbox insert commits atomically with your business writes:
+Open the transaction with TypeORM as usual and pass the transaction's `QueryRunner` to `send()` as `tx`, so the outbox insert commits atomically with your business writes:
 
 ```ts
-await postel.outbound.transaction(async (tx) => {
-  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+await dataSource.transaction(async (em) => {
+  await em.save(order);
+  await postel.outbound.send(
+    { type: "order.created", data: { /* ... */ } },
+    { tx: em.queryRunner },
+  );
 });
 ```
 

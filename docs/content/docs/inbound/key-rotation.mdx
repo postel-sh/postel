@@ -9,7 +9,7 @@ Postel handles rotation two ways, depending on whether your producers and receiv
 
 ## Multi-verifier overlap (HMAC)
 
-Each inbound source's `verify` slot accepts a single `Verifier` or a `ReadonlyArray<Verifier>`. During rotation, configure the source with both new and old — producers can sign with either, and the receiver accepts both for the duration of the overlap window.
+Each inbound source's `verify` slot accepts a single `Verifier`, a `ReadonlyArray<Verifier>`, or a named `VerifierMap` (covered [below](#naming-verifiers-instead-of-counting-on-index)). During rotation, configure the source with both new and old — producers can sign with either, and the receiver accepts both for the duration of the overlap window.
 
 ```ts
 import { Postel, Secret } from "@postel/core";
@@ -76,7 +76,7 @@ The `Verifier | ReadonlyArray<Verifier>` shape is deliberate. Postel makes no di
 This generalizes beyond same-scheme rotation in two ways:
 
 - **Cross-scheme migration.** Mix HMAC and Ed25519: `verify: [Secret(LEGACY_HMAC), Keyset({ jwksUri: NEW_JWKS })]`. During the window the receiver accepts either; once `matchedVerifierIndex === 0` stops firing the HMAC path can be removed.
-- **Multi-tenant receivers.** Pass a per-tenant array assembled at request time; the same composition logic applies.
+- **Multi-tenant receivers.** `Postel({ inbound })` sources are fixed at factory time, so per-tenant secrets assembled at request time go through the low-level `verify(rawBody, headers, secretOrKeyset)` export instead — same checks, you supply the keys per call.
 
 ## JWKS — asymmetric rotation without secret sharing
 

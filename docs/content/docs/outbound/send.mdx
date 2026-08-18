@@ -63,7 +63,7 @@ await postel.outbound.endpoints.create({
 });
 ```
 
-Filter strings support globs and (for advanced cases) a custom `filter: (event) => boolean` predicate. See [Endpoints](/docs/outbound/endpoints).
+Filter strings support globs; for advanced cases there's a structural `filter` clause and a custom `filterFn` predicate. See [Endpoints](/docs/outbound/endpoints).
 
 ## Validating what you send
 
@@ -90,7 +90,7 @@ If `data` doesn't satisfy the registered schema, `send()` throws `EventValidatio
 
 ## What about idempotency on send?
 
-`SendEvent` accepts an optional `idempotencyKey`. If the caller provides one, the outbox uses a unique constraint on `(idempotencyKey)` to enforce at-most-once *enqueuing* — a repeated call with the same key resolves to the existing message's `id` with `reused: true` instead of inserting a second row. That flag is how you tell "accepted" from "deduplicated"; sends without a key always report `reused: false`.
+`SendEvent` accepts an optional `idempotencyKey`. If the caller provides one, the outbox uses a unique constraint on `(tenant_id, idempotency_key)` to enforce at-most-once *enqueuing* — a repeated call with the same key **and the same tenant** resolves to the existing message's `id` with `reused: true` instead of inserting a second row. The key is scoped per tenant: the same key under two different `tenantId`s creates two messages. That flag is how you tell "accepted" from "deduplicated"; sends without a key always report `reused: false`.
 
 If you don't pass one, Postel generates a stable `webhook-id` for the receiver but does not enforce send-side idempotency. (You usually don't need both — the [receiver's dedup](/docs/inbound/deduplication) handles the at-least-once contract on the wire.)
 

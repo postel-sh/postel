@@ -46,7 +46,7 @@ import { Postel, Secret } from "@postel/core";
 
 export const postel = Postel({
   inbound: {
-    vendor: { verify: Secret(process.env.WEBHOOK_SECRET) },
+    vendor: { verify: Secret(process.env.WEBHOOK_SECRET!) },
   },
 });
 ```
@@ -64,18 +64,22 @@ ExpressWebAdapter(postel, app).inbound.vendor.post("/webhooks/vendor", (req, res
 Or keep your own route and call `verify` directly — no framework adapter required:
 
 ```ts
+import { PostelError } from "@postel/core";
+import { headersFromNode } from "@postel/http/node";
+import { statusForError } from "@postel/http";
+
 app.post("/webhooks/vendor", express.raw({ type: "application/json" }), async (req, res) => {
   try {
-    const { event } = await postel.inbound.vendor.verify(req.body, req.headers);
+    const { event } = await postel.inbound.vendor.verify(req.body, headersFromNode(req.headers));
     res.sendStatus(200);
   } catch (err) {
-    if (err instanceof SignatureInvalid)  return res.sendStatus(401);
-    if (err instanceof TimestampTooOld)   return res.sendStatus(401);
-    if (err instanceof MalformedHeader)   return res.sendStatus(400);
+    if (err instanceof PostelError) return res.sendStatus(statusForError(err));
     throw err;
   }
 });
 ```
+
+`headersFromNode` flattens Node's `string | string[]` header values into the `Record<string, string>` shape `verify` expects, and `statusForError` is the [same code→status mapping](/docs/reference/errors#http-status-mapping) the framework gates use.
 
 ## Migration steps
 

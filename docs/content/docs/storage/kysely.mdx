@@ -50,7 +50,7 @@ Open a Kysely transaction and pass it to `send()` — the outbox insert commits 
 ```ts
 await db.transaction().execute(async (trx) => {
   await trx.insertInto("orders").values({ /* ... */ }).execute();
-  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx: trx });
+  await postel.outbound.send({ type: "order.created", data: { /* ... */ } }, { tx: trx });
 });
 ```
 

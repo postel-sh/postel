@@ -19,11 +19,19 @@ Verify a Standard Webhooks-signed request from `acme` — a stand-in for any pro
 
 <Install packages="@postel/core" />
 
-<Callout title="Nothing is on npm yet" type="warn">
-Every `@postel/*` package sits at `0.0.0` with no release tag, so this install fails until the first release ships. Clone [the repo](https://github.com/postel-sh/postel) and build from `typescript/` instead.
+<Callout title="Nothing is on npm yet — run from source" type="warn">
+Every `@postel/*` package sits at `0.0.0` with no release tag, so this install fails until the first release ships. Until then, build from source and link the workspace packages:
+
+```bash
+git clone https://github.com/postel-sh/postel
+cd postel/typescript
+pnpm install && pnpm build
+```
+
+Then depend on the built packages from your app — e.g. `"@postel/core": "file:../postel/typescript/packages/core"` (or `pnpm link`). The runnable [`examples/nextjs-prisma`](https://github.com/postel-sh/postel/tree/main/typescript/examples/nextjs-prisma) reference app wires everything this way already.
 </Callout>
 
-Zero runtime dependencies. If you use a web framework, add its adapter too — `@postel/hono`, `@postel/express`, `@postel/fastify`, `@postel/nestjs`, or `@postel/http` for any Fetch runtime.
+Zero runtime dependencies. If you use a web framework, add its adapter too — `@postel/hono`, `@postel/express`, `@postel/fastify`, `@postel/nestjs`, `@postel/nextjs`, or `@postel/http` for any Fetch runtime.
 
 </Step>
 

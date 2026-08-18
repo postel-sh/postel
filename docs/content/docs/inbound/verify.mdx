@@ -37,8 +37,8 @@ export async function POST(req: Request) {
     // event.type, event.data, event.timestamp — all parsed for you.
     return new Response("ok", { status: 200 });
   } catch (err) {
-    if (err instanceof SignatureInvalid)  return new Response("bad signature",          { status: 401 });
-    if (err instanceof TimestampTooOld)   return new Response("timestamp out of window", { status: 401 });
+    if (err instanceof SignatureInvalid)  return new Response("bad signature",          { status: 400 });
+    if (err instanceof TimestampTooOld)   return new Response("timestamp out of window", { status: 400 });
     if (err instanceof MalformedHeader)   return new Response("malformed headers",       { status: 400 });
     throw err;
   }
@@ -53,7 +53,7 @@ On success:
 
 ```ts
 {
-  event: { type: string; data: unknown; timestamp: string; /* ... */ },
+  event: { type: string; data: unknown; timestamp?: string; /* ... */ },
   matchedVerifierIndex: number,  // which verifier in the configured array matched (0 if a single Verifier)
 }
 ```
@@ -81,7 +81,7 @@ const { event } = await postel.inbound.orders.verify(body, headers);
 event.data; // typed { id: string; total: number } — inferred from the schema
 ```
 
-Validation runs **after** the signature check. If the payload doesn't match, `verify` throws `EventValidation` (code `EVENT_VALIDATION`), which the framework gate maps to **HTTP 422** — distinct from the `400`/`401` signature failures. The inferred type flows through the framework adapters too, so a gated handler's `c.var.postel` / `req.postel` carries it. Sources without a `schema` are unchanged; `event.data` stays `unknown`.
+Validation runs **after** the signature check. If the payload doesn't match, `verify` throws `EventValidation` (code `EVENT_VALIDATION`), which the framework gate maps to **HTTP 422** — distinct from the `400` signature failures (only `UnknownKeyId` maps to `401`; the [full mapping](/docs/reference/errors#http-status-mapping) is in the errors reference). The inferred type flows through the framework adapters too, so a gated handler's `c.var.postel` / `req.postel` carries it. Sources without a `schema` are unchanged; `event.data` stays `unknown`.
 
 ## What `verify` throws
 
@@ -105,7 +105,8 @@ Mistakes in your own configuration — an empty verifier array, a `dedup()` call
 Postel({
   inbound: {
     <source-name>: {
-      verify: Verifier | ReadonlyArray<Verifier>,  // required — Secret/PublicKey/Keyset/Noop, or your own
+      verify: Verifier | ReadonlyArray<Verifier>   // required — Secret/PublicKey/Keyset/Noop, or your own
+            | VerifierMap,                          // named map — see /docs/inbound/key-rotation
       schema?: StandardSchemaV1,                     // zod / valibot / … — validates & types event.data
       dedup?: DedupAdapter,                          // see /docs/inbound/deduplication
       dedupTtl?: number | string,                    // "24h", "1d", or seconds

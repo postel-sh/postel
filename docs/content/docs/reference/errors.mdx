@@ -36,7 +36,7 @@ Error
 
 **Code:** `MALFORMED_HEADER`
 **Thrown by:** `postel.inbound.<source>.verify` — step 1.
-**When:** A required webhook header (`webhook-id`, `webhook-timestamp`, `webhook-signature`) is missing or doesn't parse. Strictly a wire-format outcome — mistakes in your own configuration (an empty verifier array, a bad `secretOrKeyset`) throw `ConfigurationError` instead.
+**When:** A required webhook header (`webhook-id`, `webhook-timestamp`, `webhook-signature`) is missing or doesn't parse — or the body, after a successful signature check, isn't a JSON object with a string `type`. Strictly a wire-format outcome — mistakes in your own configuration (an empty verifier array, a bad `secretOrKeyset`) throw `ConfigurationError` instead.
 
 **Recovery:** `400 Bad Request`. The producer's request is malformed; retrying won't help.
 
@@ -52,25 +52,25 @@ if (err instanceof MalformedHeader) {
 **Thrown by:** `postel.inbound.<source>.verify` — step 2.
 **When:** `|now - webhook-timestamp| > toleranceSeconds`. Default tolerance is 300 seconds (±5 minutes). Short-circuits the verifier array — timestamp validity is independent of which key signed.
 
-**Recovery:** `401 Unauthorized`. Most often clock skew on the producer side or a replay attempt. Retrying won't help unless the producer fixes their clock.
+**Recovery:** `400 Bad Request` — the status Postel's own framework gates return. Most often clock skew on the producer side or a replay attempt. Retrying won't help unless the producer fixes their clock.
 
 ```ts
 if (err instanceof TimestampTooOld) {
-  return new Response("timestamp out of window", { status: 401 });
+  return new Response("timestamp out of window", { status: 400 });
 }
 ```
 
 ### `SignatureInvalid`
 
 **Code:** `SIGNATURE_INVALID`
-**Thrown by:** `postel.inbound.<source>.verify` — step 4 / step 5.
-**When:** No configured verifier matched the request's signature. Also thrown if the body fails to JSON-parse after a successful signature check (which almost always means downstream tampering).
+**Thrown by:** `postel.inbound.<source>.verify` — step 4.
+**When:** No configured verifier matched the request's signature. (When every verifier fails for the same wire-format reason, the composed error is `MalformedHeader` instead — mixed failure reasons surface as `SignatureInvalid`.)
 
-**Recovery:** `401 Unauthorized`. The single most common cause is [body re-serialization](/docs/inbound/raw-bytes) — check whether your framework adapter (or a proxy in front of it) re-serializes JSON before `verify` sees it.
+**Recovery:** `400 Bad Request` — the status Postel's own framework gates return. The single most common cause is [body re-serialization](/docs/inbound/raw-bytes) — check whether your framework adapter (or a proxy in front of it) re-serializes JSON before `verify` sees it.
 
 ```ts
 if (err instanceof SignatureInvalid) {
-  return new Response("bad signature", { status: 401 });
+  return new Response("bad signature", { status: 400 });
 }
 ```
 
@@ -78,7 +78,7 @@ if (err instanceof SignatureInvalid) {
 
 **Code:** `UNKNOWN_KEY_ID`
 **Thrown by:** `postel.inbound.<source>.verify` — step 3 (JWKS mode only).
-**When:** The `kid` in the request's `webhook-id` header doesn't appear in the cached keyset. The next verifier in the array is tried; if every verifier exhausts, the final error is `SignatureInvalid`.
+**When:** The `kid` in the request's `webhook-key-id` header doesn't appear in the cached keyset. The next verifier in the array is tried; if every verifier exhausts, the final error is `SignatureInvalid`.
 
 **Recovery:** Usually transient — the producer rotated keys faster than your keyset cache TTL. Check that your `refreshEvery` and `cacheTtl` settings match the producer's rotation cadence. See [Key rotation → JWKS](/docs/inbound/key-rotation#jwks--asymmetric-rotation-without-secret-sharing).
 
@@ -134,7 +134,7 @@ if (err instanceof EndpointNotFound) {
 
 ### Reserved codes (defined, not yet emitted by the runtime)
 
-`EndpointDisabled` (`ENDPOINT_DISABLED`) and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them yet: a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the in-memory storage adapter has no migration step. They become live when the database-backed storage adapters land.
+`EndpointDisabled` (`ENDPOINT_DISABLED`) and `MigrationRequired` (`MIGRATION_REQUIRED`) are part of the cross-port error taxonomy and ship as `PostelError` subclasses you can reference, but the TypeScript runtime does not throw them today: a disabled endpoint is recorded as a `skipped` attempt (not a thrown error), and the storage adapters gate schema drift through their own migration checks. The codes stay reserved so ports and the [admin surface](/docs/outbound/admin) agree on the vocabulary.
 
 ### `ConfigurationError`
 
@@ -147,24 +147,41 @@ if (err instanceof EndpointNotFound) {
 ### `NotImplementedError`
 
 **Code:** `NOT_IMPLEMENTED`
-**Thrown by:** Configuring a worker strategy that has no runtime yet.
-**When:** You set `outbound.workers` to a non-in-process strategy — `BullMQ(...)`, `PgBoss(...)`, or `External(...)`. The outbound runtime itself is available; `send`, `replay`, `endpoints.*`, `keys.*`, `tenants.*`, and `messages.*` all work against the in-process `InMemoryStorage` adapter. Only the external job-queue strategies are config slots without an adapter today.
+**Thrown by:** Configuring a typed-but-unshipped config slot. All of these fail fast at construction (or at `endpoints.create`/`update`) rather than accepting a value the runtime would silently ignore:
 
-**Recovery:** Use the in-process worker pool (`InProcess(...)`, the default) until the BullMQ / PgBoss adapters ship. Failing fast here is deliberate — it stops a queue-backed config from silently running in-process.
+- `outbound.workers` set to a non-in-process strategy — `BullMQ(...)`, `PgBoss(...)`, or `External(...)`
+- `outbound.kms` set to anything but `PlaintextKms` — `AwsKms(...)`, `GcpKms(...)`, `Vault(...)`
+- `outbound.retention` (automatic pruning has not shipped)
+- `outbound.ephemeralKeys` (timer-driven key rotation has not shipped)
+- `outbound.http.tls` / `outbound.http.dns` (TLS opt-out and DNS pinning are not wired)
+- `maxInflight` on `endpoints.create(...)` / `endpoints.update(...)` (per-endpoint concurrency caps are not wired)
 
-## Discriminating by code
+**Recovery:** Remove the unwired slot (or use the shipped default, e.g. the in-process worker pool). Failing fast here is deliberate — it stops an unwired config from silently no-opping.
 
-If you're not on TypeScript, or you're filtering logs:
+## HTTP status mapping
+
+Every framework gate (and `@postel/http`'s `statusForError`) maps codes to statuses the same way:
+
+| Code | Status |
+|---|---|
+| `SIGNATURE_INVALID`, `TIMESTAMP_TOO_OLD`, `MALFORMED_HEADER`, `ENDPOINT_DISABLED`, `SSRF_BLOCKED` | `400` |
+| `UNKNOWN_KEY_ID` | `401` |
+| `EVENT_VALIDATION`, `ENDPOINT_VALIDATION` | `422` |
+| `ENDPOINT_NOT_FOUND` | `404` |
+| `MIGRATION_REQUIRED` | `500` |
+
+Rolling your own handler? Use the same mapping so producers see one consistent contract:
 
 ```ts
 import { PostelError } from "@postel/core";
+import { statusForError } from "@postel/http";
 
 try {
   await postel.inbound.vendor.verify(body, headers);
 } catch (err) {
   if (err instanceof PostelError) {
     log.warn("verify failed", { code: err.code, message: err.message });
-    return new Response("rejected", { status: err.code === "MALFORMED_HEADER" ? 400 : 401 });
+    return new Response("rejected", { status: statusForError(err) });
   }
   throw err;
 }

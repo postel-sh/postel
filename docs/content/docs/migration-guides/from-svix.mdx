@@ -31,7 +31,7 @@ Svix and Postel agree on the wire format — Svix co-authored the [Standard Webh
 
 1. Add `@postel/core` and a [storage adapter](/docs/storage) for your database — standalone `@postel/pg` / `@postel/sqlite` / `@postel/mysql`, or the adapter matching whatever ORM your app already uses. This replaces Svix's own Postgres instance; Postel's tables (`endpoints`, `messages`, `attempts`, …) live in your database now.
 2. Recreate each Svix Application as either a Postel `tenantId` (if you need per-customer isolation and rate limits) or drop the concept entirely if you only ran one.
-3. For every Svix Endpoint, call `postel.outbound.endpoints.create({ url, types: filterTypes, tenantId })`. `filterTypes` values carry over unchanged — they're the same glob semantics.
+3. For every Svix Endpoint, call `postel.outbound.endpoints.create({ url, types: filterTypes, tenantId })`. Exact-match `filterTypes` values carry over unchanged; Postel's `types` additionally support globs (`"order.*"`), which Svix's exact-match filters don't have.
 4. Replace every `svix.message.create(...)` call with `postel.outbound.send({ type, data }, { tx })`, and — this is the point of moving off a separate service — pass `{ tx }` to join the DB transaction of the write that caused the event. Svix, being an external service, could never offer this.
 5. Mount [`@postel/admin`](/docs/outbound/admin) (`adminRouter(postel, { authorize })`) wherever you need the operational surface the Svix Dashboard gave you — endpoint CRUD, replay, message/attempt reads, key rotation.
 6. Swap any code that polled Svix's operational webhooks for `postel.on(event, handler)` listeners in-process.

@@ -5,7 +5,7 @@ description: How Postel persists the outbox and audit trail, and how to pick a s
 
 The outbound sender needs durable storage for two things: the **transactional outbox** (every `send()` is a row workers reserve and dispatch) and the **audit trail** (attempts, endpoint state, replay history). Postel talks to that storage through one operation-shaped `Storage` interface, so the same sender runs unchanged against any backend.
 
-`@postel/core` ships an in-memory `Storage` adapter (`InMemoryStorage`) — the zero-config default and the reference implementation. It's perfect for tests and single-process demos, but it doesn't survive a restart. For production you wire a database-backed adapter.
+`@postel/core` ships an in-memory `Storage` adapter (`InMemoryStorage`) — the reference implementation (`storage` is a required config slot; there is no implicit default). It's perfect for tests and single-process demos, but it doesn't survive a restart. For production you wire a database-backed adapter.
 
 ```ts title="lib/postel.ts"
 import { Postel } from "@postel/core";
@@ -25,7 +25,7 @@ Every adapter's write operations accept an optional `tx` — your application's 
 ```ts
 await db.transaction(async (tx) => {
   await tx.insert(orders).values({ /* ... */ });
-  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+  await postel.outbound.send({ type: "order.created", data: { /* ... */ } }, { tx });
 });
 ```
 

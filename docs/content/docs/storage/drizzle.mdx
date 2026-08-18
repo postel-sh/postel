@@ -43,7 +43,7 @@ Pass a Drizzle transaction to `send()` so the outbox insert commits atomically w
 ```ts
 await db.transaction(async (tx) => {
   await tx.insert(orders).values({ /* ... */ });
-  await postel.send({ type: "order.created", data: { /* ... */ } }, { tx });
+  await postel.outbound.send({ type: "order.created", data: { /* ... */ } }, { tx });
 });
 ```
 

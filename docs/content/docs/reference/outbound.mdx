@@ -40,8 +40,8 @@ type OutboundEventRegistry = Record<string, StandardSchemaV1<unknown, unknown>>;
 interface HttpDefaults {
   readonly requestTimeout?: DurationMs;
   readonly overallDeadline?: DurationMs;
-  readonly tls?: { readonly verify?: boolean };
-  readonly dns?: { readonly pinResolution?: boolean };
+  readonly tls?: { readonly verify?: boolean };   // typed, not wired — setting it throws NotImplementedError
+  readonly dns?: { readonly pinResolution?: boolean }; // typed, not wired — setting it throws NotImplementedError
   readonly ssrf?: {
     readonly blockPrivateRanges?: boolean;
     readonly allowedRanges?: ReadonlyArray<string>;
@@ -184,7 +184,7 @@ interface EndpointCreateOptions {
   readonly metadata?: Record<string, unknown>;
   readonly tenantId?: string;
   readonly allowHttp?: boolean;
-  readonly maxInflight?: number;
+  readonly maxInflight?: number; // typed, not wired — passing it throws NotImplementedError
   readonly provisionSecret?: boolean;
 }
 

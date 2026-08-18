@@ -98,4 +98,4 @@ Both bounds exist because either one alone can leave you exposed:
 - `maxMessages` alone doesn't help if a single slow endpoint stalls the batch — `deadline` guarantees the invocation still returns.
 - `deadline` alone doesn't help if the backlog is huge and every message dispatches instantly — `maxMessages` bounds how much work (and how many concurrent HTTP requests) one invocation takes on.
 
-Start conservative — a `deadline` well under your platform's hard timeout, and a `maxMessages` sized to your typical backlog between cron runs — then watch `result.reachedDeadline` and `postel.health().outboxDepth` (see [Observability](/docs/outbound/observability)) to see whether you're keeping up.
+Start conservative — a `deadline` well under your platform's hard timeout, and a `maxMessages` sized to your typical backlog between cron runs — then watch `result.reachedDeadline` and `(await postel.health()).outboxDepth` (see [Observability](/docs/outbound/observability)) to see whether you're keeping up.
