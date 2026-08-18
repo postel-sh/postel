@@ -22,6 +22,10 @@ export interface NormalizedRequest {
 export interface GateSource<TData = unknown> {
   verify(rawBody: RawBody, headers: WebhookHeaders): Promise<ComposedVerifyResult<TData>>;
   dedup?(messageId: string, options?: { readonly ttl?: number | string }): Promise<DedupResult>;
+  // Undoes the dedup record `dedup()` just wrote. Called only when the handler
+  // throws right after a fresh (non-duplicate) record, so the next retry is
+  // treated as unseen. Absent when the configured adapter has no `release`.
+  dedupRelease?(messageId: string): Promise<void>;
 }
 
 export interface HandlerResponseInit {

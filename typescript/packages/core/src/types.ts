@@ -67,6 +67,10 @@ export interface DedupAdapter {
     ttlSeconds: number,
     options?: DedupRecordOptions,
   ) => Promise<DedupResult>;
+  // Undoes a `record()` call for this id. Optional: an adapter that omits it
+  // can't take part in the gate's release-on-handler-failure recovery, and
+  // the id simply stays recorded for its TTL (today's behavior).
+  readonly release?: (messageId: string) => Promise<void>;
 }
 
 export interface SignFixtureOptions<TData = unknown> {

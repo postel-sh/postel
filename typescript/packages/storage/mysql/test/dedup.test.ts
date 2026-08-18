@@ -49,6 +49,11 @@ class MockMysqlClient implements MysqlDedupClient {
       }
       return [{ affectedRows: 0 }, []];
     }
+    if (trimmed.startsWith("DELETE FROM")) {
+      const [messageId] = values as [string];
+      const existed = this.rows.delete(messageId);
+      return [{ affectedRows: existed ? 1 : 0 }, []];
+    }
     throw new Error(`unexpected query: ${trimmed}`);
   }
 }
@@ -113,5 +118,15 @@ describe("Idempotency dedup helper", () => {
     const adapter = MysqlDedup({ client, autoMigrate: false });
     await dedup("x", { ttl: 60, adapter });
     expect(client.ddlCalls).toBe(0);
+  });
+
+  it("release() undoes a record so the id is treated as unseen again (MySQL)", async () => {
+    const client = new MockMysqlClient();
+    const adapter = MysqlDedup({ client });
+    await dedup("msg_release_mysql", { ttl: "1h", adapter });
+    await adapter.release?.("msg_release_mysql");
+    expect(await dedup("msg_release_mysql", { ttl: "1h", adapter })).toEqual({
+      duplicate: false,
+    });
   });
 });

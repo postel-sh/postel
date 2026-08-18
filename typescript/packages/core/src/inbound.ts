@@ -67,7 +67,10 @@ export type InboundSourceApi<S extends InboundSource> = {
     headers: WebhookHeaders,
   ): Promise<ComposedVerifyResult<TData>>;
 } & (S extends { readonly dedup: DedupAdapter }
-  ? { dedup(messageId: string, options?: InboundDedupOptions): Promise<DedupResult> }
+  ? {
+      dedup(messageId: string, options?: InboundDedupOptions): Promise<DedupResult>;
+      dedupRelease(messageId: string): Promise<void>;
+    }
   : object);
 
 export type InboundApi<S extends Record<string, InboundSource>> = {
@@ -215,6 +218,9 @@ function buildSourceApi<S extends InboundSource>(key: string, source: S): Inboun
       }
       const recordOpts = options?.tx !== undefined ? { tx: options.tx } : undefined;
       return dedupAdapter.record(messageId, ttlToSeconds(ttl), recordOpts);
+    },
+    async dedupRelease(messageId: string): Promise<void> {
+      await dedupAdapter.release?.(messageId);
     },
   } as InboundSourceApi<S>;
 }

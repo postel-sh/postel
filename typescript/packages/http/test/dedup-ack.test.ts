@@ -95,4 +95,108 @@ describe("Framework adapters offer optional dedup-acknowledgement", () => {
     );
     expect(ok.kind).toBe("verified");
   });
+
+  it("handler failure releases the dedup record so a retry reaches the handler again", async () => {
+    const src = dedupSource();
+    const sig = await signed("e");
+    const req = { rawBody: sig.body, headers: sig.headers, method: "POST" };
+
+    await expect(
+      handleInbound(src, req, {
+        dedup: { ttl: "1h" },
+        onVerified: () => {
+          throw new Error("downstream write failed");
+        },
+      }),
+    ).rejects.toThrow("downstream write failed");
+
+    let ran = false;
+    const retry = await handleInbound(src, req, {
+      dedup: { ttl: "1h" },
+      onVerified: () => {
+        ran = true;
+      },
+    });
+    expect(retry.kind).toBe("verified");
+    expect(ran).toBe(true);
+  });
+
+  it("an adapter without release preserves prior behavior: the id stays recorded on handler failure", async () => {
+    const src = Postel({
+      inbound: {
+        vendor: {
+          verify: Secret(SECRET),
+          clock: fixedClock(NOW),
+          dedup: {
+            async record() {
+              return { duplicate: false };
+            },
+            // no `release` — the gate has nothing to call
+          },
+        },
+      },
+    }).inbound.vendor;
+    const sig = await signed("h");
+    const req = { rawBody: sig.body, headers: sig.headers, method: "POST" };
+
+    await expect(
+      handleInbound(src, req, {
+        dedup: { ttl: "1h" },
+        onVerified: () => {
+          throw new Error("downstream write failed");
+        },
+      }),
+    ).rejects.toThrow("downstream write failed");
+  });
+
+  it("release failure does not mask the handler's error", async () => {
+    const src = Postel({
+      inbound: {
+        vendor: {
+          verify: Secret(SECRET),
+          clock: fixedClock(NOW),
+          dedup: {
+            async record() {
+              return { duplicate: false };
+            },
+            async release() {
+              throw new Error("release backend unavailable");
+            },
+          },
+        },
+      },
+    }).inbound.vendor;
+    const sig = await signed("f");
+    const req = { rawBody: sig.body, headers: sig.headers, method: "POST" };
+
+    await expect(
+      handleInbound(src, req, {
+        dedup: { ttl: "1h" },
+        onVerified: () => {
+          throw new Error("downstream write failed");
+        },
+      }),
+    ).rejects.toThrow("downstream write failed");
+  });
+
+  it("handler failure is a no-op for an already-answered duplicate", async () => {
+    const src = dedupSource();
+    const sig = await signed("g");
+    const req = { rawBody: sig.body, headers: sig.headers, method: "POST" };
+
+    await handleInbound(src, req, { dedup: { ttl: "1h" } });
+
+    const duplicate = await handleInbound(src, req, {
+      dedup: { ttl: "1h" },
+      onVerified: () => {
+        throw new Error("must not run for a duplicate");
+      },
+    });
+    expect(duplicate.kind).toBe("duplicate");
+
+    // The id is still recorded (a duplicate response never releases): a
+    // further attempt is still a duplicate, not a fresh retry.
+    const stillDuplicate = await handleInbound(src, req, { dedup: { ttl: "1h" } });
+    expect(stillDuplicate.kind).toBe("duplicate");
+  });
 });

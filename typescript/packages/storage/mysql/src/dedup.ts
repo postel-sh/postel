@@ -75,5 +75,10 @@ export function MysqlDedup(options: MysqlDedupOptions): DedupAdapter {
       );
       return { duplicate: affectedRows(refreshed) === 0 };
     },
+
+    async release(messageId: string): Promise<void> {
+      await migrateOnce();
+      await options.client.query(`DELETE FROM \`${tableName}\` WHERE message_id = ?`, [messageId]);
+    },
   };
 }

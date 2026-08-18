@@ -72,5 +72,10 @@ export function PgDedup(options: PgDedupOptions): DedupAdapter {
       );
       return { duplicate: (res.rowCount ?? 0) === 0 };
     },
+
+    async release(messageId: string): Promise<void> {
+      await migrateOnce();
+      await options.client.query(`DELETE FROM ${fqtn} WHERE message_id = $1`, [messageId]);
+    },
   };
 }
