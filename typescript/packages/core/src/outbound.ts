@@ -4,6 +4,7 @@ import { assertHttpWired } from "./internal/config-guards.js";
 import { ed25519Jwk, ed25519Kid } from "./internal/jwk.js";
 import type { CursorOptions, Page } from "./pagination.js";
 import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
+import { buildRateLimitDispatcher } from "./sender/dispatcher/rate-limit.js";
 import { buildEndpointApi } from "./sender/endpoint/crud.js";
 import { PostelEventEmitter } from "./sender/events.js";
 import { generateAsymmetric, generateSymmetric } from "./sender/keys/generate.js";
@@ -24,7 +25,7 @@ import type {
   TenantRecord,
 } from "./storage/types.js";
 import type { KmsStrategy } from "./strategies/kms.js";
-import { FixedRate } from "./strategies/rate-limit.js";
+import { FixedRate, decodeRateLimitStrategy } from "./strategies/rate-limit.js";
 import type { RateLimitStrategy } from "./strategies/rate-limit.js";
 import type { RetryStrategy } from "./strategies/retry.js";
 import type { SigningStrategy } from "./strategies/signing.js";
@@ -404,22 +405,11 @@ function toMessage<TData = unknown>(m: StoredMessage): Message<TData> {
   return { ...m, data: m.data as TData };
 }
 
-function toRateLimitStrategy(raw: unknown): RateLimitStrategy | null {
-  if (raw === null || typeof raw !== "object") return null;
-  const obj = raw as { kind?: unknown; perSecond?: unknown };
-  if (typeof obj.perSecond !== "number") return null;
-  // "fixed" is the only kind today; a bare legacy `{ perSecond }` (written
-  // before this strategy type existed) or an unrecognized `kind` also decodes
-  // as fixed rather than being dropped, since perSecond is the only field that
-  // ever mattered for dispatch throttling.
-  return FixedRate({ perSecond: obj.perSecond });
-}
-
 function toTenant(rec: TenantRecord): Tenant {
   const { rateLimit } = rec.metadata ?? {};
   return {
     id: rec.id,
-    rateLimit: toRateLimitStrategy(rateLimit),
+    rateLimit: decodeRateLimitStrategy(rateLimit),
     metadata: rec.metadata,
     createdAt: rec.createdAt,
   };
@@ -471,11 +461,15 @@ export function buildOutboundRuntime<
     },
     httpDispatcher,
   );
+  const rateLimitDispatcher = buildRateLimitDispatcher(
+    { storage: config.storage, clock },
+    retryDispatcher,
+  );
   const pool = new WorkerPool({
     storage: config.storage,
     clock,
     concurrency,
-    dispatchOne: retryDispatcher,
+    dispatchOne: rateLimitDispatcher,
   });
   const endpointApi = buildEndpointApi(config.storage, {
     ...(config.http?.ssrf
