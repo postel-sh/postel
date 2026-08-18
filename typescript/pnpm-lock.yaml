@@ -157,7 +157,21 @@ importers:
         specifier: 7.8.1
         version: 7.8.1
 
-  packages/frameworks/nextjs: {}
+  packages/frameworks/nextjs:
+    dependencies:
+      '@postel/admin':
+        specifier: workspace:*
+        version: link:../../admin
+      '@postel/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@postel/http':
+        specifier: workspace:*
+        version: link:../../http
+    devDependencies:
+      '@types/node':
+        specifier: 20.17.10
+        version: 20.17.10
 
   packages/http:
     dependencies:

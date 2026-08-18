@@ -50,7 +50,6 @@ describe("Empty placeholder packages are pre-alpha and unpublished [PORT-SPECIFI
       "@postel/bun",
       "@postel/cli",
       "@postel/effect",
-      "@postel/nextjs",
       "@postel/test",
     ]);
   });

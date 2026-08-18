@@ -1,9 +1,14 @@
 {
   "name": "@postel/nextjs",
-  "private": true,
   "version": "0.0.0",
-  "description": "Next.js route handlers and admin handlers for the Postel receiver.",
+  "description": "Next.js Route Handler bindings for the Postel receiver.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/frameworks/nextjs"
+  },
+  "keywords": ["webhooks", "standard-webhooks", "nextjs", "route-handler", "receiver", "postel"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -19,7 +24,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --target es2022 --clean",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "engines": {
@@ -27,5 +33,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@postel/admin": "workspace:*",
+    "@postel/core": "workspace:*",
+    "@postel/http": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10"
   }
 }

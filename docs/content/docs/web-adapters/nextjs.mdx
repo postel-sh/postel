@@ -1,22 +1,55 @@
 ---
 title: Next.js
 icon: nextjs
-description: Next.js Route Handlers are Fetch-native — verify with @postel/http's fetchWebhook today; a dedicated @postel/nextjs adapter is planned.
+description: NextjsWebAdapter binds typed Route Handlers over @postel/http — inbound.<source>.post, bindJwks, and an admin router binding.
 ---
 
-Next.js Route Handlers receive a Web `Request`, so the framework-agnostic [`@postel/http`](/docs/reference/http) handler works directly — no adapter needed:
+Next.js Route Handlers receive a Web `Request` and return a `Response`, so `@postel/nextjs` is a thin, typed facade over [`@postel/http`](/docs/reference/http): `NextjsWebAdapter(postel)` returns Route Handlers keyed by HTTP method — App Router route files export those directly.
+
+## Inbound webhook route
 
 ```ts title="app/api/webhooks/vendor/route.ts"
-import { fetchWebhook } from "@postel/http";
-import { postel } from "@/lib/postel";
+import { NextjsWebAdapter } from "@postel/nextjs";
+import { postel } from "@/lib/postel"; // Postel({ inbound: { vendor: { verify: Secret(...) } } })
 
-const handler = fetchWebhook(postel.inbound.vendor, {
-  onVerified: async ({ event }) => {
-    await handleOrder(event);
-  },
+const nwa = NextjsWebAdapter(postel);
+
+export const { POST } = nwa.inbound.vendor.post((result) => {
+  return Response.json({ ok: true, type: result.event.type });
 });
-
-export const POST = (req: Request) => handler(req);
 ```
 
-The `@postel/nextjs` package name is **reserved** — a stub exporting only a marker today. A future release adds Route-Handler type ergonomics on top of `@postel/http`; until then, the snippet above is the supported path.
+The source key is type-checked against the sources you configured, and `result` is typed to that source's schema output. On failure the gate short-circuits with the mapped HTTP status and your handler never runs; a non-`PostelError` bubbles as a 5xx. Use `.on(method, handler, opts)` to gate a body-bearing method other than `POST` (`PUT` | `PATCH`).
+
+## JWKS route
+
+```ts title="app/.well-known/webhooks-keys/route.ts"
+import { NextjsWebAdapter } from "@postel/nextjs";
+import { postel } from "@/lib/postel";
+
+export const { GET } = NextjsWebAdapter(postel).outbound.bindJwks();
+```
+
+## Admin route
+
+```ts title="app/admin/[...path]/route.ts"
+import { NextjsWebAdapter } from "@postel/nextjs";
+import { postel } from "@/lib/postel";
+
+export const { GET, POST, PUT, PATCH, DELETE } = NextjsWebAdapter(postel).admin.bindAdminRoutes({
+  authorize: (req) => check(req),
+});
+```
+
+## Low-level primitive
+
+The facade is sugar over `withWebhook(source, handler, opts?)` — use it to gate a route file by hand without the facade:
+
+```ts
+import { withWebhook } from "@postel/nextjs";
+import { postel } from "@/lib/postel";
+
+export const POST = withWebhook(postel.inbound.vendor, (result) =>
+  Response.json({ ok: true, type: result.event.type }),
+);
+```
