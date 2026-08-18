@@ -10,7 +10,10 @@ import {
 } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
+import { dispatchMessage } from "../src/sender/dispatcher/dispatch.js";
+import { buildRateLimitDispatcher } from "../src/sender/dispatcher/rate-limit.js";
 import { CircuitBreakerRegistry } from "../src/sender/retry/circuit.js";
+import { FixedRate } from "../src/strategies/rate-limit.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -651,5 +654,143 @@ describe("Endpoint state machine with audit trail", () => {
     expect(target).toBeDefined();
     expect(target?.toState).toBe("disabled");
     expect(target?.actor).toBe("system");
+  });
+});
+
+async function seedTenantEndpoint(
+  storage: ReturnType<typeof InMemoryStorage>,
+  tenantId: string,
+  url: string,
+): Promise<string> {
+  const endpoint = await storage.endpoints.create({
+    id: `ep_rl_${tenantId}`,
+    tenantId,
+    url,
+    state: "active",
+    types: null,
+    channels: null,
+    filter: null,
+    retryPolicy: null,
+    headers: null,
+    signing: null,
+    metadata: null,
+    allowHttp: true,
+    maxInflight: null,
+    http: null,
+    circuitBreaker: null,
+    autoDisable: null,
+  });
+  await storage.secrets.insert({
+    id: `sec_rl_${tenantId}`,
+    endpointId: endpoint.id,
+    algorithm: "v1",
+    status: "primary",
+    priority: 0,
+    encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+    notAfter: null,
+  });
+  return endpoint.id;
+}
+
+describe("Per-tenant rate limits", () => {
+  it("Tenant cap with queue back-pressure: dispatch to a capped tenant proceeds at no more than N attempts per second", async () => {
+    const clock = FakeClock();
+    const storage = InMemoryStorage();
+    await seedTenantEndpoint(storage, "t_42", "https://example.test/hook");
+    await storage.tenants.upsert("t_42", { rateLimit: FixedRate({ perSecond: 3 }) });
+    for (let i = 0; i < 5; i++) {
+      await storage.insertMessage({
+        id: `msg_rl_${i}`,
+        tenantId: "t_42",
+        type: "evt.x",
+        data: {},
+        channels: null,
+        idempotencyKey: null,
+        version: null,
+        ttlSeconds: null,
+        createdAt: clock.now(),
+        expiresAt: null,
+      });
+    }
+    let dispatched = 0;
+    const dispatchOne = buildRateLimitDispatcher({ storage, clock }, async () => {
+      dispatched += 1;
+      return { status: "success", responseCode: 200, latencyMs: 1, error: null };
+    });
+    const batch = await storage.reserveBatch({
+      workerId: "w_rl",
+      leaseMs: 30_000,
+      batchSize: 10,
+      now: clock.now(),
+    });
+    expect(batch.length).toBe(5);
+    for (const msg of batch) {
+      await dispatchMessage({ storage, clock }, msg, dispatchOne);
+    }
+    // Only 3 of the 5 pending messages fit inside the 1s cap.
+    expect(dispatched).toBe(3);
+  });
+
+  it("Excess attempts queue instead of dropping: an over-cap message stays pending and is rescheduled past the window", async () => {
+    const clock = FakeClock();
+    const storage = InMemoryStorage();
+    await seedTenantEndpoint(storage, "t_42", "https://example.test/hook");
+    await storage.tenants.upsert("t_42", { rateLimit: FixedRate({ perSecond: 1 }) });
+    await storage.insertMessage({
+      id: "msg_rl_a",
+      tenantId: "t_42",
+      type: "evt.x",
+      data: {},
+      channels: null,
+      idempotencyKey: null,
+      version: null,
+      ttlSeconds: null,
+      createdAt: clock.now(),
+      expiresAt: null,
+    });
+    await storage.insertMessage({
+      id: "msg_rl_b",
+      tenantId: "t_42",
+      type: "evt.x",
+      data: {},
+      channels: null,
+      idempotencyKey: null,
+      version: null,
+      ttlSeconds: null,
+      createdAt: clock.now(),
+      expiresAt: null,
+    });
+    const dispatchOne = buildRateLimitDispatcher({ storage, clock }, async () => ({
+      status: "success",
+      responseCode: 200,
+      latencyMs: 1,
+      error: null,
+    }));
+    const batch = await storage.reserveBatch({
+      workerId: "w_rl",
+      leaseMs: 30_000,
+      batchSize: 10,
+      now: clock.now(),
+    });
+    for (const msg of batch) {
+      await dispatchMessage({ storage, clock }, msg, dispatchOne);
+    }
+    const over = await storage.getMessage("msg_rl_b");
+    // Not dropped: still pending, rescheduled to fire once the window resets.
+    expect(over?.status).toBe("pending");
+    expect(over?.scheduledFor?.getTime()).toBeGreaterThanOrEqual(clock.now().getTime() + 1000);
+
+    clock.advance(1000);
+    const secondBatch = await storage.reserveBatch({
+      workerId: "w_rl",
+      leaseMs: 30_000,
+      batchSize: 10,
+      now: clock.now(),
+    });
+    for (const msg of secondBatch) {
+      await dispatchMessage({ storage, clock }, msg, dispatchOne);
+    }
+    const delivered = await storage.getMessage("msg_rl_b");
+    expect(delivered?.status).toBe("dispatched");
   });
 });
