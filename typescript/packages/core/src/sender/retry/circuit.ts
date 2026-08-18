@@ -46,14 +46,18 @@ export class CircuitBreakerRegistry {
     return { failures: 0, state: "open", openedAt };
   }
 
-  private async getState(
+  // Only awaits (reconcile) on a genuine cache miss — the common case, where
+  // this process already has a local entry for the endpoint, stays fully
+  // synchronous so persistence reconciliation adds no overhead to the hot
+  // per-attempt path.
+  private async stateFor(
     tenantId: TenantId | null,
     endpointId: EndpointId,
     persistedState: EndpointState,
+    key: string,
   ): Promise<CircuitState> {
-    const key = this.key(tenantId, endpointId);
-    const prev = this.states.get(key);
-    if (prev) return prev;
+    const cached = this.states.get(key);
+    if (cached) return cached;
     const fresh = await this.reconcile(endpointId, persistedState);
     this.states.set(key, fresh);
     return fresh;
@@ -65,7 +69,9 @@ export class CircuitBreakerRegistry {
     persistedState: EndpointState,
     perEndpoint?: CircuitBreakerDefaults,
   ): Promise<boolean> {
-    const state = await this.getState(tenantId, endpointId, persistedState);
+    const key = this.key(tenantId, endpointId);
+    const cached = this.states.get(key);
+    const state = cached ?? (await this.stateFor(tenantId, endpointId, persistedState, key));
     if (state.state !== "open") return false;
     const cooldownInput = perEndpoint?.cooldown ?? this.defaults.cooldown ?? "30s";
     const cooldownMs = durationToMs(cooldownInput);
@@ -86,7 +92,9 @@ export class CircuitBreakerRegistry {
     persistedState: EndpointState,
     perEndpoint?: CircuitBreakerDefaults,
   ): Promise<{ opened: boolean; closed: boolean }> {
-    const state = await this.getState(tenantId, endpointId, persistedState);
+    const key = this.key(tenantId, endpointId);
+    const cached = this.states.get(key);
+    const state = cached ?? (await this.stateFor(tenantId, endpointId, persistedState, key));
     if (success) {
       const wasOpen = state.state === "open";
       state.failures = 0;
