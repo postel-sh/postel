@@ -92,5 +92,18 @@ import { adminRouter } from "@postel/admin";
 await app.register(fastifyPostel); // raw-Buffer parser for the verifyWebhook routes in this scope
 
 app.post("/webhooks/vendor", { preHandler: verifyWebhook(postel.inbound.vendor) }, async () => "ok");
+```
+
+Wiring `verifyWebhook` with the `dedup` option by hand? Also attach the exported `releaseDedupOnError` as the route's `onError` hook so a throwing handler [releases the dedup record](/docs/inbound/deduplication#delivery-semantics-of-gate-level-dedup) — facade routes install it automatically:
+
+```ts
+app.post(
+  "/webhooks/vendor",
+  {
+    preHandler: verifyWebhook(postel.inbound.vendor, { dedup: { ttl: "1h" } }),
+    onError: releaseDedupOnError,
+  },
+  async () => "ok",
+);
 app.all("/admin/*", fetchToFastify(adminRouter(postel, { authorize: (req) => checkAdminToken(req) })));
 ```

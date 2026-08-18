@@ -15,6 +15,7 @@ import {
   type WebhookMethod,
   handleInbound,
   jwksFetchHandler,
+  releaseOnThrow,
 } from "@postel/http";
 
 export type { ComposedVerifyResult } from "@postel/core";
@@ -110,6 +111,23 @@ function sendOutcome(
   return reply.send(body ?? null);
 }
 
+const kDedupRelease = Symbol("postel.dedupRelease");
+
+type ReleasableRequest = FastifyRequest & { [kDedupRelease]?: () => Promise<void> };
+
+/**
+ * Route-level `onError` hook that releases the dedup record a `verifyWebhook`
+ * preHandler wrote, when the route handler then throws. A preHandler runs
+ * before the handler and cannot observe its failure, so the release has to
+ * ride Fastify's error hook. Routes registered through `FastifyWebAdapter`
+ * get this automatically; attach it yourself when wiring `verifyWebhook` with
+ * dedup by hand.
+ */
+export const releaseDedupOnError = async (req: FastifyRequest): Promise<void> => {
+  const release = (req as ReleasableRequest)[kDedupRelease];
+  if (release) await release().catch(() => undefined);
+};
+
 export function verifyWebhook<TData = unknown>(
   source: GateSource<TData>,
   opts?: WebhookHandlerOptions<TData>,
@@ -122,6 +140,11 @@ export function verifyWebhook<TData = unknown>(
     );
     if (outcome.kind === "verified") {
       setVerified(req, outcome.context.result);
+      const { messageId } = outcome.context;
+      if (outcome.dedupRecorded && messageId !== undefined) {
+        (req as ReleasableRequest)[kDedupRelease] = () =>
+          source.dedupRelease?.(messageId) ?? Promise.resolve();
+      }
       return;
     }
     return sendOutcome(reply, outcome.status, outcome.headers, outcome.body);
@@ -143,7 +166,7 @@ export function withWebhook<TData = unknown>(
       return sendOutcome(reply, outcome.status, outcome.headers, outcome.body);
     }
     setVerified(req, outcome.context.result);
-    return handler(req, reply);
+    return releaseOnThrow(source, outcome, () => handler(req, reply));
   };
 }
 
@@ -296,6 +319,7 @@ export function FastifyWebAdapter<const C extends PostelConfig>(
               method,
               url: route,
               preHandler: verifyWebhook(source, webhook),
+              onError: releaseDedupOnError,
               handler,
             });
           });
@@ -303,13 +327,15 @@ export function FastifyWebAdapter<const C extends PostelConfig>(
         }
         // (route, options, handler) — inject the gate as the first preHandler,
         // strip the Postel-only `webhook` key, forward the rest to Fastify.
-        const { webhook, preHandler, ...routeOpts } = optionsOrHandler;
+        const { webhook, preHandler, onError, ...routeOpts } = optionsOrHandler;
         const userPreHandlers: preHandlerHookHandler[] =
           preHandler === undefined
             ? []
             : Array.isArray(preHandler)
               ? (preHandler as preHandlerHookHandler[])
               : [preHandler as preHandlerHookHandler];
+        const userOnError =
+          onError === undefined ? [] : Array.isArray(onError) ? onError : [onError];
         const handler = maybeHandler as FastifyHandler;
         pending.push((scope) => {
           scope.route({
@@ -317,6 +343,7 @@ export function FastifyWebAdapter<const C extends PostelConfig>(
             method,
             url: route,
             preHandler: [verifyWebhook(source, webhook), ...userPreHandlers],
+            onError: [releaseDedupOnError, ...userOnError],
             handler,
           });
         });

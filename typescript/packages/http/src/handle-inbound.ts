@@ -83,5 +83,30 @@ export async function handleInbound<TData = unknown>(
     headers: custom?.headers ? { ...custom.headers } : {},
     body: custom?.body,
     context,
+    dedupRecorded,
   };
+}
+
+// Runs `fn` (a gate's downstream handler invocation) and, when it throws after
+// this request wrote a fresh dedup record, releases that record before the
+// error propagates — the framework-adapter half of the receiver spec's
+// `Handler failure releases the dedup record` scenario. A release failure must
+// not mask the handler's real error.
+export async function releaseOnThrow<TData, T>(
+  source: GateSource<TData>,
+  outcome: WebhookOutcome<TData>,
+  fn: () => T | Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (
+      outcome.kind === "verified" &&
+      outcome.dedupRecorded &&
+      outcome.context.messageId !== undefined
+    ) {
+      await source.dedupRelease?.(outcome.context.messageId).catch(() => undefined);
+    }
+    throw err;
+  }
 }

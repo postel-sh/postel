@@ -15,6 +15,7 @@ import {
   type WebhookMethod,
   handleInbound,
   jwksFetchHandler,
+  releaseOnThrow,
 } from "@postel/http";
 
 export type { ComposedVerifyResult } from "@postel/core";
@@ -85,7 +86,12 @@ export function verifyWebhook<TData = unknown>(
       return outcomeResponse(outcome.status, outcome.headers, outcome.body);
     if (outcome.kind === "duplicate") return outcomeResponse(outcome.status, outcome.headers);
     setVerified(c, outcome.context.result);
+    // Hono catches downstream handler errors itself and surfaces them as
+    // `c.error` after next() resolves — releaseOnThrow would never see them.
     await next();
+    if (c.error && outcome.dedupRecorded && outcome.context.messageId !== undefined) {
+      await source.dedupRelease?.(outcome.context.messageId).catch(() => undefined);
+    }
   };
 }
 
@@ -105,7 +111,7 @@ export function withWebhook<TData = unknown>(
       return outcomeResponse(outcome.status, outcome.headers, outcome.body);
     if (outcome.kind === "duplicate") return outcomeResponse(outcome.status, outcome.headers);
     setVerified(c, outcome.context.result);
-    return handler(c);
+    return releaseOnThrow(source, outcome, () => handler(c));
   };
 }
 

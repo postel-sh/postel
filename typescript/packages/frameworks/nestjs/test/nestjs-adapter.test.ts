@@ -9,6 +9,7 @@ import {
   Secret,
   signFixture,
 } from "@postel/core";
+import { lastValueFrom, of, throwError } from "rxjs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,6 +18,7 @@ import {
   POSTEL_INSTANCE,
   PostelModule,
   WebhookGuard,
+  WebhookReleaseInterceptor,
   WebhookResult,
 } from "../src/index.js";
 
@@ -247,5 +249,65 @@ describe("PostelModule", () => {
     expect(dynamicModule.global).toBe(true);
     expect(dynamicModule.providers).toEqual([{ provide: POSTEL_INSTANCE, useValue: postel }]);
     expect(dynamicModule.exports).toEqual([POSTEL_INSTANCE]);
+  });
+});
+
+describe("Framework adapters offer optional dedup-acknowledgement", () => {
+  it("Handler failure releases the dedup record: WebhookReleaseInterceptor releases before the error propagates", async () => {
+    const Guard = WebhookGuard("vendor", { dedup: { ttl: "1h" } });
+    const guard = new Guard(dedupVendor());
+    const interceptor = new WebhookReleaseInterceptor();
+    const sig = await signed("order.created", "rel_1");
+    const req: Record<string, unknown> = {
+      rawBody: sig.body,
+      headers: { ...sig.headers },
+      method: "POST",
+    };
+
+    expect(await guard.canActivate(ctx(req))).toBe(true);
+    const failing = { handle: () => throwError(() => new Error("downstream write failed")) };
+    await expect(lastValueFrom(interceptor.intercept(ctx(req), failing))).rejects.toThrow(
+      "downstream write failed",
+    );
+
+    const retryReq: Record<string, unknown> = {
+      rawBody: sig.body,
+      headers: { ...sig.headers },
+      method: "POST",
+    };
+    expect(await guard.canActivate(ctx(retryReq))).toBe(true);
+  });
+
+  it("a successful handler keeps the record: the second delivery surfaces as a duplicate outcome", async () => {
+    const Guard = WebhookGuard("vendor", { dedup: { ttl: "1h" } });
+    const guard = new Guard(dedupVendor());
+    const interceptor = new WebhookReleaseInterceptor();
+    const sig = await signed("order.created", "rel_2");
+    const req: Record<string, unknown> = {
+      rawBody: sig.body,
+      headers: { ...sig.headers },
+      method: "POST",
+    };
+
+    expect(await guard.canActivate(ctx(req))).toBe(true);
+    const succeeding = { handle: () => of("ok") };
+    expect(await lastValueFrom(interceptor.intercept(ctx(req), succeeding))).toBe("ok");
+
+    let caught: unknown;
+    try {
+      await guard.canActivate(
+        ctx({ rawBody: sig.body, headers: { ...sig.headers }, method: "POST" }),
+      );
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(HttpException);
+    expect((caught as HttpException).getStatus()).toBe(200);
+  });
+
+  it("the interceptor is a pass-through for routes without a recorded dedup id", async () => {
+    const interceptor = new WebhookReleaseInterceptor();
+    const succeeding = { handle: () => of("ok") };
+    expect(await lastValueFrom(interceptor.intercept(ctx({}), succeeding))).toBe("ok");
   });
 });

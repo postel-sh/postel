@@ -15,6 +15,7 @@ import {
   type WebhookMethod,
   handleInbound,
   jwksFetchHandler,
+  releaseOnThrow,
 } from "@postel/http";
 
 export type { ComposedVerifyResult } from "@postel/core";
@@ -61,7 +62,7 @@ export function withWebhook<TData = unknown>(
     if (outcome.kind === "error")
       return outcomeResponse(outcome.status, outcome.headers, outcome.body);
     if (outcome.kind === "duplicate") return outcomeResponse(outcome.status, outcome.headers);
-    return handler(outcome.context.result, req);
+    return releaseOnThrow(source, outcome, () => handler(outcome.context.result, req));
   };
 }
 

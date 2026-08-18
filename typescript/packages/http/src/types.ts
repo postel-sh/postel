@@ -63,6 +63,9 @@ export type WebhookOutcome<TData = unknown> =
       readonly headers: Record<string, string>;
       readonly body: string | Uint8Array | undefined;
       readonly context: WebhookContext<TData>;
+      // True when this request wrote a fresh dedup record — the signal a gate
+      // needs to release that record if the downstream handler then throws.
+      readonly dedupRecorded: boolean;
     }
   | {
       readonly kind: "duplicate";

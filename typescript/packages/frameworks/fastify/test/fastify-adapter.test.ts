@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@postel/core";
-import { InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
+import { InMemoryDedup, InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 
@@ -293,5 +293,103 @@ describe("Route options and middleware composition", () => {
     expect(res.statusCode).toBe(400);
     expect(userPreHandlerRan).toBe(false);
     await app.close();
+  });
+});
+
+describe("Framework adapters offer optional dedup-acknowledgement", () => {
+  const dedupVendor = () =>
+    Postel({
+      inbound: {
+        vendor: { verify: Secret(SECRET), clock: fixedClock(NOW), dedup: InMemoryDedup() },
+      },
+    });
+
+  it("Handler failure releases the dedup record: the facade's onError hook leaves the retry unseen", async () => {
+    const app = Fastify();
+    let calls = 0;
+    FastifyWebAdapter(dedupVendor(), app).inbound.vendor.post(
+      "/webhooks/vendor",
+      async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("downstream write failed");
+        return { ok: true };
+      },
+      { dedup: { ttl: "1h" } },
+    );
+
+    const sig = await signed("order.created", "rel_1");
+    const inject = () =>
+      app.inject({
+        method: "POST",
+        url: "/webhooks/vendor",
+        headers: { ...sig.headers, "content-type": "application/json" },
+        payload: sig.body,
+      });
+    const first = await inject();
+    expect(first.statusCode).toBe(500);
+    const retry = await inject();
+    expect(retry.statusCode).toBe(200);
+    expect(retry.headers["x-postel-dedup-result"]).toBeUndefined();
+    expect(calls).toBe(2);
+  });
+
+  it("Handler failure releases the dedup record on the route-options path (user hooks preserved)", async () => {
+    const app = Fastify();
+    let calls = 0;
+    let userOnErrorRan = false;
+    FastifyWebAdapter(dedupVendor(), app).inbound.vendor.post(
+      "/webhooks/vendor",
+      {
+        webhook: { dedup: { ttl: "1h" } },
+        onError: async () => {
+          userOnErrorRan = true;
+        },
+      },
+      async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("downstream write failed");
+        return { ok: true };
+      },
+    );
+
+    const sig = await signed("order.created", "rel_2");
+    const inject = () =>
+      app.inject({
+        method: "POST",
+        url: "/webhooks/vendor",
+        headers: { ...sig.headers, "content-type": "application/json" },
+        payload: sig.body,
+      });
+    expect((await inject()).statusCode).toBe(500);
+    expect(userOnErrorRan).toBe(true);
+    const retry = await inject();
+    expect(retry.statusCode).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  it("a successful handler keeps the record: the second delivery is acknowledged as duplicate", async () => {
+    const app = Fastify();
+    let calls = 0;
+    FastifyWebAdapter(dedupVendor(), app).inbound.vendor.post(
+      "/webhooks/vendor",
+      async () => {
+        calls += 1;
+        return { ok: true };
+      },
+      { dedup: { ttl: "1h" } },
+    );
+
+    const sig = await signed("order.created", "rel_3");
+    const inject = () =>
+      app.inject({
+        method: "POST",
+        url: "/webhooks/vendor",
+        headers: { ...sig.headers, "content-type": "application/json" },
+        payload: sig.body,
+      });
+    expect((await inject()).statusCode).toBe(200);
+    const dup = await inject();
+    expect(dup.headers["x-postel-dedup-result"]).toBe("duplicate");
+    expect(calls).toBe(1);
   });
 });

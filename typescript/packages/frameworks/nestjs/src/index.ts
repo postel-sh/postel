@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import {
+  type CallHandler,
   type CanActivate,
   type DynamicModule,
   type ExecutionContext,
@@ -7,6 +8,7 @@ import {
   Inject,
   Injectable,
   Module,
+  type NestInterceptor,
   type Type,
   createParamDecorator,
 } from "@nestjs/common";
@@ -19,6 +21,8 @@ import type {
   PostelInstance,
 } from "@postel/core";
 import { type GateSource, type WebhookHandlerOptions, handleInbound } from "@postel/http";
+import { type Observable, from, throwError } from "rxjs";
+import { catchError, mergeMap } from "rxjs/operators";
 
 export type { ComposedVerifyResult } from "@postel/core";
 export type { WebhookContext, WebhookHandlerOptions } from "@postel/http";
@@ -36,6 +40,7 @@ interface PostelRequest {
   headers: Record<string, string | string[] | undefined>;
   method: string;
   postel?: ComposedVerifyResult<unknown>;
+  postelDedupRelease?: () => Promise<void>;
 }
 
 // biome-ignore lint/complexity/noStaticOnlyClass: a NestJS module is a class by framework contract
@@ -89,6 +94,10 @@ export function WebhookGuard(key: string, opts?: WebhookHandlerOptions): Type<Ca
       );
       if (outcome.kind === "verified") {
         req.postel = outcome.context.result;
+        const { messageId } = outcome.context;
+        if (outcome.dedupRecorded && messageId !== undefined) {
+          req.postelDedupRelease = () => source.dedupRelease?.(messageId) ?? Promise.resolve();
+        }
         return true;
       }
       const body =
@@ -100,6 +109,29 @@ export function WebhookGuard(key: string, opts?: WebhookHandlerOptions): Type<Ca
   Inject(POSTEL_INSTANCE)(PostelWebhookGuard, undefined, 0);
   return PostelWebhookGuard;
 }
+
+/**
+ * Releases the dedup record a `WebhookGuard` wrote when the route handler then
+ * throws. A guard runs before the handler and cannot observe its failure, so
+ * the release rides an interceptor: pair `@UseGuards(WebhookGuard("x", { dedup }))`
+ * with `@UseInterceptors(WebhookReleaseInterceptor)` on dedup-gated routes.
+ * Routes without dedup (or whose adapter has no `release`) pass through untouched.
+ */
+export class WebhookReleaseInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const req = context.switchToHttp().getRequest<PostelRequest>();
+    const release = req.postelDedupRelease;
+    if (!release) return next.handle();
+    return next
+      .handle()
+      .pipe(
+        catchError((err: unknown) =>
+          from(release().catch(() => undefined)).pipe(mergeMap(() => throwError(() => err))),
+        ),
+      );
+  }
+}
+Injectable()(WebhookReleaseInterceptor);
 
 export const Event = createParamDecorator((_data: unknown, context: ExecutionContext) => {
   return context.switchToHttp().getRequest<PostelRequest>().postel?.event;

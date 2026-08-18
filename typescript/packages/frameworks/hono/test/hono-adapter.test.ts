@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@postel/core";
-import { InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
+import { InMemoryDedup, InMemoryStorage, Postel, Secret, signFixture } from "@postel/core";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
@@ -203,5 +203,92 @@ describe("Admin router binding", () => {
     );
     const res = await app.request("/admin/endpoints");
     expect(res.status).toBe(403);
+  });
+});
+
+describe("Framework adapters offer optional dedup-acknowledgement", () => {
+  const dedupVendor = () =>
+    Postel({
+      inbound: {
+        vendor: { verify: Secret(SECRET), clock: fixedClock(NOW), dedup: InMemoryDedup() },
+      },
+    });
+
+  it("Handler failure releases the dedup record: a throwing facade handler leaves the retry unseen", async () => {
+    const app = new Hono();
+    let calls = 0;
+    HonoWebAdapter(dedupVendor(), app).inbound.vendor.post(
+      "/webhooks/vendor",
+      (c) => {
+        calls += 1;
+        if (calls === 1) throw new Error("downstream write failed");
+        return c.json({ ok: true });
+      },
+      { dedup: { ttl: "1h" } },
+    );
+
+    const sig = await signed("order.created", "rel_1");
+    const init = {
+      method: "POST",
+      headers: { ...sig.headers, "content-type": "application/json" },
+      body: sig.body,
+    };
+    const first = await app.request("/webhooks/vendor", init);
+    expect(first.status).toBe(500);
+    const retry = await app.request("/webhooks/vendor", init);
+    expect(retry.status).toBe(200);
+    expect(retry.headers.get("x-postel-dedup-result")).toBeNull();
+    expect(calls).toBe(2);
+  });
+
+  it("Handler failure releases the dedup record on the verifyWebhook middleware path", async () => {
+    const app = new Hono();
+    const postel = dedupVendor();
+    let calls = 0;
+    app.post(
+      "/webhooks/vendor",
+      verifyWebhook(postel.inbound.vendor, { dedup: { ttl: "1h" } }),
+      (c) => {
+        calls += 1;
+        if (calls === 1) throw new Error("downstream write failed");
+        return c.json({ ok: true });
+      },
+    );
+
+    const sig = await signed("order.created", "rel_2");
+    const init = {
+      method: "POST",
+      headers: { ...sig.headers, "content-type": "application/json" },
+      body: sig.body,
+    };
+    const first = await app.request("/webhooks/vendor", init);
+    expect(first.status).toBe(500);
+    const retry = await app.request("/webhooks/vendor", init);
+    expect(retry.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  it("a successful handler keeps the record: the second delivery is acknowledged as duplicate", async () => {
+    const app = new Hono();
+    let calls = 0;
+    HonoWebAdapter(dedupVendor(), app).inbound.vendor.post(
+      "/webhooks/vendor",
+      (c) => {
+        calls += 1;
+        return c.json({ ok: true });
+      },
+      { dedup: { ttl: "1h" } },
+    );
+
+    const sig = await signed("order.created", "rel_3");
+    const init = {
+      method: "POST",
+      headers: { ...sig.headers, "content-type": "application/json" },
+      body: sig.body,
+    };
+    expect((await app.request("/webhooks/vendor", init)).status).toBe(200);
+    const dup = await app.request("/webhooks/vendor", init);
+    expect(dup.headers.get("x-postel-dedup-result")).toBe("duplicate");
+    expect(calls).toBe(1);
   });
 });
