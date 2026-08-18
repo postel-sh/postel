@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"strings"
 )
 
 func WriteFormatted(w io.Writer, format string, s *SuiteRun) error {
@@ -47,6 +48,8 @@ func writeText(w io.Writer, s *SuiteRun) error {
 		fmt.Fprintf(w, "      expected: %s\n", formatExpected(r.Expected))
 		if r.Observed != nil {
 			fmt.Fprintf(w, "      observed: %s\n", formatObserved(*r.Observed))
+		} else if r.ObservedSet != nil {
+			fmt.Fprintf(w, "      observed: %s\n", formatObservedSet(r.ObservedSet))
 		}
 	}
 	fmt.Fprintf(w, "\nsuite %s — target %s\n", s.SuiteVersion, s.Target)
@@ -55,6 +58,9 @@ func writeText(w io.Writer, s *SuiteRun) error {
 }
 
 func formatExpected(e VectorExpected) string {
+	if len(e.Outcomes) > 0 {
+		return "outcomes:" + strings.Join(e.Outcomes, ",")
+	}
 	if e.Outcome == "reject" && e.ErrorCode != "" {
 		return fmt.Sprintf("reject:%s", e.ErrorCode)
 	}
@@ -69,6 +75,14 @@ func formatObserved(o ObservedVerdict) string {
 		return fmt.Sprintf("reject:%s", o.ErrorCode)
 	}
 	return o.Outcome
+}
+
+func formatObservedSet(set []ObservedVerdict) string {
+	parts := make([]string, len(set))
+	for i, o := range set {
+		parts[i] = formatObserved(o)
+	}
+	return "outcomes:" + strings.Join(parts, ",")
 }
 
 func writeJSON(w io.Writer, s *SuiteRun) error {
@@ -117,6 +131,8 @@ func writeTAP(w io.Writer, s *SuiteRun) error {
 		fmt.Fprintf(w, "  expected: %q\n", formatExpected(r.Expected))
 		if r.Observed != nil {
 			fmt.Fprintf(w, "  observed: %q\n", formatObserved(*r.Observed))
+		} else if r.ObservedSet != nil {
+			fmt.Fprintf(w, "  observed: %q\n", formatObservedSet(r.ObservedSet))
 		}
 		fmt.Fprintln(w, "  ...")
 	}
@@ -172,6 +188,8 @@ func writeJUnit(w io.Writer, s *SuiteRun) error {
 			msg := "expected " + formatExpected(r.Expected)
 			if r.Observed != nil {
 				msg += ", observed " + formatObserved(*r.Observed)
+			} else if r.ObservedSet != nil {
+				msg += ", observed " + formatObservedSet(r.ObservedSet)
 			} else {
 				msg += ", no response"
 			}

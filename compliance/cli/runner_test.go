@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -29,7 +30,11 @@ type stubReceiver struct {
 	windowSecs int64
 	now        func() time.Time
 	dedup      bool
-	seenIDs    map[string]struct{}
+	// mu guards seenIDs: the dedup check-then-set below must be atomic across
+	// concurrent requests carrying the same webhook-id, or the stub can't
+	// stand in for a conformant receiver in concurrency-vector tests.
+	mu      sync.Mutex
+	seenIDs map[string]struct{}
 }
 
 func newStubReceiver(hmacSecret []byte, edPub ed25519.PublicKey) *stubReceiver {
@@ -92,13 +97,17 @@ func (s *stubReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.dedup {
 		preSeeded := strings.HasPrefix(id, "pre_seen_")
+		s.mu.Lock()
 		_, seen := s.seenIDs[id]
+		if !preSeeded && !seen {
+			s.seenIDs[id] = struct{}{}
+		}
+		s.mu.Unlock()
 		if preSeeded || seen {
 			w.Header().Set(DedupResultHeader, DedupResultDuplicate)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		s.seenIDs[id] = struct{}{}
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -443,5 +452,197 @@ func TestRun_EmptyVectorsDirExitsZero(t *testing.T) {
 	}
 	if code != 0 {
 		t.Errorf("empty vectors should exit 0, got %d", code)
+	}
+}
+
+// Scenario: Concurrency fires the same signed request N times and checks the outcome multiset
+//
+// TestRun_ConcurrencyVectorPassesAgainstDedupAwareStub covers that scenario
+// end-to-end: the same signed request fired twice concurrently against a
+// real dedup-aware receiver must observe exactly one accept and one
+// duplicate.
+func TestRun_ConcurrencyVectorPassesAgainstDedupAwareStub(t *testing.T) {
+	hmacSecret := []byte("32-byte-test-secret-for-the-stub!!")
+	pub, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("ed25519 gen: %v", err)
+	}
+	fixedNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	stub := newStubReceiver(hmacSecret, pub)
+	stub.now = func() time.Time { return fixedNow }
+	stub.dedup = true
+	srv := httptest.NewServer(stub)
+	defer srv.Close()
+
+	vectorsDir := t.TempDir()
+	mustWrite(t, filepath.Join(vectorsDir, "_keys", "hmac.yaml"), fmt.Sprintf(
+		"id: test-hmac\nalgorithm: hmac-sha256\nkey_material: %s\ndescription: for-test-only\n",
+		prefixSymmetric+base64.StdEncoding.EncodeToString(hmacSecret),
+	))
+
+	bodyB64 := base64.StdEncoding.EncodeToString([]byte(`{"hello":"world"}`))
+	tsLiteral := strconv.FormatInt(fixedNow.Unix(), 10)
+
+	mustWrite(t, filepath.Join(vectorsDir, "receiver", "dedup", "concurrent.yaml"), fmt.Sprintf(`id: receiver/dedup/concurrent
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: concurrency smoke test
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_concurrent_smoke
+    webhook-timestamp: "%s"
+  body_b64: %s
+secrets:
+  - id: primary
+    fixture: hmac.yaml
+signature_mode: computed
+concurrency: 2
+expected:
+  outcomes: [accept, duplicate]
+`, tsLiteral, bodyB64))
+
+	opts := &cliOpts{target: srv.URL, format: "json", now: fixedNow, vectorsDir: vectorsDir, schemaDir: canonicalSchemaDir(t)}
+	buf := &bytes.Buffer{}
+	code, err := run(opts, buf)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("exit code: got %d, want 0\n%s", code, buf.String())
+	}
+	var suite SuiteRun
+	if err := json.Unmarshal(buf.Bytes(), &suite); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(suite.Results) != 1 {
+		t.Fatalf("results: got %d, want 1", len(suite.Results))
+	}
+	r := suite.Results[0]
+	if !r.Pass {
+		t.Errorf("expected pass, error=%q observed_set=%+v", r.Error, r.ObservedSet)
+	}
+	if len(r.ObservedSet) != 2 {
+		t.Fatalf("observed_set: got %d entries, want 2", len(r.ObservedSet))
+	}
+}
+
+// TestRun_ConcurrencyVectorFailsWhenBothAccept covers the negative case: a
+// non-dedup-aware receiver returns accept twice, which must fail the
+// outcomes-multiset check rather than silently passing.
+func TestRun_ConcurrencyVectorFailsWhenBothAccept(t *testing.T) {
+	hmacSecret := []byte("32-byte-test-secret-for-the-stub!!")
+	pub, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("ed25519 gen: %v", err)
+	}
+	fixedNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	stub := newStubReceiver(hmacSecret, pub) // dedup left off: always accepts
+	stub.now = func() time.Time { return fixedNow }
+	srv := httptest.NewServer(stub)
+	defer srv.Close()
+
+	vectorsDir := t.TempDir()
+	mustWrite(t, filepath.Join(vectorsDir, "_keys", "hmac.yaml"), fmt.Sprintf(
+		"id: test-hmac\nalgorithm: hmac-sha256\nkey_material: %s\ndescription: for-test-only\n",
+		prefixSymmetric+base64.StdEncoding.EncodeToString(hmacSecret),
+	))
+	bodyB64 := base64.StdEncoding.EncodeToString([]byte(`{"hello":"world"}`))
+	tsLiteral := strconv.FormatInt(fixedNow.Unix(), 10)
+
+	mustWrite(t, filepath.Join(vectorsDir, "receiver", "dedup", "concurrent.yaml"), fmt.Sprintf(`id: receiver/dedup/concurrent
+requirement:
+  capability: receiver
+  title: Idempotency dedup helper
+description: non-dedup-aware receiver should fail the outcomes check
+input:
+  method: POST
+  url: /webhooks
+  headers:
+    webhook-id: msg_concurrent_no_dedup
+    webhook-timestamp: "%s"
+  body_b64: %s
+secrets:
+  - id: primary
+    fixture: hmac.yaml
+signature_mode: computed
+concurrency: 2
+expected:
+  outcomes: [accept, duplicate]
+`, tsLiteral, bodyB64))
+
+	opts := &cliOpts{target: srv.URL, format: "json", now: fixedNow, vectorsDir: vectorsDir, schemaDir: canonicalSchemaDir(t)}
+	buf := &bytes.Buffer{}
+	code, err := run(opts, buf)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if code == 0 {
+		t.Errorf("expected non-zero exit (a non-dedup-aware receiver must fail this vector)\n%s", buf.String())
+	}
+}
+
+// Scenario: response_body_schema validates the observed body independently of outcome
+//
+// TestRun_ResponseBodySchemaCatchesLeakedPrivateKey covers that scenario: a
+// JWKS-shaped 200 whose body leaks a private "d" field must fail even
+// though the outcome (accept) matches.
+func TestRun_ResponseBodySchemaCatchesLeakedPrivateKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"keys":[{"kty":"OKP","crv":"Ed25519","x":"abc","d":"leaked"}]}`))
+	}))
+	defer srv.Close()
+
+	vectorsDir := t.TempDir()
+	mustWrite(t, filepath.Join(vectorsDir, "jwks", "public-only.yaml"), `id: jwks/public-only
+requirement:
+  capability: key-management
+  title: JWKS publishes only public keys
+description: leaking receiver should fail response_body_schema
+input:
+  method: GET
+  url: /.well-known/webhooks-keys
+  headers: {}
+  body_b64: ""
+secrets: []
+signature_mode: static
+expected:
+  outcome: accept
+  response_body_schema:
+    type: object
+    required: ["keys"]
+    properties:
+      keys:
+        type: array
+        items:
+          type: object
+          not:
+            anyOf:
+              - required: ["d"]
+              - required: ["k"]
+`)
+
+	opts := &cliOpts{target: srv.URL, format: "json", now: time.Now().UTC(), vectorsDir: vectorsDir, schemaDir: canonicalSchemaDir(t)}
+	buf := &bytes.Buffer{}
+	code, err := run(opts, buf)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if code == 0 {
+		t.Errorf("expected non-zero exit (leaked private key material should fail response_body_schema)\n%s", buf.String())
+	}
+	var suite SuiteRun
+	if err := json.Unmarshal(buf.Bytes(), &suite); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, buf.String())
+	}
+	if len(suite.Results) != 1 || suite.Results[0].Pass {
+		t.Fatalf("expected exactly one failing result, got %+v", suite.Results)
+	}
+	if !strings.Contains(suite.Results[0].Error, "response_body_schema") {
+		t.Errorf("failure error should mention response_body_schema: %q", suite.Results[0].Error)
 	}
 }

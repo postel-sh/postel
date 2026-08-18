@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -113,6 +114,36 @@ func yamlToJSONInterface(data []byte) (interface{}, error) {
 		return nil, fmt.Errorf("re-parse: %w", err)
 	}
 	return normalized, nil
+}
+
+// ValidateResponseBodyAgainstSchema compiles a vector's embedded
+// `expected.response_body_schema` (a raw JSON Schema object, not one of the
+// canonical CompiledSchemas) and validates the observed HTTP response body
+// against it. Used for assertions like "no JWK in this JWKS document carries
+// private-key material" that a bare outcome/error_code verdict can't express.
+func ValidateResponseBodyAgainstSchema(schemaObj map[string]interface{}, body []byte) error {
+	schemaBytes, err := json.Marshal(schemaObj)
+	if err != nil {
+		return fmt.Errorf("marshal response_body_schema: %w", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	compiler.Draft = jsonschema.Draft2020
+	const resourceURL = "inline://response-body-schema.json"
+	if err := compiler.AddResource(resourceURL, bytes.NewReader(schemaBytes)); err != nil {
+		return fmt.Errorf("load response_body_schema: %w", err)
+	}
+	compiled, err := compiler.Compile(resourceURL)
+	if err != nil {
+		return fmt.Errorf("compile response_body_schema: %w", err)
+	}
+	var instance interface{}
+	if err := json.Unmarshal(body, &instance); err != nil {
+		return fmt.Errorf("response body is not valid JSON: %w", err)
+	}
+	if err := compiled.Validate(instance); err != nil {
+		return wrapSchemaError("response body", err)
+	}
+	return nil
 }
 
 func wrapSchemaError(label string, err error) error {

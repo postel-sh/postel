@@ -8,24 +8,27 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 var SuiteVersion = "0.2-dev"
 
 type TestResult struct {
-	VectorID    string           `json:"id"`
-	Capability  string           `json:"capability"`
-	Requirement string           `json:"requirement"`
-	Description string           `json:"description"`
-	Expected    VectorExpected   `json:"expected"`
-	Observed    *ObservedVerdict `json:"observed,omitempty"`
-	Pass        bool             `json:"pass"`
-	Skipped     bool             `json:"skipped"`
-	Error       string           `json:"error,omitempty"`
-	DurationMs  int64            `json:"duration_ms"`
-	File        string           `json:"file"`
+	VectorID    string            `json:"id"`
+	Capability  string            `json:"capability"`
+	Requirement string            `json:"requirement"`
+	Description string            `json:"description"`
+	Expected    VectorExpected    `json:"expected"`
+	Observed    *ObservedVerdict  `json:"observed,omitempty"`
+	ObservedSet []ObservedVerdict `json:"observed_set,omitempty"`
+	Pass        bool              `json:"pass"`
+	Skipped     bool              `json:"skipped"`
+	Error       string            `json:"error,omitempty"`
+	DurationMs  int64             `json:"duration_ms"`
+	File        string            `json:"file"`
 }
 
 type SuiteRun struct {
@@ -182,6 +185,15 @@ func executeVector(vectorPath, vectorsDir string, schemas *CompiledSchemas, opts
 		return res, true
 	}
 
+	if v.Concurrency > 1 {
+		pass, observedSet, errMsg := driveConcurrentVector(opts.target, v, client)
+		res.ObservedSet = observedSet
+		res.Pass = pass
+		res.Error = errMsg
+		res.DurationMs = time.Since(started).Milliseconds()
+		return res, true
+	}
+
 	resp, err := DriveVector(opts.target, v, client)
 	if err != nil {
 		res.Error = fmt.Sprintf("send: %v", err)
@@ -191,8 +203,74 @@ func executeVector(vectorPath, vectorsDir string, schemas *CompiledSchemas, opts
 	observed := ClassifyResponse(resp)
 	res.Observed = &observed
 	res.Pass = verdictMatches(v.Expected, observed)
+	if v.Expected.ResponseBodySchema != nil {
+		if bodyErr := ValidateResponseBodyAgainstSchema(v.Expected.ResponseBodySchema, resp.Body); bodyErr != nil {
+			res.Pass = false
+			if res.Error != "" {
+				res.Error += "; "
+			}
+			res.Error += fmt.Sprintf("response_body_schema: %v", bodyErr)
+		}
+	}
 	res.DurationMs = time.Since(started).Milliseconds()
 	return res, true
+}
+
+// driveConcurrentVector fires the vector's (already signed) input
+// `v.Concurrency` times concurrently against target, and checks the observed
+// outcomes as an unordered multiset against v.Expected.Outcomes. Used for
+// verdicts only meaningful under a genuine race, e.g. dedup atomicity.
+func driveConcurrentVector(target string, v *Vector, client *http.Client) (bool, []ObservedVerdict, string) {
+	n := v.Concurrency
+	results := make([]ObservedVerdict, n)
+	sendErrs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			resp, err := DriveVector(target, v, client)
+			if err != nil {
+				sendErrs[i] = err
+				return
+			}
+			results[i] = ClassifyResponse(resp)
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range sendErrs {
+		if err != nil {
+			return false, results, fmt.Sprintf("concurrent request %d: send: %v", i, err)
+		}
+	}
+	if !outcomesMultisetMatch(v.Expected.Outcomes, results) {
+		return false, results, fmt.Sprintf("outcomes mismatch: expected %v, observed %v", v.Expected.Outcomes, observedOutcomes(results))
+	}
+	return true, results, ""
+}
+
+func observedOutcomes(results []ObservedVerdict) []string {
+	out := make([]string, len(results))
+	for i, r := range results {
+		out[i] = r.Outcome
+	}
+	return out
+}
+
+func outcomesMultisetMatch(expected []string, observed []ObservedVerdict) bool {
+	if len(expected) != len(observed) {
+		return false
+	}
+	exp := append([]string(nil), expected...)
+	got := observedOutcomes(observed)
+	sort.Strings(exp)
+	sort.Strings(got)
+	for i := range exp {
+		if exp[i] != got[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // fullVectorPath renders the spec's stable `<capability>/<sub-category>/<vector-id>`

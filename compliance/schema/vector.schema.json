@@ -77,6 +77,11 @@
       "description": "Receiver-mode only. 'static' or 'computed'.",
       "enum": ["static", "computed"]
     },
+    "concurrency": {
+      "type": "integer",
+      "description": "Receiver-mode only. When set (>= 2), the runner signs `input` once and fires it this many times concurrently against the target, collecting one observed verdict per response. Pairs with `expected.outcomes` (an unordered multiset of the same length) instead of the singular `expected.outcome`/`error_code`. Models verdicts only meaningful under a genuine race (e.g. dedup atomicity).",
+      "minimum": 2
+    },
     "triggers": {
       "type": "array",
       "description": "Sender-mode only. Ordered control-plane operations the runner performs against the sender-under-test.",
@@ -185,7 +190,6 @@
     "expected": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["outcome"],
       "properties": {
         "outcome": {
           "type": "string",
@@ -203,19 +207,38 @@
             "SSRF_BLOCKED",
             "ENDPOINT_DISABLED"
           ]
+        },
+        "outcomes": {
+          "type": "array",
+          "description": "Receiver-mode only. Present exactly when the vector's top-level `concurrency` is set: the unordered multiset of outcome values expected across the concurrent responses, in place of the singular `outcome`/`error_code`.",
+          "items": { "type": "string", "enum": ["accept", "reject", "duplicate"] },
+          "minItems": 2
+        },
+        "response_body_schema": {
+          "type": "object",
+          "description": "Receiver-mode only. An embedded JSON Schema the observed HTTP response body (parsed as JSON) must satisfy, checked independently of and in addition to the outcome/error_code verdict."
         }
       },
       "allOf": [
         {
-          "if": { "properties": { "outcome": { "const": "accept" } } },
+          "if": {
+            "properties": { "outcome": { "const": "accept" } },
+            "required": ["outcome"]
+          },
           "then": { "not": { "required": ["error_code"] } }
         },
         {
-          "if": { "properties": { "outcome": { "const": "duplicate" } } },
+          "if": {
+            "properties": { "outcome": { "const": "duplicate" } },
+            "required": ["outcome"]
+          },
           "then": { "not": { "required": ["error_code"] } }
         },
         {
-          "if": { "properties": { "outcome": { "const": "reject" } } },
+          "if": {
+            "properties": { "outcome": { "const": "reject" } },
+            "required": ["outcome"]
+          },
           "then": { "required": ["error_code"] }
         }
       ]
@@ -248,7 +271,11 @@
       "then": {
         "required": ["triggers"],
         "not": {
-          "anyOf": [{ "required": ["input"] }, { "required": ["signature_mode"] }]
+          "anyOf": [
+            { "required": ["input"] },
+            { "required": ["signature_mode"] },
+            { "required": ["concurrency"] }
+          ]
         }
       }
     },
@@ -260,6 +287,24 @@
       "then": {
         "properties": { "secrets": { "type": "array", "minItems": 1 } },
         "required": ["secrets"]
+      }
+    },
+    {
+      "if": { "required": ["concurrency"] },
+      "then": {
+        "properties": {
+          "expected": {
+            "required": ["outcomes"],
+            "not": {
+              "anyOf": [{ "required": ["outcome"] }, { "required": ["error_code"] }]
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "expected": { "required": ["outcome"] }
+        }
       }
     }
   ]
