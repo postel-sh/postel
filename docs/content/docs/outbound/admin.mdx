@@ -83,6 +83,7 @@ When `authorize` returns a `tenantId`, every route is scoped to it: lists and cr
 | `GET /messages` | list messages (`?type=`, `?status=`, `?since=`, `?until=`, `?limit=`, `?cursor=`) |
 | `GET /messages/:id` | fetch one message, including its payload |
 | `GET /messages/:id/attempts` | the message's delivery-attempt history (`?status=` to narrow by delivery status) |
+| `GET /health` | the same `{ ok, outboxDepth, oldestPendingAge, workerCount }` shape as `postel.health()`, `200` when healthy, `503` when not |
 
 Every list route is paginated with one convention: a bounded page (default limit 100) plus a `nextCursor` continuation token — `{ endpoints, nextCursor }`, `{ messages, nextCursor }`, `{ tenants, nextCursor }`, and `{ messageIds, nextCursor }` for `POST /reconcile`. `nextCursor` is `null` on the last page; otherwise pass it back (as `?cursor=`, or `cursor` in the reconcile body) to fetch the next page. No list route returns an unbounded array.
 
