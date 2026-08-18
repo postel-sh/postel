@@ -117,12 +117,16 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
     for (const m of SQLITE_MIGRATIONS) {
       if (m.version > current) db.exec(m.sql);
     }
-    // Receiver-side dedup lives in its own (non-canonical) table the adapter owns.
+    // Receiver-side dedup lives in its own table, canonicalized in
+    // specs/db-schema/0007_received_messages_dedup_table.sql.
     db.exec(
       `CREATE TABLE IF NOT EXISTS postel_received_messages (
          message_id TEXT PRIMARY KEY,
          expires_at INTEGER NOT NULL
        )`,
+    );
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS postel_received_messages_expires_idx ON postel_received_messages (expires_at)",
     );
   }
 

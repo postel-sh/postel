@@ -1,5 +1,6 @@
 import { ttlToSeconds } from "@postel/core";
 import type { DedupAdapter, DedupResult } from "@postel/core";
+import { CANONICAL_DEDUP_COLUMNS } from "@postel/storage-testkit";
 import { describe, expect, it } from "vitest";
 
 import { type PgClient, PgDedup } from "../src/index.js";
@@ -121,6 +122,19 @@ describe("Idempotency dedup helper", () => {
     const adapter = PgDedup({ client, autoMigrate: false });
     await dedup("x", { ttl: 60, adapter });
     expect(client.ddlCalls).toBe(0);
+  });
+
+  it("Schema is a fixed set of canonical tables: postel_received_messages is the canonical receiver-side dedup table (Postgres)", async () => {
+    const client = new MockPgClient();
+    const adapter = PgDedup({ client });
+    await dedup("msg_canonical_pg", { ttl: 60, adapter });
+    const ddl = client.queries.find((q) => q.text.includes("CREATE TABLE"))?.text ?? "";
+    const columnList = ddl.replace(/^[^(]*\(/u, "").replace(/\)[^)]*$/u, "");
+    const columns = columnList
+      .split(",")
+      .map((line) => line.trim().split(/\s+/u)[0])
+      .filter((name): name is string => !!name);
+    expect(columns).toEqual([...CANONICAL_DEDUP_COLUMNS]);
   });
 
   it("release() undoes a record so the id is treated as unseen again (Postgres)", async () => {

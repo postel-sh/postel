@@ -157,6 +157,9 @@ export function PgStorage(options: PgStorageOptions = {}): Storage<PgQueryable> 
          expires_at timestamptz NOT NULL
        )`,
     );
+    await p.query(
+      "CREATE INDEX IF NOT EXISTS postel_received_messages_expires_idx ON postel_received_messages (expires_at)",
+    );
     migrated = true;
   }
 
