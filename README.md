@@ -12,13 +12,38 @@
   — Jon Postel, RFC 793
 </p>
 
-**Sending and receiving webhooks is easy. Doing it reliably and securely is hard** — retries, replay, signing, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [@postel/compliance](compliance/README.md) test suite.
+**Sending and receiving webhooks is easy. Doing it reliably and securely is hard** — retries, replay, signing, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [`@postel/compliance`](compliance/README.md) test suite.
 
 [Standard Webhooks](https://www.standardwebhooks.com/) compliant, sender + receiver, runs inside your application against your existing relational database (Postgres, MySQL, SQLite, …) — no separate service, no Redis, no message broker.
 
 ## Status
 
-Pre-alpha. Specification stage. See [`VISION.md`](./VISION.md) for the top-level positioning, scope, and success criteria. Detailed specs live under [`openspec/specs/`](./openspec/specs/) and [`specs/`](./specs/).
+Pre-alpha, TypeScript-only. The TypeScript port has a working sender and receiver, 8 storage adapters, and a green [`@postel/compliance`](compliance/README.md) suite — but nothing has shipped a `1.0` yet and the public API can still change. Go, Python, and Rust ports haven't started. See [`VISION.md`](./VISION.md) for the top-level positioning, scope, and success criteria; detailed specs live under [`openspec/specs/`](./openspec/specs/) and [`specs/`](./specs/).
+
+## Try it
+
+```bash
+pnpm add @postel/core @postel/hono
+```
+
+```ts
+import { Postel, Secret } from "@postel/core";
+import { HonoWebAdapter, POSTEL_CONTEXT_KEY } from "@postel/hono";
+
+const postel = Postel({
+  inbound: { stripe: { verify: Secret(process.env.STRIPE_SECRET) } },
+});
+const hwa = HonoWebAdapter(postel, app);
+
+hwa.inbound.stripe.post("/webhooks/stripe", (c) => {
+  const { event } = c.get(POSTEL_CONTEXT_KEY); // verified · raw bytes intact
+  return c.json({ ok: true, type: event.type });
+});
+
+await postel.outbound.send({ type: "order.created", data: { id: 1 } });
+```
+
+Full docs, quickstart, and the framework/storage adapter list: **[postel.dev](https://postel.dev)**.
 
 ## Positioning
 
@@ -29,6 +54,29 @@ Postel does not compete with Svix or Hookdeck on customer-facing webhook portals
 
 Postel is a **library, not a service**. It will never have a hosted offering, never run a separate dispatcher process, never require Redis or a message broker, never ship a customer-facing portal as a packaged product. If you need any of that, use Svix or Hookdeck Outpost.
 
+## Packages
+
+TypeScript is the only port today. All packages below are published under `@postel/*`.
+
+| Package | What it does |
+|---|---|
+| [`@postel/core`](typescript/packages/core) | Sender, receiver, types, and errors — the Postel TypeScript core. |
+| [`@postel/http`](typescript/packages/http) | Framework-agnostic webhook HTTP core: verification gate, error-to-status policy, Fetch handler. |
+| [`@postel/admin`](typescript/packages/admin) | Framework-agnostic admin HTTP handler builder. |
+| [`@postel/express`](typescript/packages/frameworks/express) | Express middleware and admin handlers for the receiver. |
+| [`@postel/fastify`](typescript/packages/frameworks/fastify) | Fastify plugin and admin handlers for the receiver. |
+| [`@postel/hono`](typescript/packages/frameworks/hono) | Hono middleware and admin handlers for the receiver. |
+| [`@postel/nestjs`](typescript/packages/frameworks/nestjs) | NestJS module, guard, and decorators that gate a route with a configured inbound source. |
+| [`@postel/pg`](typescript/packages/storage/pg) | Standalone storage adapter — Postel owns the Postgres pool; zero-config drop-in. |
+| [`@postel/mysql`](typescript/packages/storage/mysql) | Standalone storage adapter — Postel owns the MySQL pool; zero-config drop-in. |
+| [`@postel/sqlite`](typescript/packages/storage/sqlite) | Standalone storage adapter — Postel owns the SQLite database; zero-config drop-in. |
+| [`@postel/drizzle`](typescript/packages/storage/drizzle) | Storage adapter — host hands Postel a Drizzle instance (Postgres, MySQL, or SQLite). |
+| [`@postel/kysely`](typescript/packages/storage/kysely) | Storage adapter — host hands Postel a Kysely query-builder instance. |
+| [`@postel/prisma`](typescript/packages/storage/prisma) | Storage adapter — host hands Postel a PrismaClient instance. |
+| [`@postel/typeorm`](typescript/packages/storage/typeorm) | Storage adapter — host hands Postel a TypeORM DataSource (Postgres, MySQL, or SQLite). |
+| [`@postel/mikro-orm`](typescript/packages/storage/mikro-orm) | Storage adapter — host hands Postel a MikroORM EntityManager (Postgres, MySQL, or SQLite). |
+| [`@postel/storage-helpers`](typescript/packages/storage/helpers) | Zero-DB-dependency helpers shared by every first-party and third-party storage adapter. |
+
 ## Specs (sources of truth)
 
 | Layer | Source of truth | Format |
@@ -38,7 +86,7 @@ Postel is a **library, not a service**. It will never have a hosted offering, ne
 | DB schema | [`specs/db-schema/0001_init.sql`](./specs/db-schema/0001_init.sql) | SQL DDL |
 | Capability behaviors | [`openspec/specs/`](./openspec/specs/) | Markdown (per capability) |
 | Architectural decisions | [`decisions/`](./decisions/) | Markdown ADRs |
-| Behavioral oracle | `@postel/compliance` (planned) | Executable test suite |
+| Behavioral oracle | [`@postel/compliance`](compliance/README.md) | Executable test suite |
 
 ## Contributing
 
@@ -50,4 +98,4 @@ Named after [Jon Postel](https://en.wikipedia.org/wiki/Jon_Postel), whose [Robus
 
 ## License
 
-To be determined before 1.0 (MIT or Apache-2.0).
+[MIT](./LICENSE)
