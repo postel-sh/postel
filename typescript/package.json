@@ -13,6 +13,7 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
+    "coverage": "turbo run coverage",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@vitest/coverage-v8": "2.1.8",
     "esbuild": "0.24.2",
     "tsup": "8.3.5",
     "turbo": "2.3.3",

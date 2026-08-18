@@ -13,6 +13,7 @@ import {
 import { InMemoryStorage } from "../src/index.js";
 import { base64ToBytes } from "../src/internal/base64.js";
 import { importEd25519PublicKey, verifyEd25519V1a } from "../src/internal/ed25519.js";
+import { waitFor } from "./wait-for.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -111,10 +112,6 @@ async function seedEndpoint(
   });
 }
 
-async function tick(ms = 100): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
 describe("Compliant headers, signatures, payload structure, and prefixes by default", () => {
   it("HMAC v1 outgoing: outgoing delivery carries webhook-id, webhook-timestamp, webhook-signature with v1 prefix", async () => {
     const server = await startMockServer();
@@ -128,7 +125,7 @@ describe("Compliant headers, signatures, payload structure, and prefixes by defa
     });
     await postel.outbound.send({ type: "order.created", data: { id: "ord_1" } });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests()).toHaveLength(1);
@@ -181,7 +178,7 @@ describe("Per-endpoint custom HTTP headers", () => {
     });
     const { id: messageId } = await postel.outbound.send({ type: "event.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests()).toHaveLength(1);
@@ -375,7 +372,11 @@ describe("SSRF protection on outbound delivery", () => {
     const postel = Postel({ outbound: { storage } });
     const { id } = await postel.outbound.send({ type: "event.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () =>
+        (await storage.attempts.latestForMessage(id)).some((a) => a.status === "ssrf-blocked"),
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     const attempts = await storage.attempts.latestForMessage(id);
     expect(attempts.some((a) => a.status === "ssrf-blocked")).toBe(true);
@@ -397,7 +398,7 @@ describe("SSRF protection on outbound delivery", () => {
     });
     await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(1);
@@ -414,7 +415,7 @@ describe("Type filter with glob support", () => {
     });
     await postel.outbound.send({ type: "user.created" });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(1);
@@ -427,9 +428,11 @@ describe("Type filter with glob support", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    await postel.outbound.send({ type: "order.created" });
+    const { id } = await postel.outbound.send({ type: "order.created" });
     await postel.start();
-    await tick(300);
+    await waitFor(async () => (await postel.outbound.messages.get(id))?.status !== "pending", {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(0);
@@ -446,7 +449,7 @@ describe("Channel filter", () => {
     });
     await postel.outbound.send({ type: "order.created", channels: ["tenant_42"] });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(1);
@@ -463,7 +466,7 @@ describe("Structural filter matches a data path", () => {
     });
     await postel.outbound.send({ type: "order.created", data: { region: "eu" } });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(1);
@@ -476,9 +479,11 @@ describe("Structural filter matches a data path", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    await postel.outbound.send({ type: "order.created", data: { region: "us" } });
+    const { id } = await postel.outbound.send({ type: "order.created", data: { region: "us" } });
     await postel.start();
-    await tick(300);
+    await waitFor(async () => (await postel.outbound.messages.get(id))?.status !== "pending", {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(0);
@@ -495,7 +500,7 @@ describe("Structural filter matches a data path", () => {
     });
     await postel.outbound.send({ type: "order.created", data: { order: { status: "paid" } } });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(1);
@@ -513,12 +518,14 @@ describe("Structural filter matches a data path", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    await postel.outbound.send({
+    const { id } = await postel.outbound.send({
       type: "order.created",
       data: { region: "eu", tier: "silver" },
     });
     await postel.start();
-    await tick(300);
+    await waitFor(async () => (await postel.outbound.messages.get(id))?.status !== "pending", {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(0);
@@ -531,9 +538,11 @@ describe("Structural filter matches a data path", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    await postel.outbound.send({ type: "order.created", data: {} });
+    const { id } = await postel.outbound.send({ type: "order.created", data: {} });
     await postel.start();
-    await tick(300);
+    await waitFor(async () => (await postel.outbound.messages.get(id))?.status !== "pending", {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(0);
@@ -546,9 +555,14 @@ describe("Structural filter matches a data path", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    await postel.outbound.send({ type: "order.created", data: { when: new Date() } });
+    const { id } = await postel.outbound.send({
+      type: "order.created",
+      data: { when: new Date() },
+    });
     await postel.start();
-    await tick(300);
+    await waitFor(async () => (await postel.outbound.messages.get(id))?.status !== "pending", {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(0);
@@ -565,9 +579,11 @@ describe("Structural filter matches a data path", () => {
     });
     const cyclic: Record<string, unknown> = {};
     Object.assign(cyclic, { self: cyclic });
-    await postel.outbound.send({ type: "order.created", data: cyclic });
+    const { id } = await postel.outbound.send({ type: "order.created", data: cyclic });
     await postel.start();
-    await tick(300);
+    await waitFor(async () => (await postel.outbound.messages.get(id))?.status !== "pending", {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(0);
@@ -580,9 +596,14 @@ describe("Structural filter matches a data path", () => {
     const postel = Postel({
       outbound: { storage, http: { ssrf: { allowedRanges: ["127.0.0.0/8"] } } },
     });
-    await postel.outbound.send({ type: "order.created", data: { a: { "": { b: "x" } } } });
+    const { id } = await postel.outbound.send({
+      type: "order.created",
+      data: { a: { "": { b: "x" } } },
+    });
     await postel.start();
-    await tick(300);
+    await waitFor(async () => (await postel.outbound.messages.get(id))?.status !== "pending", {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(0);
@@ -615,7 +636,7 @@ describe("Predicate filter", () => {
     });
     await postel.outbound.send({ type: "order.created", data: { ok: true } });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(1);
@@ -632,7 +653,7 @@ describe("Transform produces body to send", () => {
     });
     await postel.outbound.send({ type: "order.created", data: { id: "ord_1" } });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     const first = server.requests()[0];
@@ -662,7 +683,11 @@ describe("Filter and transform errors fail closed", () => {
       data: { id: "ord_1" },
     });
     await postel.start();
-    await tick(300);
+    await waitFor(
+      async () =>
+        (await storage.attempts.latestForMessage(messageId)).some((a) => a.status === "failed"),
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     await server.close();
     expect(server.requests()).toHaveLength(0);
@@ -690,7 +715,9 @@ describe("Filter and transform errors fail closed", () => {
       data: { id: "ord_1" },
     });
     await postel.start();
-    await tick(300);
+    await waitFor(async () => (await storage.attempts.latestForMessage(messageId)).length >= 1, {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     expect(server.requests()).toHaveLength(0);
@@ -716,7 +743,7 @@ describe("Late binding at dispatch time", () => {
     // the current config at dispatch, so it is delivered.
     await storage.endpoints.update("ep_test", { types: ["evt.*"] });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     expect(server.requests().length).toBe(1);
@@ -744,7 +771,10 @@ describe("Per-endpoint and overall delivery deadlines", () => {
     });
     const { id } = await postel.outbound.send({ type: "slow.event" });
     await postel.start();
-    await tick(600);
+    await waitFor(
+      async () => (await storage.attempts.latestForMessage(id)).some((a) => a.status === "failed"),
+      { timeoutMs: 3000 },
+    );
     await postel.stop();
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);
@@ -762,7 +792,7 @@ describe("Endpoint deletion semantics", () => {
     });
     await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     await postel.outbound.endpoints.delete("ep_test");
@@ -829,7 +859,7 @@ describe("Per-endpoint signing config", () => {
     });
     await postel.outbound.send({ type: "evt.x", data: { hello: "world" } });
     await postel.start();
-    await tick(300);
+    await waitFor(() => server.requests().length === 1, { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
 

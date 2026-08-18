@@ -13,13 +13,10 @@ import {
   Postel,
   Vault,
 } from "../src/index.js";
+import { waitFor } from "./wait-for.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 const LOOPBACK = { ssrf: { allowedRanges: ["127.0.0.0/8"] } } as const;
-
-async function tick(ms = 100): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
 
 async function start200Server(): Promise<{ url(): string; close(): Promise<void> }> {
   const handler = (_req: IncomingMessage, res: ServerResponse): void => {
@@ -214,7 +211,7 @@ describe("Logger pass-through for runtime events [PORT-SPECIFIC]", () => {
     });
     await postel.outbound.send({ type: "evt.x" });
     await postel.start();
-    await tick(400);
+    await waitFor(() => entries.some((e) => e.event === "attempt"), { timeoutMs: 2000 });
     await postel.stop();
     await server.close();
     const attempt = entries.find((e) => e.event === "attempt");
@@ -230,7 +227,9 @@ describe("Logger pass-through for runtime events [PORT-SPECIFIC]", () => {
     const postel = Postel({ outbound: { storage, http: LOOPBACK } });
     const { id } = await postel.outbound.send({ type: "evt.y" });
     await postel.start();
-    await tick(400);
+    await waitFor(async () => (await storage.attempts.latestForMessage(id)).length > 0, {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);

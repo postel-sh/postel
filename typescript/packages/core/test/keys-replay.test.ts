@@ -9,6 +9,7 @@ import {
   Postel,
 } from "../src/index.js";
 import { CircuitBreakerRegistry } from "../src/sender/retry/circuit.js";
+import { waitFor } from "./wait-for.js";
 
 const SAMPLE_SECRET = "whsec_ZGVtby1zZWNyZXQtZm9yLXBvc3RlbC10ZXN0LXBhZGRpbmc=";
 
@@ -25,10 +26,6 @@ function FakeClock(
       current = new Date(current.getTime() + ms);
     },
   };
-}
-
-async function tick(ms = 150): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 describe("Symmetric secret generation", () => {
@@ -280,7 +277,10 @@ describe("Replay attempts tagged for audit", () => {
     expect(freshId).toBeDefined();
 
     await postel.start();
-    await tick(250);
+    await waitFor(
+      async () => (await storage.attempts.latestForMessage(freshId as string)).length > 0,
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     const attempts = await storage.attempts.latestForMessage(freshId as string);
     expect(attempts.length).toBeGreaterThan(0);

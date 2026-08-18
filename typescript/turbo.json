@@ -12,6 +12,11 @@
       "inputs": ["src/**", "test/**", "tsconfig.json", "package.json"],
       "outputs": []
     },
+    "coverage": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "test/**", "tsconfig.json", "package.json"],
+      "outputs": ["coverage/**"]
+    },
     "typecheck": {
       "dependsOn": ["^build"],
       "inputs": ["src/**", "test/**", "tsconfig.json", "tsconfig.base.json", "package.json"],

@@ -3,6 +3,7 @@ import type { Clock } from "../src/index.js";
 import { Postel } from "../src/index.js";
 
 import { InMemoryStorage } from "../src/index.js";
+import { waitFor } from "./wait-for.js";
 
 function FakeClock(initial = new Date("2026-05-26T10:00:00Z")): Clock & {
   advance(ms: number): void;
@@ -17,10 +18,6 @@ function FakeClock(initial = new Date("2026-05-26T10:00:00Z")): Clock & {
       current = new Date(current.getTime() + ms);
     },
   };
-}
-
-async function tick(ms = 5): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 describe("Send is non-blocking and returns a SendResult", () => {
@@ -83,7 +80,7 @@ describe("Workers run in-process by default", () => {
     const postel = Postel({ outbound: { storage } });
     await postel.outbound.send({ type: "order.created", data: { id: "ord_1" } });
     await postel.start();
-    await tick(150);
+    await waitFor(async () => (await storage.outboxDepth()).depth === 0, { timeoutMs: 2000 });
     const depth = await storage.outboxDepth();
     await postel.stop();
     expect(depth.depth).toBe(0);
@@ -114,7 +111,9 @@ describe("Late-binding fanout", () => {
       autoDisable: null,
     });
     await postel.start();
-    await tick(150);
+    await waitFor(async () => (await storage.attempts.latestForMessage(id)).length === 1, {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     const attempts = await storage.attempts.latestForMessage(id);
     expect(attempts.length).toBe(1);
@@ -146,7 +145,9 @@ describe("Late binding at dispatch time", () => {
       autoDisable: null,
     });
     await postel.start();
-    await tick(150);
+    await waitFor(async () => (await storage.attempts.latestForMessage(id1)).length > 0, {
+      timeoutMs: 2000,
+    });
     await postel.stop();
     const attempts = await storage.attempts.latestForMessage(id1);
     expect(attempts.length).toBeGreaterThan(0);
@@ -179,7 +180,10 @@ describe("Per-message TTL", () => {
     const { id } = await postel.outbound.send({ type: "order.created", ttl: "1s" });
     clock.advance(2_000);
     await postel.start();
-    await tick(200);
+    await waitFor(
+      async () => (await storage.attempts.latestForMessage(id)).some((a) => a.status === "expired"),
+      { timeoutMs: 2000 },
+    );
     await postel.stop();
     const attempts = await storage.attempts.latestForMessage(id);
     const expired = attempts.find((a) => a.status === "expired");
@@ -196,7 +200,7 @@ describe("Graceful shutdown", () => {
       await postel.outbound.send({ type: "order.created", data: { i } });
     }
     await postel.start();
-    await tick(150);
+    await waitFor(async () => (await storage.outboxDepth()).depth === 0, { timeoutMs: 2000 });
     await postel.stop();
     const depth = await storage.outboxDepth();
     expect(depth.depth).toBe(0);
@@ -276,8 +280,10 @@ describe("Outbox poll latency", () => {
     });
     await postel.start();
     const t0 = performance.now();
-    await postel.outbound.send({ type: "order.created" });
-    await tick(150);
+    const { id } = await postel.outbound.send({ type: "order.created" });
+    await waitFor(async () => (await storage.attempts.latestForMessage(id)).length > 0, {
+      timeoutMs: 2000,
+    });
     const elapsed = performance.now() - t0;
     await postel.stop();
     expect(elapsed).toBeLessThan(300);
