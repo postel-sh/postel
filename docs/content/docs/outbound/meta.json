@@ -10,6 +10,7 @@
     "endpoints",
     "messages",
     "tenants",
-    "admin"
+    "admin",
+    "observability"
   ]
 }

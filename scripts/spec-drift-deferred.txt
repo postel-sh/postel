@@ -215,7 +215,6 @@ Outbound asymmetric signatures carry a key id :: HMAC request carries no key id
 # in flight and needs no deferral.
 
 # observability — sender / dispatch side
-OpenTelemetry spans on every operation
 Prometheus metrics
 Structured JSON logs with trace correlation
 Replay UI handler with dry run

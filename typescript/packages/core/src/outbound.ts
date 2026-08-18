@@ -2,6 +2,7 @@ import { type Clock, systemClock } from "./clock.js";
 import { NotImplementedError } from "./errors.js";
 import { assertHttpWired } from "./internal/config-guards.js";
 import { ed25519Jwk, ed25519Kid } from "./internal/jwk.js";
+import { spanAttributes, traceDispatchOne, withSpan } from "./observability/tracing.js";
 import type { CursorOptions, Page } from "./pagination.js";
 import { buildHttpDispatcher } from "./sender/dispatcher/http-dispatcher.js";
 import { buildRateLimitDispatcher } from "./sender/dispatcher/rate-limit.js";
@@ -460,11 +461,11 @@ export function buildOutboundRuntime<
       ...(config.circuitBreaker !== undefined ? { orgCircuitBreaker: config.circuitBreaker } : {}),
       ...(config.autoDisable !== undefined ? { orgAutoDisable: config.autoDisable } : {}),
     },
-    httpDispatcher,
+    traceDispatchOne("postel.attempt", httpDispatcher),
   );
   const rateLimitDispatcher = buildRateLimitDispatcher(
     { storage: config.storage, clock },
-    retryDispatcher,
+    traceDispatchOne("postel.retry", retryDispatcher),
   );
   const pool = new WorkerPool({
     storage: config.storage,
@@ -485,15 +486,26 @@ export function buildOutboundRuntime<
   });
   const api: OutboundApi<TTx, TEvents> = {
     async send(event: SendEvent<unknown> & { readonly type: string }, options?: SendOptions<TTx>) {
-      return sendImpl(
-        {
-          storage: config.storage,
-          clock,
-          defaultTenantId: config.defaultTenantId ?? null,
-          ...(config.events !== undefined ? { events: config.events } : {}),
+      return withSpan(
+        "postel.send",
+        spanAttributes({
+          "postel.tenant.id": event.tenantId ?? config.defaultTenantId ?? null,
+          "postel.event.type": event.type,
+        }),
+        async (span) => {
+          const result = await sendImpl(
+            {
+              storage: config.storage,
+              clock,
+              defaultTenantId: config.defaultTenantId ?? null,
+              ...(config.events !== undefined ? { events: config.events } : {}),
+            },
+            event,
+            options,
+          );
+          span.setAttribute("postel.message.id", result.id);
+          return result;
         },
-        event,
-        options,
       );
     },
     endpoints: {
@@ -595,7 +607,14 @@ export function buildOutboundRuntime<
       if (config.replay?.defaultThroughput !== undefined) {
         replayCtx.defaultThroughput = config.replay.defaultThroughput;
       }
-      return replayImpl(replayCtx, opts);
+      return withSpan(
+        "postel.replay",
+        spanAttributes({
+          "postel.message.id": "messageId" in opts ? opts.messageId : null,
+          "postel.endpoint.id": "endpointId" in opts ? opts.endpointId : null,
+        }),
+        () => replayImpl(replayCtx, opts),
+      );
     },
     async reconcile(opts) {
       return reconcileImpl(
