@@ -32,5 +32,9 @@ export function InMemoryDedup(options?: InMemoryDedupOptions): DedupAdapter {
       }
       return { duplicate: false };
     },
+
+    async release(messageId: string): Promise<void> {
+      store.delete(messageId);
+    },
   };
 }

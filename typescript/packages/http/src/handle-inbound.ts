@@ -5,6 +5,7 @@ import { errorBody, statusForError } from "./error-policy.js";
 import { readMessageId } from "./internal/headers.js";
 import type {
   GateSource,
+  HandlerResponse,
   HandlerResponseInit,
   NormalizedRequest,
   WebhookContext,
@@ -36,6 +37,7 @@ export async function handleInbound<TData = unknown>(
   }
 
   const messageId = readMessageId(req.headers);
+  let dedupRecorded = false;
 
   if (opts?.dedup && source.dedup && messageId !== undefined) {
     const dedupResult = await source.dedup(
@@ -51,6 +53,7 @@ export async function handleInbound<TData = unknown>(
         messageId,
       };
     }
+    dedupRecorded = true;
   }
 
   const context: WebhookContext<TData> = {
@@ -61,7 +64,16 @@ export async function handleInbound<TData = unknown>(
     rawBody: req.rawBody,
   };
 
-  const handled = await opts?.onVerified?.(context);
+  let handled: HandlerResponse;
+  try {
+    handled = await opts?.onVerified?.(context);
+  } catch (err) {
+    if (dedupRecorded && messageId !== undefined) {
+      // Best-effort: a release failure must not mask the handler's real error.
+      await source.dedupRelease?.(messageId).catch(() => undefined);
+    }
+    throw err;
+  }
   const custom: HandlerResponseInit | undefined =
     typeof handled === "object" && handled !== null ? handled : undefined;
 

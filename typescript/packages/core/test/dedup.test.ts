@@ -70,6 +70,18 @@ describe("Idempotency dedup helper", () => {
     });
   });
 
+  describe("dedupRelease", () => {
+    it("undoes a record so the id is treated as unseen again", async () => {
+      const source = inboundSource();
+      expect(await source.dedup("msg_release", { ttl: "1h" })).toEqual({ duplicate: false });
+      expect(await source.dedup("msg_release", { ttl: "1h" })).toEqual({ duplicate: true });
+
+      await source.dedupRelease("msg_release");
+
+      expect(await source.dedup("msg_release", { ttl: "1h" })).toEqual({ duplicate: false });
+    });
+  });
+
   describe("Redis is opt-in only", () => {
     it("@postel/core runs without Redis as a dependency (in-memory adapter is built in)", async () => {
       const adapter = InMemoryDedup();

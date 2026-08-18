@@ -59,6 +59,24 @@ A few things to note:
 
 Implement `DedupAdapter` yourself to plug in another backend — e.g. Redis, for hosts that already run it. **Postel does not require Redis as a runtime dependency** — that's a deliberate design choice ([ADR 0001](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md)). If you have Redis already, use it; if you don't, don't stand one up just for dedup.
 
+## Delivery semantics of gate-level dedup
+
+The framework gates (`verifyWebhook` / `withWebhook` / `handleInbound`, via each adapter's `.post(...)`) support the same idea as sugar: pass `dedup: { ttl }` and the gate records the `webhook-id`, responding `2xx` + `X-Postel-Dedup-Result: duplicate` (skipping your handler) on a repeat within the TTL.
+
+```ts
+app.post(
+  "/webhooks/vendor",
+  ...withWebhook(postel.inbound.vendor, handleOrder, { dedup: { ttl: "24h" } }),
+);
+```
+
+The ordering: the gate records the id, THEN runs your handler. If your handler throws, the gate releases the record it just wrote before the error propagates, so the producer's retry (issued because it saw your 5xx) is treated as unseen and reaches the handler again — a throwing handler never permanently burns the id. This release is automatic and requires no extra configuration; it works out of the box with `InMemoryDedup`, `PgDedup`, `SqliteDedup`, and `MysqlDedup`. A custom `DedupAdapter` that doesn't implement `release` simply keeps the id recorded on handler failure, same as before this existed.
+
+Two things this does **not** give you:
+
+- **A custom `DedupAdapter` without `release` still burns the id on handler failure.** `release` is optional on `DedupAdapter`; the gate calls it only when the configured adapter provides it.
+- **True concurrent duplicates can still both reach the handler.** If two deliveries of the same id arrive close enough together that the first is still inside your handler, the record-before-handler check still guarantees only one of them proceeds — but if *that one* subsequently fails and gets released, the id was briefly "burned" for the other, already-acknowledged delivery. Recovery still happens through the failing delivery's own retry, not through the concurrent duplicate's. If your handler isn't idempotent and you need to rule this out entirely, use the [manual dedup + transaction pattern](#where-to-put-the-dedup-call) below instead of the gate's `dedup` option.
+
 ## Where to put the dedup call
 
 The naive placement is "before the work":

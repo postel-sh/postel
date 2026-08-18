@@ -70,6 +70,15 @@ describe("Idempotency dedup helper", () => {
     });
   });
 
+  it("release() undoes a record so the id is treated as unseen again (SQLite)", async () => {
+    const adapter = SqliteDedup({ db });
+    await dedup("msg_release_sqlite", { ttl: "1h", adapter });
+    await adapter.release?.("msg_release_sqlite");
+    expect(await dedup("msg_release_sqlite", { ttl: "1h", adapter })).toEqual({
+      duplicate: false,
+    });
+  });
+
   it("creates the dedup table with the configured name", () => {
     SqliteDedup({ db, tableName: "custom_dedup" });
     const row = db

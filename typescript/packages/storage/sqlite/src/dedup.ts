@@ -12,6 +12,7 @@ const DEFAULT_TABLE = "postel_received_messages";
 interface CachedStatements {
   readonly insert: Statement<[string, number]>;
   readonly purge: Statement<[number]>;
+  readonly del: Statement<[string]>;
 }
 
 function ensureTable(db: Database, tableName: string): CachedStatements {
@@ -27,13 +28,14 @@ function ensureTable(db: Database, tableName: string): CachedStatements {
     `INSERT OR IGNORE INTO "${tableName}" (message_id, expires_at) VALUES (?, ?)`,
   );
   const purge = db.prepare<[number]>(`DELETE FROM "${tableName}" WHERE expires_at <= ?`);
-  return { insert, purge };
+  const del = db.prepare<[string]>(`DELETE FROM "${tableName}" WHERE message_id = ?`);
+  return { insert, purge, del };
 }
 
 export function SqliteDedup(options: SqliteDedupOptions): DedupAdapter {
   const tableName = options.tableName ?? DEFAULT_TABLE;
   const now = options.now ?? (() => new Date());
-  const { insert, purge } = ensureTable(options.db, tableName);
+  const { insert, purge, del } = ensureTable(options.db, tableName);
 
   let purgeCounter = 0;
 
@@ -47,6 +49,10 @@ export function SqliteDedup(options: SqliteDedupOptions): DedupAdapter {
         purge.run(currentMs);
       }
       return { duplicate: info.changes === 0 };
+    },
+
+    async release(messageId: string): Promise<void> {
+      del.run(messageId);
     },
   };
 }
