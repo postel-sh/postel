@@ -16,7 +16,7 @@ import {
   PostelEventEmitter,
 } from "./sender/events.js";
 import type { Storage, Unsubscribe } from "./storage/types.js";
-import { ttlToSeconds } from "./ttl.js";
+import { type Duration, ttlToSeconds } from "./ttl.js";
 
 // A forwarded runtime event. The library forwards the same events surfaced by
 // `postel.on(...)` to `observability.logger` with a severity level. See
@@ -44,7 +44,7 @@ export type Logger = (entry: LogEvent) => void;
 // outbox. Durations use the shared `number | "<integer><s|m|h|d>"` grammar.
 export interface HealthThresholds {
   readonly maxOutboxDepth?: number;
-  readonly maxOldestPendingAge?: number | string;
+  readonly maxOldestPendingAge?: Duration;
 }
 
 export interface ObservabilityConfig {

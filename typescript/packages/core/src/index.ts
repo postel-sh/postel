@@ -94,6 +94,8 @@ export type { PostelErrorCode, VerifierFailure } from "./errors.js";
 export type { StandardSchemaV1 } from "./standard-schema.js";
 
 export { ttlToSeconds } from "./ttl.js";
+export type { Duration } from "./ttl.js";
+export type { DurationMs } from "./sender/internal/duration.js";
 export { systemClock } from "./clock.js";
 export type { Clock } from "./clock.js";
 export { InMemoryStorage } from "./storage/memory/adapter.js";

@@ -16,6 +16,9 @@ import {
   handleInbound,
   jwksFetchHandler,
 } from "@postel/http";
+
+export type { ComposedVerifyResult } from "@postel/core";
+export type { WebhookContext, WebhookHandlerOptions } from "@postel/http";
 import type { Context, Hono, MiddlewareHandler } from "hono";
 
 export const POSTEL_CONTEXT_KEY = "postel" as const;

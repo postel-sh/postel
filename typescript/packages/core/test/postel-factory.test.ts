@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import type { DedupAdapter, DedupRecordOptions, Verifier } from "../src/index.js";
+import type { DedupAdapter, DedupRecordOptions, Duration, Verifier } from "../src/index.js";
 import {
   ConfigurationError,
   Ed25519V1a,
@@ -602,7 +602,7 @@ describe("Inbound dedup wiring", () => {
       },
     });
     await expect(
-      postel.inbound.github.dedup("msg_bad_ttl", { ttl: "garbage" }),
+      postel.inbound.github.dedup("msg_bad_ttl", { ttl: "garbage" as unknown as Duration }),
     ).rejects.toBeInstanceOf(ConfigurationError);
   });
 

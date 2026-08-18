@@ -9,7 +9,7 @@ import {
 } from "./errors.js";
 import type { StandardSchemaV1 } from "./standard-schema.js";
 import type { Verifier } from "./strategies/verify.js";
-import { ttlToSeconds } from "./ttl.js";
+import { type Duration, ttlToSeconds } from "./ttl.js";
 import type {
   DedupAdapter,
   DedupResult,
@@ -34,8 +34,8 @@ export interface InboundSource<TData = unknown> {
    */
   readonly schema?: StandardSchemaV1<unknown, TData>;
   readonly dedup?: DedupAdapter | undefined;
-  readonly dedupTtl?: number | string;
-  readonly tolerance?: number | string;
+  readonly dedupTtl?: Duration;
+  readonly tolerance?: Duration;
   readonly clock?: Clock;
   readonly onSuccess?: (event: WebhookEvent, result: ComposedVerifyResult) => void;
   readonly onFailure?: (error: Error, headers: WebhookHeaders) => void;
@@ -50,7 +50,7 @@ export interface ComposedVerifyResult<TData = unknown> extends VerifyResult<TDat
 }
 
 export interface InboundDedupOptions {
-  readonly ttl?: number | string;
+  readonly ttl?: Duration;
   readonly tx?: unknown;
 }
 

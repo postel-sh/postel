@@ -1,10 +1,10 @@
 import type { Clock } from "../../clock.js";
 import type { EndpointId, Storage } from "../../storage/types.js";
-import { durationToMs } from "../internal/duration.js";
+import { type DurationMs, durationToMs } from "../internal/duration.js";
 import { mintSecretMaterial, newSecretId } from "./material.js";
 
 export interface RotateOptions {
-  readonly keepPreviousFor: number | string;
+  readonly keepPreviousFor: DurationMs;
   readonly tx?: unknown;
 }
 

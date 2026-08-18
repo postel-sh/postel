@@ -16,6 +16,9 @@ import {
   handleInbound,
   jwksFetchHandler,
 } from "@postel/http";
+
+export type { ComposedVerifyResult } from "@postel/core";
+export type { WebhookContext, WebhookHandlerOptions } from "@postel/http";
 import { headersFromNode, writeOutcomeToNodeRes, writeResponseToNodeRes } from "@postel/http/node";
 import express, {
   type NextFunction,

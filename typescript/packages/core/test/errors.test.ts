@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ConfigurationError,
+  type Duration,
   EndpointDisabled,
   EndpointNotFound,
   EndpointValidation,
@@ -122,7 +123,7 @@ describe("Structured error classes", () => {
   });
 
   it("Configuration mistakes are not misclassified as wire errors: an unparsable ttl throws ConfigurationError", () => {
-    expect(() => ttlToSeconds("garbage")).toThrowError(ConfigurationError);
+    expect(() => ttlToSeconds("garbage" as unknown as Duration)).toThrowError(ConfigurationError);
     expect(() => ttlToSeconds(-5)).toThrowError(ConfigurationError);
     expect(() => ttlToSeconds(1.5)).toThrowError(ConfigurationError);
   });

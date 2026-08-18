@@ -7,7 +7,11 @@ const UNIT_MS: Record<string, number> = {
   d: 24 * 60 * 60 * 1000,
 };
 
-export function durationToMs(input: number | string): number {
+// Sender-side duration grammar: like the shared `Duration` (see ttl.ts) but
+// also accepts a bare `ms` suffix, matching what this parser actually accepts.
+export type DurationMs = number | `${number}${"ms" | "s" | "m" | "h" | "d"}`;
+
+export function durationToMs(input: DurationMs): number {
   if (typeof input === "number") return input;
   const match = DURATION_RE.exec(input);
   if (!match) {
