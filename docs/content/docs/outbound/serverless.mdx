@@ -1,0 +1,101 @@
+---
+title: Serverless
+description: Deliver the outbox without a long-lived process — bounded drain() calls triggered by a platform cron.
+---
+
+`postel.start()` spawns an in-process worker pool that keeps running until you call `postel.stop()`. That's the right shape for a long-lived server, but it doesn't fit a platform that terminates your process the moment a request or invocation finishes — Lambda, Vercel Functions, Cloudflare Workers. There's nothing to keep the pool alive between invocations, and nothing to shut it down cleanly either.
+
+`postel.outbound.drain({ maxMessages, deadline })` is the serverless-shaped alternative: a single bounded pass over the outbox that reserves and dispatches at most `maxMessages` messages, or runs until `deadline` elapses — whichever comes first — then returns. No loop, no background timer, nothing left running after the call resolves.
+
+```ts
+const result = await postel.outbound.drain({
+  maxMessages: 200,     // reserve at most this many messages this invocation
+  deadline: "20s",      // stop reserving more once this much time has elapsed
+});
+
+// { processed: 137, reachedDeadline: false }
+```
+
+`drain()` reserves messages through the same `FOR UPDATE SKIP LOCKED` / `BEGIN IMMEDIATE` mechanism the in-process worker pool uses, so it's safe to call from a serverless function even if a long-lived pool is also running elsewhere against the same database — each message is reserved and dispatched by exactly one of them.
+
+## The trade-off: cron interval, not real-time
+
+A cron-triggered `drain()` is not a substitute for a running worker pool when you need low-latency delivery. Delivery latency is bounded by how often your scheduler fires `drain()`, plus whatever it takes to work through the backlog within that window — not by how quickly the outbox row was written.
+
+- A cron every 1 minute means a message sent right after the last run can wait close to a minute before its first delivery attempt.
+- If a burst produces more pending messages than `maxMessages * (number of drain calls before the next burst)`, the backlog grows until a `drain()` call catches up.
+- Retries follow the same clock: a failed attempt's backoff still has to wait for the next `drain()` invocation to be picked up, not just the backoff delay.
+
+If your product needs sub-second delivery, run `postel.start()` on a long-lived worker (a small always-on process, a container, a queue consumer) instead. `drain()` exists for the case where standing up that process isn't worth it, or isn't possible on your platform.
+
+## Vercel Cron
+
+```ts
+// app/api/cron/drain-webhooks/route.ts
+import { postel } from "@/lib/postel";
+
+export async function GET(request: Request) {
+  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  const result = await postel.outbound.drain({ maxMessages: 200, deadline: "8s" });
+  return Response.json(result);
+}
+```
+
+```json
+// vercel.json
+{
+  "crons": [{ "path": "/api/cron/drain-webhooks", "schedule": "* * * * *" }]
+}
+```
+
+Vercel Cron's minimum interval is one minute (Hobby plan) or more frequent on Pro; keep `deadline` comfortably under your function's execution timeout so the invocation always returns before the platform kills it.
+
+## AWS Lambda + EventBridge
+
+```ts
+// handler.ts
+import { postel } from "./postel";
+
+export const handler = async () => {
+  return postel.outbound.drain({ maxMessages: 500, deadline: "45s" });
+};
+```
+
+Trigger it on a schedule with an EventBridge (CloudWatch Events) rule:
+
+```bash
+aws events put-rule --name drain-webhooks --schedule-expression "rate(1 minute)"
+aws events put-targets --rule drain-webhooks --targets "Id"="1","Arn"="<lambda-arn>"
+```
+
+Keep `deadline` below the Lambda's configured timeout (with margin for cold start and the platform's own overhead) — `drain()` returns cleanly at its deadline, but a killed invocation does not, and any in-flight HTTP attempt at that point relies on its lease expiring so another `drain()` or worker retries it.
+
+## Cloudflare Cron Triggers
+
+```ts
+// worker.ts
+export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(postel.outbound.drain({ maxMessages: 100, deadline: "20s" }));
+  },
+};
+```
+
+```toml
+# wrangler.toml
+[triggers]
+crons = ["*/2 * * * *"]
+```
+
+Cloudflare Workers cap CPU time per invocation on a separate budget from wall-clock time; `ctx.waitUntil` keeps the invocation alive until the drain's I/O-bound work (HTTP delivery attempts) finishes, but `deadline` should still stay well inside your plan's wall-clock limit.
+
+## Choosing `maxMessages` and `deadline`
+
+Both bounds exist because either one alone can leave you exposed:
+
+- `maxMessages` alone doesn't help if a single slow endpoint stalls the batch — `deadline` guarantees the invocation still returns.
+- `deadline` alone doesn't help if the backlog is huge and every message dispatches instantly — `maxMessages` bounds how much work (and how many concurrent HTTP requests) one invocation takes on.
+
+Start conservative — a `deadline` well under your platform's hard timeout, and a `maxMessages` sized to your typical backlog between cron runs — then watch `result.reachedDeadline` and `postel.health().outboxDepth` (see [Observability](/docs/outbound/observability)) to see whether you're keeping up.

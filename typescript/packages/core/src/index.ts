@@ -75,6 +75,8 @@ export type {
 
 export type { CursorOptions, Page } from "./pagination.js";
 
+export type { DrainOptions, DrainResult } from "./sender/worker/drain.js";
+
 export {
   ConfigurationError,
   EndpointDisabled,

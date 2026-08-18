@@ -15,6 +15,12 @@ export interface WorkerPoolOptions {
   readonly janitorIntervalMs?: number;
 }
 
+// Shared with `drainOnce` so both entry points reserve/renew/lease on the
+// same defaults.
+export const DEFAULT_BATCH_SIZE = 16;
+export const DEFAULT_LEASE_MS = 60_000;
+export const DEFAULT_RENEW_INTERVAL_MS = 20_000;
+
 export class WorkerPool {
   private readonly opts: Required<Omit<WorkerPoolOptions, "dispatchOne">> & {
     readonly dispatchOne: DispatchOne;
@@ -31,10 +37,10 @@ export class WorkerPool {
       clock: opts.clock,
       concurrency: opts.concurrency,
       dispatchOne: opts.dispatchOne ?? stubDispatchOne,
-      batchSize: opts.batchSize ?? 16,
-      leaseMs: opts.leaseMs ?? 60_000,
+      batchSize: opts.batchSize ?? DEFAULT_BATCH_SIZE,
+      leaseMs: opts.leaseMs ?? DEFAULT_LEASE_MS,
       idleMs: opts.idleMs ?? 100,
-      renewIntervalMs: opts.renewIntervalMs ?? 20_000,
+      renewIntervalMs: opts.renewIntervalMs ?? DEFAULT_RENEW_INTERVAL_MS,
       janitorIntervalMs: opts.janitorIntervalMs ?? 30_000,
     };
   }
