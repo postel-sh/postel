@@ -52,7 +52,9 @@ export function buildRetryDispatcher(
     endpointWithSecrets: EndpointWithSecrets,
   ): Promise<DispatchOutcome> => {
     const endpoint = endpointWithSecrets.endpoint;
-    if (await circuit.isOpen(msg.tenantId, endpoint.id, endpointCircuit(endpoint))) {
+    if (
+      await circuit.isOpen(msg.tenantId, endpoint.id, endpoint.state, endpointCircuit(endpoint))
+    ) {
       // Don't drop the message: reschedule it past the cooldown and flag it so
       // dispatchMessage keeps it pending. Mirrors the failed-path reschedule.
       const cooldownMs = durationToMs(
@@ -76,6 +78,7 @@ export function buildRetryDispatcher(
       msg.tenantId,
       endpoint.id,
       success,
+      endpoint.state,
       endpointCircuit(endpoint),
     );
     if (circuitChange.opened) {
