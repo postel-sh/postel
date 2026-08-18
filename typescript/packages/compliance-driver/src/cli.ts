@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { startDriver } from "./server.js";
+import { resolveStorageOptions, startDriver } from "./server.js";
 
 async function main(): Promise<void> {
   let port = 0;
@@ -9,7 +9,8 @@ async function main(): Promise<void> {
       if (v !== undefined) port = Number.parseInt(v, 10);
     }
   }
-  const driver = await startDriver({ port });
+  const storageOptions = resolveStorageOptions(process.argv, process.env);
+  const driver = await startDriver({ port, ...storageOptions });
   process.stdout.write(`${JSON.stringify({ port: driver.port, pid: process.pid })}\n`);
   const shutdown = (): void => {
     driver.stop().then(

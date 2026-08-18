@@ -97,6 +97,14 @@ PORT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/postel-d
 ./bin/compliance --sender-control "http://127.0.0.1:$PORT" --vectors compliance/vectors --schema-dir compliance/schema --format json
 """
 
+[tasks."compliance:sender:pg:ts"]
+description = "Run the v0.2.0 sender corpus against @postel/compliance-driver backed by real Postgres (testcontainers), asserting DB-schema conformance. Requires Docker; set POSTEL_PG_TESTCONTAINERS=1."
+run = """
+mise run compliance:build
+pnpm -C typescript --filter @postel/compliance-driver build
+POSTEL_COMPLIANCE_BIN="$(pwd)/bin/compliance" node typescript/packages/compliance-driver/scripts/pg-conformance.mjs
+"""
+
 # Documentation site (Fumadocs / Next.js) — thin delegations into docs/.
 # Standalone Node install at docs/, not part of the typescript/ workspace
 # (cross-cutting like compliance/, per decisions/0006-monorepo-layout.md).

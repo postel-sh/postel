@@ -84,10 +84,22 @@ importers:
       '@postel/core':
         specifier: workspace:*
         version: link:../core
+      '@postel/pg':
+        specifier: workspace:*
+        version: link:../storage/pg
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
     devDependencies:
+      '@testcontainers/postgresql':
+        specifier: 10.13.2
+        version: 10.13.2
       '@types/node':
         specifier: 20.17.10
         version: 20.17.10
+      '@types/pg':
+        specifier: 8.20.0
+        version: 8.20.0
 
   packages/core:
     dependencies:

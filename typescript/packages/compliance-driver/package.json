@@ -33,9 +33,13 @@
     "access": "public"
   },
   "dependencies": {
-    "@postel/core": "workspace:*"
+    "@postel/core": "workspace:*",
+    "@postel/pg": "workspace:*",
+    "pg": "8.20.0"
   },
   "devDependencies": {
-    "@types/node": "20.17.10"
+    "@testcontainers/postgresql": "10.13.2",
+    "@types/node": "20.17.10",
+    "@types/pg": "8.20.0"
   }
 }

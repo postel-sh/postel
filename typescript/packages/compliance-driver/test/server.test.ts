@@ -1,5 +1,41 @@
 import { describe, expect, it } from "vitest";
-import { startDriver } from "../src/index.js";
+import { resolveStorageOptions, startDriver } from "../src/index.js";
+
+// The compliance capability spec's "Pg schema-conformance CI tier proves
+// DB-schema shape, not adapter behavior" scenario (under "Out-of-scope
+// behaviors at the current MINOR") is proven by the Docker-gated
+// scripts/pg-conformance.mjs, run in CI by the compliance-sender-pg job in
+// .github/workflows/compliance-suite.yml — not a vitest case, since it needs
+// a real Postgres via testcontainers.
+describe("Sender-side compliance driver mechanism — storage backend selection", () => {
+  it("defaults to memory storage with no flags or env", () => {
+    expect(resolveStorageOptions(["node", "cli.js"], {})).toEqual({ storage: "memory" });
+  });
+
+  it("POSTEL_COMPLIANCE_STORAGE=pg selects pg with the connection string from env", () => {
+    expect(
+      resolveStorageOptions(["node", "cli.js"], {
+        POSTEL_COMPLIANCE_STORAGE: "pg",
+        POSTEL_COMPLIANCE_PG_URL: "postgres://env/db",
+      }),
+    ).toEqual({ storage: "pg", pgConnectionString: "postgres://env/db" });
+  });
+
+  it("--storage pg --pg-url flags win over env vars", () => {
+    expect(
+      resolveStorageOptions(["node", "cli.js", "--storage", "pg", "--pg-url", "postgres://flag/db"], {
+        POSTEL_COMPLIANCE_STORAGE: "memory",
+        POSTEL_COMPLIANCE_PG_URL: "postgres://env/db",
+      }),
+    ).toEqual({ storage: "pg", pgConnectionString: "postgres://flag/db" });
+  });
+
+  it("any value other than pg falls back to memory", () => {
+    expect(resolveStorageOptions(["node", "cli.js", "--storage", "bogus"], {})).toEqual({
+      storage: "memory",
+    });
+  });
+});
 
 describe("Sender-side compliance driver mechanism", () => {
   it("Runner discovers port info via GET /control/info", async () => {

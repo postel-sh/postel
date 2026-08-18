@@ -10,7 +10,17 @@ import {
   Postel,
   PostelError,
   type RetryStrategy,
+  type Storage,
 } from "@postel/core";
+import { PgStorage } from "@postel/pg";
+import { Pool } from "pg";
+
+// Tables truncated on /control/reset when pg-backed — every table the
+// sender-mode corpus can write to, excluding _postel_meta (holds
+// schema_version, never rows to clear between vectors). Mirrors
+// @postel/pg's own testcontainers.test.ts truncate list.
+const PG_RESET_TABLES =
+  "messages, attempts, endpoint_secrets, endpoint_state_transitions, endpoints, tenants, postel_received_messages";
 
 function normalizeRetryPolicy(raw: unknown): RetryStrategy | undefined {
   if (raw === null || typeof raw !== "object") return undefined;
@@ -33,13 +43,22 @@ function normalizeRetryPolicy(raw: unknown): RetryStrategy | undefined {
   return undefined;
 }
 
+// Either backend satisfies the same `Storage` contract from @postel/core; the
+// driver's control-plane routes only ever call through that interface.
+type HostStorage = Storage<unknown>;
+
 interface SenderHost {
-  postel: ReturnType<typeof Postel<{ outbound: { storage: ReturnType<typeof InMemoryStorage> } }>>;
-  storage: ReturnType<typeof InMemoryStorage>;
+  postel: ReturnType<typeof Postel<{ outbound: { storage: HostStorage } }>>;
+  storage: HostStorage;
   endpointAliases: Map<string, string>;
   fixtures: Map<string, { algorithm: string; key_material: string }>;
   workersStarted: boolean;
   clock: Clock & { advance(ms: number): void };
+}
+
+interface StorageBackend {
+  readonly mode: "memory" | "pg";
+  readonly pgPool?: Pool;
 }
 
 // Wall-clock plus a control-plane offset: real time passes by default so a
@@ -57,11 +76,7 @@ function controlClock(): Clock & { advance(ms: number): void } {
   };
 }
 
-function buildPostel(
-  storage: ReturnType<typeof InMemoryStorage>,
-  clock: Clock,
-  concurrency?: number,
-): SenderHost["postel"] {
+function buildPostel(storage: HostStorage, clock: Clock, concurrency?: number): SenderHost["postel"] {
   return Postel({
     outbound: {
       storage,
@@ -72,9 +87,18 @@ function buildPostel(
   });
 }
 
-function newHost(): SenderHost {
+async function newHost(backend: StorageBackend): Promise<SenderHost> {
   const clock = controlClock();
-  const storage = InMemoryStorage({ clock });
+  let storage: HostStorage;
+  if (backend.mode === "pg") {
+    if (!backend.pgPool) throw new Error("pg storage mode requires a pool");
+    // Migrations already ran once at startup; every reset just clears rows
+    // so each vector starts from an empty, but already-migrated, schema.
+    await backend.pgPool.query(`TRUNCATE ${PG_RESET_TABLES}`);
+    storage = PgStorage({ pool: backend.pgPool, clock, autoMigrate: false });
+  } else {
+    storage = InMemoryStorage({ clock });
+  }
   return {
     postel: buildPostel(storage, clock),
     storage,
@@ -97,9 +121,37 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+// Storage backend is selectable via --storage/--pg-url flags (win over env)
+// or POSTEL_COMPLIANCE_STORAGE/POSTEL_COMPLIANCE_PG_URL env vars, default
+// "memory" — mechanism is PORT-SPECIFIC per the compliance capability spec.
+export function resolveStorageOptions(
+  argv: readonly string[],
+  env: Record<string, string | undefined>,
+): { storage: "memory" | "pg"; pgConnectionString?: string } {
+  let storage: string | undefined;
+  let pgConnectionString: string | undefined;
+  for (let i = 2; i < argv.length; i++) {
+    if (argv[i] === "--storage") storage = argv[i + 1];
+    if (argv[i] === "--pg-url") pgConnectionString = argv[i + 1];
+  }
+  storage ??= env["POSTEL_COMPLIANCE_STORAGE"];
+  pgConnectionString ??= env["POSTEL_COMPLIANCE_PG_URL"];
+  return storage === "pg"
+    ? { storage: "pg", ...(pgConnectionString !== undefined ? { pgConnectionString } : {}) }
+    : { storage: "memory" };
+}
+
 export interface DriverServerOptions {
   readonly port?: number;
   readonly host?: string;
+  // Storage backend the driver's Postel instance runs against. "memory"
+  // (default) is InMemoryStorage, unchanged. "pg" backs it with @postel/pg
+  // over `pgConnectionString` — used by the CI tier that proves the
+  // resulting rows conform to specs/db-schema/. PORT-SPECIFIC mechanism per
+  // the compliance capability spec's "Sender-side compliance driver
+  // mechanism" requirement.
+  readonly storage?: "memory" | "pg";
+  readonly pgConnectionString?: string;
 }
 
 export interface DriverServer {
@@ -109,7 +161,19 @@ export interface DriverServer {
 }
 
 export async function startDriver(options: DriverServerOptions = {}): Promise<DriverServer> {
-  let host = newHost();
+  const storageMode = options.storage ?? "memory";
+  let pgPool: Pool | undefined;
+  if (storageMode === "pg") {
+    if (!options.pgConnectionString) {
+      throw new Error('pgConnectionString is required when storage: "pg"');
+    }
+    pgPool = new Pool({ connectionString: options.pgConnectionString });
+    // Migrate once, up front, so every per-vector reset below only needs to
+    // TRUNCATE — it never re-runs migrations against a live pool.
+    await PgStorage({ pool: pgPool, autoMigrate: true }).schemaVersion();
+  }
+  const backend: StorageBackend = { mode: storageMode, ...(pgPool ? { pgPool } : {}) };
+  let host = await newHost(backend);
   const server = createServer((req, res) => {
     void (async () => {
       try {
@@ -131,7 +195,7 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
           if (host.workersStarted) {
             await host.postel.stop();
           }
-          host = newHost();
+          host = await newHost(backend);
           send(res, 200, {});
           return;
         }
@@ -291,6 +355,7 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
         await new Promise<void>((resolve, reject) =>
           server.close((err) => (err ? reject(err) : resolve())),
         );
+        if (pgPool) await pgPool.end();
       }
     },
   };
