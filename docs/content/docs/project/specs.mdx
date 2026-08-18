@@ -14,7 +14,7 @@ This page links to the canonical artifacts in the repo.
 | **Wire format** | The on-the-wire HTTP shape: headers, signature schemes, payload envelope. The thing producers and receivers actually agree on across language boundaries. | [AsyncAPI 3.0](https://github.com/postel-sh/postel/blob/main/specs/wire-format/asyncapi.yaml) |
 | **DB schema** | The canonical table layout for the outbox, endpoints, dedup, and meta tables. Every storage adapter (Postgres-native, Drizzle, Kysely, Prisma, …) maps to this. | [SQL DDL](https://github.com/postel-sh/postel/blob/main/specs/db-schema/0001_init.sql) (Postgres dialect; SQLite variants commented inline) |
 | **Capability behaviors** | One `spec.md` per capability — `### Requirement` blocks with `#### Scenario` (WHEN/THEN) clauses. Each scenario maps 1:1 to a test. | [Capability specs in the repo](https://github.com/postel-sh/postel/tree/main/openspec/specs) |
-| **Architectural decisions** | Why things are the way they are. ADRs that don't directly drive behavior — package shape, monorepo layout, polyglot strategy, storage strategy. | [`decisions/`](https://github.com/postel-sh/postel/tree/main/decisions) |
+| **Architectural decisions** | Why things are the way they are. ADRs that don't directly drive behavior — package shape, monorepo layout, polyglot strategy, storage strategy. | [Design decisions](/docs/project/decisions) — an adopter-cut index; full records in [`decisions/`](https://github.com/postel-sh/postel/tree/main/decisions) |
 
 ## The executable oracle
 

@@ -1,0 +1,35 @@
+---
+title: Design decisions
+description: Why the API is shaped the way it is — the architecture decision records, indexed by what each one locked in.
+---
+
+Every consequential choice in Postel is written down as an ADR in [`decisions/`](https://github.com/postel-sh/postel/tree/main/decisions). This index is the adopter's cut: what each decision locked in, and where you feel it in the API. The records themselves carry the full context, options considered, and consequences.
+
+## The decisions you feel every day
+
+| ADR | What it locked in |
+|---|---|
+| [0001 — Library shape](https://github.com/postel-sh/postel/blob/main/decisions/0001-library-shape.md) | No service, no broker, no separate dispatcher — ever. Postel runs in your process against your database. Everything on [Why Postel](/docs/project/why) follows from this one. |
+| [0002 — Code-first configuration](https://github.com/postel-sh/postel/blob/main/decisions/0002-code-first-config.md) | No YAML, no DSL. `Postel({...})` is a typed factory over a literal config — which is why `postel.inbound.<source>` is typed to *your* sources and why [`definePostelConfig`](/docs/reference/core#definepostelconfig) exists. |
+| [0007 — Storage strategy](https://github.com/postel-sh/postel/blob/main/decisions/0007-storage-strategy.md) | The adapter matrix (standalone / client / ORM) and host-transaction passthrough — the `{ tx }` option on `send()` that makes the [transactional outbox](/docs/concepts/delivery-guarantees) work through *your* connection. |
+| [0012 — Package granularity](https://github.com/postel-sh/postel/blob/main/decisions/0012-package-granularity.md) | One `@postel/core` for both halves rather than split sender/receiver packages; adapters stay separate. Why installing one package gives you inbound *and* outbound. |
+| [0016 — House API idioms](https://github.com/postel-sh/postel/blob/main/decisions/0016-house-api-idioms.md) | The conventions every surface follows: options-object factories, duration strings (`"5m"`), typed errors over booleans, `readonly` shapes. |
+| [0017 — Framework-adapter pattern](https://github.com/postel-sh/postel/blob/main/decisions/0017-framework-adapter-pattern.md) | One framework-agnostic core ([`@postel/http`](/docs/reference/http)) + thin per-framework gate bindings — why every adapter behaves identically and a new framework is a ~100-line package. |
+| [0015 — Pagination envelope](https://github.com/postel-sh/postel/blob/main/decisions/0015-pagination-envelope.md) | The `{ items, nextCursor }` page shape and opaque cursor contract every list API and admin route shares. |
+
+## The decisions behind the polyglot bet
+
+| ADR | What it locked in |
+|---|---|
+| [0003 — OpenSpec as the spine](https://github.com/postel-sh/postel/blob/main/decisions/0003-openspec-as-spine.md) | Every behavior is a testable spec scenario before it's code; CI fails if a requirement has no matching test. |
+| [0004 — AsyncAPI wire format](https://github.com/postel-sh/postel/blob/main/decisions/0004-asyncapi-wire-format.md) | The wire format is a machine-readable AsyncAPI 3.0 document, not prose. |
+| [0005 — Staged polyglot rollout](https://github.com/postel-sh/postel/blob/main/decisions/0005-polyglot-staged-rollout.md) | TypeScript first, then Go, Python, Rust — each gated on the same compliance suite. See [Polyglot](/docs/project/polyglot). |
+| [0008 — Conformance levels](https://github.com/postel-sh/postel/blob/main/decisions/0008-conformance-levels.md) | CONTRACT vs PORT-SPECIFIC — the compliance suite is the executable boundary. The reason [specs](/docs/project/specs) can be narrow and ports can be idiomatic. |
+| [0011 — Compliance suite tooling](https://github.com/postel-sh/postel/blob/main/decisions/0011-compliance-suite-tooling.md) | A Go runner + YAML vectors, deliberately not TypeScript — the oracle must be independent of the implementation it judges. |
+| [0014 — Release & versioning flow](https://github.com/postel-sh/postel/blob/main/decisions/0014-release-and-versioning-flow.md) | Version-matched conformance: a port at `X.Y.Z` claims conformance by passing `compliance@X.Y`. |
+
+## The full record
+
+The remaining ADRs cover narrower calls — [monorepo layout](https://github.com/postel-sh/postel/blob/main/decisions/0006-monorepo-layout.md), [compliance-suite evolution](https://github.com/postel-sh/postel/blob/main/decisions/0009-compliance-suite-evolution.md), [TypeScript toolchain](https://github.com/postel-sh/postel/blob/main/decisions/0010-typescript-toolchain.md), [dropping `@postel/edge`](https://github.com/postel-sh/postel/blob/main/decisions/0013-drop-edge-package-and-runtime-targeting.md), and [why the API reference is hand-curated](https://github.com/postel-sh/postel/blob/main/decisions/0018-core-api-reference-mechanism.md) (with CI drift gates instead of a generator).
+
+A change that would contradict one of these needs a superseding ADR, not a quiet diff — that's the point of writing them down.

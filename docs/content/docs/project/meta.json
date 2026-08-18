@@ -3,5 +3,12 @@
   "icon": "compass",
   "root": true,
   "description": "Why Postel exists, how it compares, and the spec-first contract behind it.",
-  "pages": ["why", "comparison", "polyglot", "specs", "benchmarks"]
+  "pages": [
+    "why",
+    "comparison",
+    "decisions",
+    "polyglot",
+    "specs",
+    "benchmarks"
+  ]
 }

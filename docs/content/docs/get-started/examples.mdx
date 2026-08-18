@@ -1,0 +1,38 @@
+---
+title: Examples
+icon: rocket
+description: Runnable reference apps — start with nextjs-prisma, a minimal SaaS that sends and receives webhooks, with a crash demo that proves the atomic outbox.
+---
+
+## nextjs-prisma
+
+[`typescript/examples/nextjs-prisma`](https://github.com/postel-sh/postel/tree/main/typescript/examples/nextjs-prisma) is a minimal SaaS that exercises both halves end to end — it's the app the README's demo recording comes from. Storage is SQLite via `@postel/prisma`, so the whole round trip runs offline with zero external infrastructure.
+
+What's in it:
+
+- **`POST /api/orders`** — creates an `Order` row **and** calls `postel.outbound.send()` inside the same `prisma.$transaction`. Either both commit or neither does.
+- **`POST /api/webhooks/vendor`** — receives that webhook back and verifies it against the app's own JWKS.
+- **`GET /.well-known/webhooks-keys`** — the app's JWKS document (Ed25519 `v1a` signing; no shared secret to manage).
+- **Two demo scripts** that need no dev server:
+  - `pnpm demo:crash` — opens the transaction, creates the order, calls `send()`, then gets SIGKILLed mid-transaction; the script reconnects and proves **neither** the order **nor** the outbox message survived. That's the [atomic outbox](/docs/concepts/delivery-guarantees), demonstrated rather than claimed.
+  - `pnpm demo:happy-path` — the same transaction left to commit, followed by signed delivery to a JWKS-verifying receiver.
+
+Run it:
+
+```bash
+git clone https://github.com/postel-sh/postel
+cd postel/typescript && pnpm install && pnpm build
+cd examples/nextjs-prisma
+cp .env.example .env
+pnpm dev
+# in another terminal:
+curl -X POST http://localhost:3000/api/orders \
+  -H 'content-type: application/json' \
+  -d '{"sku": "WIDGET-1", "amountCents": 1999}'
+```
+
+The dev server logs the delivered webhook within a second or two — business write → commit → in-process worker → signed delivery → verified receipt, in one process.
+
+## More on the way
+
+Express + Drizzle and Hono + Postgres reference apps are planned; the [migration guides](/docs/migration-guides) meanwhile show the before/after for BullMQ, Svix, and signing-only setups.
