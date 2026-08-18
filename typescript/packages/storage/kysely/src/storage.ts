@@ -70,6 +70,7 @@ export interface KyselyStorageOptions<DB> {
 type Exec<DB> = Kysely<DB> | Transaction<DB>;
 
 const PG_CODEC: ColumnCodec = { time: "native", json: "text" };
+const NEW_MESSAGE_CHANNEL = "postel_messages_new";
 
 function statements(migrationSql: string): string[] {
   return migrationSql
@@ -167,6 +168,13 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
     return beginTx().execute((trx) => fn(trx));
   }
 
+  // NOTIFY on the same executor as the insert: outside a tx it fires
+  // immediately, inside the host tx Postgres queues it and delivers on commit.
+  async function notifyNewMessage(q: Exec<DB>, messageId: string): Promise<void> {
+    if (!isPg) return;
+    await sql`select pg_notify(${NEW_MESSAGE_CHANNEL}, ${messageId})`.execute(q);
+  }
+
   async function loadEndpointRecord(
     q: Exec<DB>,
     id: EndpointId,
@@ -200,7 +208,9 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
 
     async insertMessage(msg: NewMessage, opts?: HostTxOption<Transaction<DB>>) {
       await ready();
-      await insert(exec(opts), "messages", encodeMessageInsert(msg, codec));
+      const q = exec(opts);
+      await insert(q, "messages", encodeMessageInsert(msg, codec));
+      await notifyNewMessage(q, msg.id);
       return msg.id;
     },
 
@@ -219,6 +229,7 @@ export function KyselyStorage<DB>(options: KyselyStorageOptions<DB>): Storage<Tr
           limit 1`.execute(q);
         if (existing.rows[0]?.id !== undefined) return { id: existing.rows[0].id, reused: true };
         await insert(q, "messages", encodeMessageInsert(msg, codec));
+        await notifyNewMessage(q, msg.id);
         return { id: msg.id, reused: false };
       });
     },

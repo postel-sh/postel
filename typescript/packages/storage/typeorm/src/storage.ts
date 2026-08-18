@@ -98,6 +98,7 @@ export interface TypeOrmStorageOptions {
 }
 
 const PG_CODEC: ColumnCodec = { time: "native", json: "text" };
+const NEW_MESSAGE_CHANNEL = "postel_messages_new";
 
 function statements(migrationSql: string): string[] {
   return migrationSql
@@ -229,6 +230,13 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
     await ex.query(text, values);
   }
 
+  // NOTIFY on the same executor as the insert: outside a tx it fires
+  // immediately, inside the host tx Postgres queues it and delivers on commit.
+  async function notifyNewMessage(ex: TypeOrmExecutor, messageId: string): Promise<void> {
+    if (!isPg) return;
+    await ex.query("select pg_notify($1, $2)", [NEW_MESSAGE_CHANNEL, messageId]);
+  }
+
   async function loadEndpointRecord(
     ex: TypeOrmExecutor,
     id: EndpointId,
@@ -286,7 +294,10 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
 
     async insertMessage(msg: NewMessage, opts?: HostTxOption<TypeOrmExecutor>) {
       await ready();
-      await withExec(opts, (ex) => insert(ex, "messages", encodeMessageInsert(msg, codec)));
+      await withExec(opts, async (ex) => {
+        await insert(ex, "messages", encodeMessageInsert(msg, codec));
+        await notifyNewMessage(ex, msg.id);
+      });
       return msg.id;
     },
 
@@ -305,6 +316,7 @@ export function TypeOrmStorage(options: TypeOrmStorageOptions): Storage<TypeOrmE
         const existing = await rows<{ id: string }>(ex, text, p.values);
         if (existing[0]?.id !== undefined) return { id: existing[0].id, reused: true };
         await insert(ex, "messages", encodeMessageInsert(msg, codec));
+        await notifyNewMessage(ex, msg.id);
         return { id: msg.id, reused: false };
       });
     },

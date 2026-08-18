@@ -476,6 +476,27 @@ export function runStorageTests(factory: StorageTestFactory): void {
           off();
         },
       );
+
+      itNotify(
+        "Outbox poll latency: a transactional send is observed by a LISTENing worker within the spec budget",
+        async () => {
+          const { storage, clock } = await factory.create();
+          if (!storage.subscribe)
+            throw new Error("expected subscribe to exist when notify is advertised");
+          let observedAt: number | undefined;
+          const off = storage.subscribe("postel_messages_new", (p) => {
+            if (p.includes("msg_notify_tx_1")) observedAt = Date.now();
+          });
+          const sentAt = Date.now();
+          await storage.transaction(async (tx) => {
+            await storage.insertMessage(buildMessage(clock, { id: "msg_notify_tx_1" }), { tx });
+          });
+          await new Promise<void>((resolve) => setTimeout(resolve, 50));
+          expect(observedAt).toBeDefined();
+          expect((observedAt as number) - sentAt).toBeLessThanOrEqual(100);
+          off();
+        },
+      );
     });
 
     describe("Worker lease lifecycle", () => {
