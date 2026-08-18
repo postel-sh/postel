@@ -1,0 +1,41 @@
+---
+title: Postel vs Svix vs Outpost vs Convoy vs DIY
+description: An honest comparison across footprint, cost, transactionality, portal, and SLAs — including what Postel deliberately doesn't do.
+---
+
+These aren't competitors in the sense of doing the same job differently — they're different answers to "where does webhook delivery live." Svix and Hookdeck Outpost are dispatcher services you run (or rent) alongside your app. Convoy is the same shape, self-hosted. A hand-rolled BullMQ worker is the DIY version of that shape. Postel is a library: no dispatcher, no broker, your existing database.
+
+Pick based on which shape fits, not which table has more checkmarks — see [Is Postel for me?](/docs/get-started/is-postel-for-me) for the decision gate.
+
+| | **Postel** | **Svix** | **Hookdeck Outpost** | **Convoy** | **DIY (BullMQ)** |
+|---|---|---|---|---|---|
+| Shape | Embedded library | Hosted service (self-host on Enterprise only) | Self-hosted service (Hookdeck-managed option) | Self-hosted service (Convoy Cloud option) | Hand-rolled worker |
+| Footprint | None beyond your existing Postgres/MySQL/SQLite | A separate dispatcher; self-hosting gated behind an Enterprise plan | Separate Go service + Redis + Postgres + a queue (SQS/RabbitMQ/Kafka/…) | Separate Go service + Postgres + a Redis HA cluster/Sentinel | Redis (for BullMQ) + code you write and maintain |
+| Cost | $0 — no service to run or pay for | Free tier (200 msg/sec), then $490/mo+ (Professional), custom Enterprise | Free self-hosted (you pay the infra); Hookdeck-managed tiers on top | Free self-hosted (MIT); paid add-ons (e.g. SSO ~$99/mo) | $0 license, but signing/rotation/replay/dedup are yours to build and maintain — the hidden cost is engineering time |
+| Transactionality | Outbox row **shares your business-write transaction** — commit or rollback together | None — you call their API after your commit; a gap exists between your write and their ingestion | None — your app publishes an event to a downstream service; no shared transaction | None — ingested via HTTP API after the fact | None out of the box — enqueuing to Redis is a separate network hop from your DB commit unless you build the outbox pattern yourself |
+| Customer-facing portal | Not offered (see below) | Yes — embeddable, themable, a headline feature | Yes — built-in end-user portal | Yes — subscriber portal | None — you'd build it |
+| SLA | None — it's your process, your app's SLA is your SLA | Tiered: 99.9% (free/startup) → 99.99% (Professional) → 99.999% (Enterprise) | None self-hosted; Hookdeck's managed tier carries its own SLA | None self-hosted; Convoy Cloud carries its own SLA | None — self-managed |
+
+## What we deliberately don't do
+
+Per [VISION.md](https://github.com/postel-sh/postel/blob/main/VISION.md#non-goals), Postel will never:
+
+- Be a service or host one
+- Run a separate dispatcher process
+- Require Redis, RabbitMQ, Kafka, or any message broker
+- Ship a customer-facing portal as a packaged product
+- Compete on multi-region replication or five-nines SLAs
+
+If any of those are what you actually need, Svix or Hookdeck Outpost are the right tools — not a gap Postel is trying to close.
+
+## Where the atomic-outbox difference actually matters
+
+Every dispatcher-shaped option above (Svix, Outpost, Convoy, and DIY-BullMQ without extra work) has the same failure window: your business write commits, then a separate call tells the dispatcher about it. If the process dies between those two steps, the event is silently lost — no error, nothing to retry, because the dispatcher never heard about it.
+
+Postel's `send()` runs inside the same database transaction as the business write. Kill the process mid-transaction and both roll back together; nothing half-commits. See the demo at the top of the [README](https://github.com/postel-sh/postel#readme) or run it yourself in [`examples/nextjs-prisma`](https://github.com/postel-sh/postel/tree/main/typescript/examples/nextjs-prisma).
+
+## Read next
+
+- [Is Postel for me?](/docs/get-started/is-postel-for-me) — the six-line decision gate.
+- [Sending & the outbox](/docs/outbound/send) — the transactional contract this page compares against.
+- [Migration guides](/docs/migration-guides) — moving from BullMQ, Svix, or a signing-only library onto Postel.

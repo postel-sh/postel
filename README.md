@@ -14,6 +14,12 @@
 
 **Sending and receiving webhooks is easy. Doing it reliably and securely is hard** — retries, replay, signing, key rotation, idempotency, raw-bytes preservation. That's where Postel comes in: a polyglot library that handles those for you. The TypeScript implementation ships first; Go, Python, and Rust follow. Every port conforms to the same wire format, DB schema, and capability behaviors — verified end-to-end by the [`@postel/compliance`](compliance/README.md) test suite.
 
+<p align="center">
+  <img alt="Atomic-outbox demo: kill -9 mid-transaction rolls back the business write and the send() together, then the same transaction left to commit delivers the webhook" src="./docs/public/launch/atomic-outbox-demo.gif" width="760">
+</p>
+
+<p align="center"><sub>The business write and <code>send()</code> share one Prisma transaction — <code>kill -9</code> mid-flight rolls both back, nothing half-commits. Live in <a href="./typescript/examples/nextjs-prisma">examples/nextjs-prisma</a>: <code>pnpm demo:crash</code> / <code>pnpm demo:happy-path</code>. Raw <a href="./docs/public/launch/atomic-outbox-demo.cast">asciinema cast</a> alongside the GIF.</sub></p>
+
 [Standard Webhooks](https://www.standardwebhooks.com/) compliant, sender + receiver, runs inside your application against your existing relational database (Postgres, MySQL, SQLite, …) — no separate service, no Redis, no message broker.
 
 ## Status
