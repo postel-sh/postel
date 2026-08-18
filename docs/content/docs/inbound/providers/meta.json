@@ -1,0 +1,6 @@
+{
+  "title": "Provider verifiers",
+  "icon": "shield-check",
+  "description": "Ready-made verifiers for the top non-Standard-Webhooks senders.",
+  "pages": ["index", "stripe", "github", "shopify", "twilio", "slack"]
+}

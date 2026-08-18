@@ -46,6 +46,11 @@ const PACKAGES = [
     entry: "typescript/packages/effect/src/index.ts",
     pages: ["reference/effect.mdx"],
   },
+  {
+    name: "@postel/admin",
+    entry: "typescript/packages/admin/src/index.ts",
+    pages: ["reference/admin.mdx"],
+  },
 ];
 
 function exportNames(source) {

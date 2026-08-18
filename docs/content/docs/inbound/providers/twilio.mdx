@@ -1,0 +1,54 @@
+---
+title: Twilio
+icon: shield-check
+description: Verify Twilio webhook signatures with Twilio() — the SHA-1 URL-plus-params scheme, and why the exact URL matters.
+---
+
+Twilio's scheme is the odd one out: `X-Twilio-Signature` is a base64 HMAC-**SHA1** over the exact webhook URL concatenated with the form parameters sorted by key — not over the raw body alone. `Twilio(authToken, url)` implements it; the second argument is the URL you registered with Twilio:
+
+```ts title="lib/postel.ts"
+import { Postel, Twilio } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    twilioSms: {
+      verify: Twilio(
+        process.env.TWILIO_AUTH_TOKEN!,
+        "https://api.example.com/webhooks/twilio/sms", // the EXACT registered URL
+      ),
+    },
+  },
+});
+```
+
+```ts title="app.ts"
+import Fastify from "fastify";
+import { FastifyWebAdapter } from "@postel/fastify";
+import { postel } from "./lib/postel";
+
+const app = Fastify();
+FastifyWebAdapter(postel, app).inbound.twilioSms.post("/webhooks/twilio/sms", async (req) => {
+  // req.postel.event.data: the parsed form parameters (From, To, Body, …)
+  return { ok: true };
+});
+```
+
+## Scheme details
+
+| | |
+|---|---|
+| Header | `X-Twilio-Signature` (base64) |
+| Algorithm | HMAC-SHA1 over `url + sortedFormParams` (keys sorted, `key + value` concatenated) |
+| Replay window | None — the scheme has no time component at all |
+| `event.type` | The fixed literal `"twilio.webhook"` — Twilio's wire format carries no event-type field |
+| `event.data` | The parsed `application/x-www-form-urlencoded` parameters |
+
+## Gotchas
+
+- **The URL must match byte-for-byte** — scheme, host, path, and query string, exactly as registered with Twilio. A reverse proxy or load balancer that rewrites the URL your app sees (https→http termination, a path prefix) breaks verification; Twilio's own SDKs carry the same caveat. Configure one source per registered URL.
+- **SHA-1 is Twilio's choice, not yours.** The verifier still compares in constant time; the algorithm is fixed by their scheme.
+- **Form-encoded, not JSON.** The body is `application/x-www-form-urlencoded`; `event.data` is the decoded parameter map.
+
+## Testing locally
+
+Twilio's console can replay requests, and `twilio phone-numbers:update ... --sms-url` pointed at an [ngrok](https://ngrok.com)-style tunnel delivers real signed traffic. Remember: the URL you pass to `Twilio(...)` must be the tunnel URL during the test. (`signFixture` signs Standard Webhooks only.)

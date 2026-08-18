@@ -2,7 +2,7 @@
   "title": "Reference",
   "icon": "book",
   "root": true,
-  "description": "The complete API surface — packages, types, errors.",
+  "description": "The complete API surface \u2014 packages, types, errors.",
   "pages": [
     "index",
     "packages",
@@ -12,6 +12,8 @@
     "strategies",
     "http",
     "effect",
+    "admin",
+    "cli",
     "errors"
   ]
 }

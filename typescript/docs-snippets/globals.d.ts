@@ -58,6 +58,20 @@ declare global {
   type OrderCreated = { id: string };
   type DB = Record<string, unknown>;
 
+  // Test-context free names (the testing page's fragments).
+  const SECRET: string;
+  const NOW: Date;
+  // biome-ignore lint/suspicious/noExplicitAny: test-framework plumbing
+  const expect: any;
+  // biome-ignore lint/suspicious/noExplicitAny: supertest-style client
+  const request: any;
+  // biome-ignore lint/suspicious/noExplicitAny: the route file's exported handler
+  const POST: any;
+  // biome-ignore lint/suspicious/noExplicitAny: deliberately untyped host plumbing
+  const payload: any;
+  // biome-ignore lint/suspicious/noExplicitAny: a fixture from an earlier snippet
+  const sig: any;
+
   // Host-app context the snippets reference but never define.
   const config: Record<string, string>;
   const body: Uint8Array;

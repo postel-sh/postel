@@ -1,0 +1,47 @@
+---
+title: Slack
+icon: shield-check
+description: Verify Slack request signatures with Slack() — the v0 signing scheme with its timestamp window, as an ordinary Verifier.
+---
+
+Slack signs with two headers: `X-Slack-Signature` (`v0=<hex>`) and `X-Slack-Request-Timestamp`. The signature is an HMAC-SHA256 over `` `v0:${timestamp}:${body}` ``. `Slack(signingSecret)` implements it:
+
+```ts title="lib/postel.ts"
+import { Postel, Slack } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    slack: { verify: Slack(process.env.SLACK_SIGNING_SECRET!) },
+  },
+});
+```
+
+```ts title="app/api/webhooks/slack/route.ts"
+import { NextjsWebAdapter } from "@postel/nextjs";
+import { postel } from "@/lib/postel";
+
+export const { POST } = NextjsWebAdapter(postel).inbound.slack.post((result) => {
+  // result.event.type: "event_callback", "url_verification", …
+  return Response.json({ ok: true });
+});
+```
+
+## Scheme details
+
+| | |
+|---|---|
+| Headers | `X-Slack-Signature` (`v0=<hex>`), `X-Slack-Request-Timestamp` |
+| Algorithm | HMAC-SHA256 over `` `v0:${timestamp}:${body}` ``, hex-encoded |
+| Replay window | ±300s by default — Slack's own recommendation; override via `Slack(secret, { toleranceSeconds })` |
+| `event.type` / `event.data` | `type` from the event body (`event_callback`, `url_verification`, …); `data` is the whole body |
+| Failure modes | `MalformedHeader`, `TimestampTooOld`, `SignatureInvalid` — the standard [taxonomy](/docs/reference/errors) |
+
+## Gotchas
+
+- **Handle `url_verification`.** When you register the endpoint, Slack sends `{ type: "url_verification", challenge }` and expects the challenge echoed back — it's signed like everything else, so it flows through the gate; branch on `event.type` in your handler.
+- **The inner event is nested.** For `event_callback` deliveries the interesting payload is `event.data.event` (Slack's envelope), not `event.data` itself.
+- **Slash commands and interactivity payloads are form-encoded** but signed over the raw body all the same — the verifier doesn't care, your handler parses `event.data` accordingly.
+
+## Testing locally
+
+Slack's app dashboard re-sends event deliveries, and `ngrok`-style tunnels work for live traffic. For unit tests, computing the signature is three lines: HMAC-SHA256 of `v0:${ts}:${body}` with your test signing secret, prefixed `v0=`. (`signFixture` signs Standard Webhooks only.)

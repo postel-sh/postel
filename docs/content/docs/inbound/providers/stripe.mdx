@@ -1,0 +1,50 @@
+---
+title: Stripe
+icon: shield-check
+description: Verify Stripe webhook signatures with Stripe() — the Stripe-Signature scheme, replay window, and raw-body gotchas, handled.
+---
+
+Stripe signs with its own scheme, not Standard Webhooks: a `Stripe-Signature` header carrying `t=<unix>` and one or more `v1=<hex>` HMAC-SHA256 signatures over `` `${t}.${body}` ``. `Stripe(secret)` implements it as an ordinary `Verifier`:
+
+```ts title="lib/postel.ts"
+import { Postel, Stripe } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    stripe: { verify: Stripe(process.env.STRIPE_WEBHOOK_SECRET!) },
+  },
+});
+```
+
+Wire it through any [web adapter](/docs/web-adapters) — the gate, raw-body handling, and error→status mapping are identical to every other source:
+
+```ts title="app/api/webhooks/stripe/route.ts"
+import { NextjsWebAdapter } from "@postel/nextjs";
+import { postel } from "@/lib/postel";
+
+export const { POST } = NextjsWebAdapter(postel).inbound.stripe.post((result) => {
+  // result.event.type: "payment_intent.succeeded", "invoice.paid", …
+  return Response.json({ received: true });
+});
+```
+
+## Scheme details
+
+| | |
+|---|---|
+| Header | `Stripe-Signature` (`t=<unix>`, one or more `v1=<hex>`) |
+| Algorithm | HMAC-SHA256 over `` `${t}.${body}` ``, hex-encoded |
+| Replay window | ±300s by default — Stripe's own recommendation; override via `Stripe(secret, { toleranceSeconds })` |
+| Multiple `v1` values | Accepted if **any** matches — this is how Stripe rolls secrets, so rotation works out of the box |
+| `event.type` / `event.data` | From the event body's `type` and `data` fields |
+| Failure modes | `MalformedHeader` (missing/unparsable header), `TimestampTooOld` (outside the window), `SignatureInvalid` (no `v1` matched) — same [taxonomy](/docs/reference/errors) as every verifier |
+
+## Gotchas
+
+- **The secret is literal key material.** Pass the `whsec_...` value exactly as Stripe issues it — prefix included. Unlike Standard Webhooks `Secret(...)`, it is **not** base64-decoded first.
+- **Raw bytes matter as much as ever.** Stripe signs the exact body it sent; a JSON middleware that re-serializes breaks verification. The adapters handle this — hand-rolled routes should read [Raw bytes](/docs/concepts/raw-bytes).
+- **Rotating your endpoint secret?** `verify` accepts an array: `verify: [Stripe(newSecret), Stripe(oldSecret)]` — same [rotation window](/docs/inbound/key-rotation) pattern as everything else.
+
+## Testing locally
+
+Use the [Stripe CLI](https://docs.stripe.com/stripe-cli): `stripe listen --forward-to localhost:3000/api/webhooks/stripe` forwards real, correctly-signed events to your dev server, and `stripe trigger payment_intent.succeeded` fires one on demand. (`signFixture` signs Standard Webhooks only — it can't fabricate Stripe signatures.)

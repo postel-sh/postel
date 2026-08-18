@@ -1,0 +1,27 @@
+---
+title: "@postel/cli"
+description: The postel binary — one command today, migrate, which brings a database to the current canonical schema.
+---
+
+`@postel/cli` ships the `postel` binary. It has exactly one command:
+
+## postel migrate
+
+```bash
+postel migrate --dialect <postgres|sqlite|mysql> --url <connection-string>
+```
+
+| Flag | Required | Meaning |
+|---|---|---|
+| `--dialect` | yes | `postgres`, `sqlite`, or `mysql` — selects the adapter whose canonical migrations run |
+| `--url` | yes | The connection string (for `sqlite`, the database file path) |
+
+Runs the target dialect's [canonical forward-only migrations](/docs/storage/schema) — the same ones the adapter's `autoMigrate` runs — and brings the database to the current schema version. It owns its connection (opens it, closes it, exits), is idempotent, and exits non-zero on failure, so a broken migration fails your deploy step rather than your app boot.
+
+The corresponding database driver must be installed alongside (`pg`, `better-sqlite3`, or `mysql2`) — the CLI imports it lazily per dialect.
+
+Any other command exits with an error; more verbs land as the operational surface grows.
+
+## When to use it
+
+Production deploys where the app boots with `autoMigrate: false` — the full pattern, including the schema-version handshake that backs it, is on [Migrations & postel migrate](/docs/operations/migrations).

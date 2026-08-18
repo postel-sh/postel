@@ -33,6 +33,16 @@ export const postel = Postel({
 
 All five are ordinary `Verifier`s — they compose in arrays/maps, report `matchedVerifierIndex`, and throw the same `SignatureInvalid`/`MalformedHeader`/`TimestampTooOld` errors as the Standard Webhooks verifiers. One important difference: the secret you pass to any of them is used as **literal UTF-8 key material**, exactly as that provider issues it (a Stripe secret keeps its `whsec_` prefix as part of the key) — it is *not* run through the `whsec_`-strip-then-base64-decode convention `Secret`/`PublicKey` use for Standard Webhooks secrets. `Twilio`'s `url` must be the exact webhook endpoint URL registered with Twilio (scheme, host, path, and query string) — Twilio signs over that URL, so a reverse proxy that rewrites what your app sees will break verification, the same caveat Twilio's own SDKs carry.
 
+Each provider has its own page with the full recipe — the config one-liner, a gated route, the scheme's details, its gotchas, and how to test locally:
+
+<Cards>
+  <Card title="Stripe" href="/docs/inbound/providers/stripe" description="Stripe-Signature: t= + v1= HMAC-SHA256, ±300s window, secret rolls." />
+  <Card title="GitHub" href="/docs/inbound/providers/github" description="X-Hub-Signature-256 over the raw payload; type from X-GitHub-Event." />
+  <Card title="Shopify" href="/docs/inbound/providers/shopify" description="Base64 HMAC in X-Shopify-Hmac-Sha256; topic from X-Shopify-Topic." />
+  <Card title="Twilio" href="/docs/inbound/providers/twilio" description="SHA-1 over URL + sorted form params — the exact registered URL matters." />
+  <Card title="Slack" href="/docs/inbound/providers/slack" description="v0 signing scheme with its own ±300s timestamp window." />
+</Cards>
+
 ## What's next
 
 - [Custom verifiers](/docs/inbound/custom-verifiers) — write one for any other sender.

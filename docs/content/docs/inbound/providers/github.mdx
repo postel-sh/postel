@@ -1,0 +1,51 @@
+---
+title: GitHub
+icon: shield-check
+description: Verify GitHub webhook signatures with GitHub() — X-Hub-Signature-256 over the raw payload, event type from X-GitHub-Event.
+---
+
+GitHub signs with `X-Hub-Signature-256`: `sha256=<hex>`, an HMAC-SHA256 over the raw request body. There is no timestamp in the scheme, so there is no replay window at this layer. `GitHub(secret)` implements it as an ordinary `Verifier`:
+
+```ts title="lib/postel.ts"
+import { Postel, GitHub } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    github: { verify: GitHub(process.env.GITHUB_WEBHOOK_SECRET!) },
+  },
+});
+```
+
+```ts title="app.ts"
+import { Hono } from "hono";
+import { HonoWebAdapter } from "@postel/hono";
+import { postel } from "./lib/postel";
+
+const app = new Hono();
+HonoWebAdapter(postel, app).inbound.github.post("/webhooks/github", (c) => {
+  const { event } = c.var.postel;
+  // event.type: "push", "pull_request", "issues", … (from X-GitHub-Event)
+  // event.data: the entire delivery payload
+  return c.json({ ok: true });
+});
+```
+
+## Scheme details
+
+| | |
+|---|---|
+| Headers | `X-Hub-Signature-256` (`sha256=<hex>`), `X-GitHub-Event` |
+| Algorithm | HMAC-SHA256 over the raw body, hex-encoded |
+| Replay window | None — GitHub sends no timestamp, so no replay protection exists at this layer |
+| `event.type` | The `X-GitHub-Event` header value (`push`, `pull_request`, …) — the action (`opened`, `closed`) is inside `event.data.action` |
+| `event.data` | The whole delivery payload |
+
+## Gotchas
+
+- **Secret is literal UTF-8.** Whatever string you typed into the webhook settings page is the key — no encoding convention.
+- **No replay window means dedup matters more.** With no timestamp to reject stale requests, a captured request replays forever. GitHub sends an `X-GitHub-Delivery` GUID — key your own [dedup](/docs/inbound/deduplication) on it if replay is a concern in your threat model.
+- **`event.type` is coarse.** GitHub's event header names the event family; discriminate the specific action on `event.data.action`.
+
+## Testing locally
+
+GitHub's webhook settings page has a "Redeliver" button per delivery, and [`gh webhook forward`](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/using-the-github-cli-to-forward-webhooks-for-testing) forwards signed deliveries to a local port. (`signFixture` signs Standard Webhooks only.)

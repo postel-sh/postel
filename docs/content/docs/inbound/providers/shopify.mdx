@@ -1,0 +1,49 @@
+---
+title: Shopify
+icon: shield-check
+description: Verify Shopify webhook signatures with Shopify() — base64 HMAC in X-Shopify-Hmac-Sha256, topic from X-Shopify-Topic.
+---
+
+Shopify signs with `X-Shopify-Hmac-Sha256`: a base64-encoded HMAC-SHA256 over the raw request body. Like GitHub, the scheme carries no timestamp, so there is no replay window at this layer. `Shopify(secret)` implements it as an ordinary `Verifier`:
+
+```ts title="lib/postel.ts"
+import { Postel, Shopify } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    shopify: { verify: Shopify(process.env.SHOPIFY_WEBHOOK_SECRET!) },
+  },
+});
+```
+
+```ts title="app.ts"
+import express from "express";
+import { ExpressWebAdapter } from "@postel/express";
+import { postel } from "./lib/postel";
+
+const app = express();
+ExpressWebAdapter(postel, app).inbound.shopify.post("/webhooks/shopify", (req, res) => {
+  // req.postel.event.type: "orders/create", "app/uninstalled", … (from X-Shopify-Topic)
+  res.json({ ok: true });
+});
+```
+
+## Scheme details
+
+| | |
+|---|---|
+| Headers | `X-Shopify-Hmac-Sha256` (base64), `X-Shopify-Topic` |
+| Algorithm | HMAC-SHA256 over the raw body, base64-encoded |
+| Replay window | None — Shopify sends no timestamp |
+| `event.type` | The `X-Shopify-Topic` header value (`orders/create`, `products/update`, …) |
+| `event.data` | The whole delivery payload |
+
+## Gotchas
+
+- **Which secret?** For an app's webhook subscriptions, the key is the app's **API secret key** (client secret) — not the shop-admin webhook signing key shown in the store settings; those two sign different subscription kinds. Verify against whichever created your subscription.
+- **No replay window.** Same story as GitHub: pair with [dedup](/docs/inbound/deduplication) keyed on `X-Shopify-Webhook-Id` if replay matters in your threat model.
+- **Respond fast.** Shopify times out at 5 seconds and counts failures toward removing the subscription — acknowledge first, do slow work after (the [dedup + transaction pattern](/docs/inbound/deduplication#where-to-put-the-dedup-call) fits here).
+
+## Testing locally
+
+The Shopify CLI (`shopify app dev`) tunnels real signed deliveries to your dev server; the Partners dashboard can re-send deliveries. (`signFixture` signs Standard Webhooks only.)

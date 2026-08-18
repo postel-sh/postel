@@ -1,0 +1,46 @@
+---
+title: Migrations & postel migrate
+description: How Postel's schema reaches your database — autoMigrate for development, the postel migrate CLI for deploy pipelines, and the version handshake in between.
+---
+
+Every SQL-backed adapter targets the same [canonical schema](/docs/storage/schema). Two mechanisms bring a database up to it — pick per environment, not per project.
+
+## Development: `autoMigrate` (the default)
+
+Every storage adapter accepts `autoMigrate` (default `true`): on first use it runs the canonical forward-only migrations through your connection, version-gated and idempotent. Zero ceremony — the right default for development, tests, and single-instance apps whose database user may run DDL.
+
+## Production: `postel migrate` in the deploy step
+
+Most production setups don't want app boot running DDL — the app's DB user shouldn't have DDL rights, and N instances booting at once shouldn't race to migrate. Turn `autoMigrate` off and run the CLI in your deploy pipeline instead:
+
+```ts title="lib/postel.ts"
+import { Postel } from "@postel/core";
+import { PgStorage } from "@postel/pg";
+import { config } from "./config.js";
+
+export const postel = Postel({
+  outbound: {
+    storage: PgStorage({ connectionString: config.databaseUrl, autoMigrate: false }),
+  },
+});
+```
+
+```bash
+# deploy step, before the new version boots — idempotent, safe to rerun
+npx postel migrate --dialect postgres --url "$DATABASE_URL"
+```
+
+`postel` ships in `@postel/cli`; `migrate` is its only command. `--dialect` is `postgres`, `sqlite`, or `mysql` (`--url` is the connection string — a file path for SQLite). It runs the same forward-only migrations `autoMigrate` would, opens and closes its own connection, and exits non-zero on failure so a broken migration fails the deploy, not the app.
+
+ORM adapters have a third option: generate the schema in your ORM's own DSL and migrate with its tooling — e.g. [`@postel/drizzle/schema`](/docs/storage/drizzle) exports the tables for `drizzle-kit`.
+
+## The version handshake
+
+`_postel_meta.schema_version` records what the database is at. Every adapter reads it at boot and **refuses to run against an incompatible schema** — a library upgrade that needs a newer schema fails fast with a "run the migration" error instead of misbehaving against old columns. That's the safety net that makes `autoMigrate: false` safe: forgetting the deploy step gives you a loud boot failure, never silent corruption.
+
+Migrations are forward-only — no destructive change, every step idempotent (`IF NOT EXISTS` / version-gated). There is no `down`.
+
+## What's next
+
+- [Production checklist](/docs/operations/production-checklist) — everything else that changes between dev and prod.
+- [Schema & migrations](/docs/storage/schema) — the tables themselves.
