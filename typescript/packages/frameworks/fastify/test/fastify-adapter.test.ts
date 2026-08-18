@@ -131,6 +131,34 @@ describe("Framework adapters preserve raw bytes", () => {
   });
 });
 
+describe("Consumed raw body surfaces a descriptive configuration error [PORT-SPECIFIC]", () => {
+  it("Fastify manual preHandler without the raw-body plugin", async () => {
+    const postel = vendor();
+    const app = Fastify();
+    // No `fastifyPostel` registration: Fastify's built-in JSON content-type
+    // parser consumes the raw bytes before the gate's preHandler runs.
+    app.post("/mw/vendor", { preHandler: verifyWebhook(postel.inbound.vendor) }, async () => ({
+      ok: true,
+    }));
+    app.setErrorHandler((err, _req, reply) => {
+      reply.status(500).send({ error: err.message });
+    });
+
+    const sig = await signed("order.created", "o_1");
+    const res = await app.inject({
+      method: "POST",
+      url: "/mw/vendor",
+      headers: { ...sig.headers, "content-type": "application/json" },
+      payload: sig.body,
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().error).toMatch(/fastifyPostel/);
+    expect(JSON.stringify(res.json())).not.toContain("SIGNATURE_INVALID");
+    await app.close();
+  });
+});
+
 describe("JWKS endpoint mounter", () => {
   it("outbound.bindJwks() serves the JWKS document on GET (default provider)", async () => {
     const app = Fastify();
