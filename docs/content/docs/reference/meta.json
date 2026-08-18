@@ -5,6 +5,10 @@
   "pages": [
     "index",
     "packages",
+    "core",
+    "inbound",
+    "outbound",
+    "strategies",
     "http",
     "errors",
     "specs",

@@ -20,6 +20,7 @@ Error
     ├── EventValidation              code: "EVENT_VALIDATION"            (inbound + outbound)
     ├── EndpointValidation           code: "ENDPOINT_VALIDATION"         (outbound)
     ├── SsrfBlocked                  code: "SSRF_BLOCKED"                (outbound)
+    ├── EndpointNotFound             code: "ENDPOINT_NOT_FOUND"          (outbound)
     ├── IdempotencyKeyConflict       code: "IDEMPOTENCY_KEY_CONFLICT"    (reserved)
     ├── EndpointDisabled             code: "ENDPOINT_DISABLED"           (reserved)
     └── MigrationRequired            code: "MIGRATION_REQUIRED"          (reserved)
@@ -126,6 +127,20 @@ if (err instanceof EndpointValidation) {
 **When:** An endpoint URL that passed create-time validation resolves into a blocked range *at dispatch* (e.g. DNS rebinding, or a record that changed since creation). The dispatcher catches it internally and records the attempt with status `ssrf-blocked` — it is **not** thrown back to the `send()` caller (delivery happens asynchronously in a worker). You observe it on the attempt, not in a `try/catch` around `send()`.
 
 **Recovery:** The target now resolves to a private address; the delivery is held (treated as a retryable failure) rather than sent. Point the endpoint at a public address.
+
+### `EndpointNotFound`
+
+**Code:** `ENDPOINT_NOT_FOUND`
+**Thrown by:** `postel.outbound.endpoints.get(id)`; `postel.outbound.endpoints.update(id, ...)` when the patch touches `url`, `allowHttp`, or `http` (those fields re-validate against the endpoint's current record before applying).
+**When:** No endpoint exists with the given `id`.
+
+**Recovery:** `404 Not Found` from your admin surface. The id is wrong or the endpoint was deleted; there's nothing to retry.
+
+```ts
+if (err instanceof EndpointNotFound) {
+  return new Response(err.message, { status: 404 });
+}
+```
 
 ### Reserved codes (defined, not yet emitted by the runtime)
 
