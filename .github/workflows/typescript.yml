@@ -96,6 +96,46 @@ jobs:
         env:
           POSTEL_PG_TESTCONTAINERS: "1"
 
+  example-nextjs-prisma:
+    name: "examples/nextjs-prisma (build + atomic-outbox smoke)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: typescript/pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Builds @postel/core and @postel/prisma (its workspace deps) plus the
+      # example's own `next build` — the acceptance gate for "can't rot".
+      - name: Build
+        run: pnpm --filter @postel-examples/nextjs-prisma... build
+
+      # The atomic-outbox demo scripts ARE the smoke test: each exercises the
+      # real business-write + send() transaction against @postel/prisma and
+      # @postel/core, one proving the crash rollback and the other the
+      # commit-then-delivery round trip. Self-contained — no dev server, no
+      # external services.
+      - name: Atomic-outbox demo — crash rollback
+        working-directory: typescript/examples/nextjs-prisma
+        run: pnpm demo:crash
+
+      - name: Atomic-outbox demo — commit-then-delivery
+        working-directory: typescript/examples/nextjs-prisma
+        run: pnpm demo:happy-path
+
   mysql-integration:
     name: "MySQL adapters integration (real MySQL)"
     runs-on: ubuntu-latest

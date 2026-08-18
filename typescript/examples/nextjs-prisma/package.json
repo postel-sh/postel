@@ -1,0 +1,35 @@
+{
+  "name": "@postel-examples/nextjs-prisma",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Runnable reference app: a minimal SaaS that sends and receives webhooks via Postel, plus the atomic-outbox demo.",
+  "type": "module",
+  "scripts": {
+    "predev": "prisma generate",
+    "dev": "next dev",
+    "prebuild": "prisma generate",
+    "build": "next build",
+    "pretypecheck": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "demo:crash": "node scripts/crash-demo.mjs",
+    "demo:happy-path": "node scripts/happy-path.mjs"
+  },
+  "dependencies": {
+    "@postel/core": "workspace:*",
+    "@postel/prisma": "workspace:*",
+    "@prisma/client": "^6.19.3",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10",
+    "@types/react": "^19.2.4",
+    "@types/react-dom": "^19.2.4",
+    "prisma": "^6.19.3",
+    "typescript": "5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

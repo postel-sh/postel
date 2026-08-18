@@ -3,3 +3,4 @@ packages:
   - "packages/storage/*"
   - "packages/frameworks/*"
   - "scripts"
+  - "examples/*"

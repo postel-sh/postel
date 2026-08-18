@@ -1,0 +1,25 @@
+// The example's own business schema. Postel's tables (messages, endpoints,
+// …) are NOT declared here — @postel/prisma creates them via raw SQL on
+// first use (`autoMigrate`, default on). See ../src/lib/postel.ts.
+
+generator client {
+  provider = "prisma-client-js"
+  // A project-local output, not the shared node_modules/@prisma/client: pnpm
+  // dedupes @prisma/client by version across the workspace, and
+  // @postel/prisma's own schema generates into that same shared location —
+  // without this, whichever package's `prisma generate` ran last would
+  // clobber the other's client types.
+  output = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  sku         String
+  amountCents Int
+  createdAt   DateTime @default(now())
+}
