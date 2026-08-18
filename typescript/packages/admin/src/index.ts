@@ -11,6 +11,7 @@ import type {
   Endpoint,
   EndpointCreateOptions,
   EndpointUpdateOptions,
+  HealthStatus,
   Message,
   MessageListOptions,
   MessageStatus,
@@ -36,6 +37,7 @@ export interface AdminRouterOptions {
 
 export interface AdminHost {
   readonly outbound: OutboundApi;
+  readonly health?: () => Promise<HealthStatus>;
 }
 
 interface AdminBody {
@@ -267,6 +269,14 @@ export function adminRouter(
     const method = req.method.toUpperCase();
     const url = new URL(req.url);
     const path = url.pathname;
+
+    if (/\/health$/.test(path) && method === "GET") {
+      if (!host.health) {
+        return json(404, { errorCode: "NOT_FOUND", error: "no admin route for GET /health" });
+      }
+      const status = await host.health();
+      return json(status.ok ? 200 : 503, status);
+    }
 
     const disable = /\/endpoints\/([^/]+)\/disable$/.exec(path);
     if (disable && method === "POST") {
