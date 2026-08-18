@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS messages (
   reserved_at        timestamptz,
   lease_expires_at   timestamptz,
   -- Final disposition (for completed/expired messages):
-  status             text NOT NULL DEFAULT 'pending'  -- pending | dispatched | expired
+  status             text NOT NULL DEFAULT 'pending'  -- pending | dispatched | dead-lettered | expired
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS messages_tenant_idem_idx

@@ -168,6 +168,17 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '5')
   ON CONFLICT (key) DO UPDATE SET value = '5';
 `,
   },
+  {
+    // No column DDL: messages.status is a free-text column with no CHECK
+    // constraint, so the new 'dead-lettered' value needs no ALTER. This
+    // migration only records the canonical vocabulary change.
+    version: 6,
+    name: "dead_lettered_message_status",
+    sql: `
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '6')
+  ON CONFLICT (key) DO UPDATE SET value = '6';
+`,
+  },
 ];
 
 // Postgres dialect (>= 14). jsonb / timestamptz / bytea native. The
@@ -328,6 +339,17 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '4')
 ALTER TABLE endpoints ADD COLUMN IF NOT EXISTS filter jsonb;
 INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '5')
   ON CONFLICT (key) DO UPDATE SET value = '5';
+`,
+  },
+  {
+    // No column DDL: messages.status is a free-text column with no CHECK
+    // constraint, so the new 'dead-lettered' value needs no ALTER. This
+    // migration only records the canonical vocabulary change.
+    version: 6,
+    name: "dead_lettered_message_status",
+    sql: `
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '6')
+  ON CONFLICT (key) DO UPDATE SET value = '6';
 `,
   },
 ];
@@ -498,6 +520,17 @@ INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '4')
 ALTER TABLE endpoints ADD COLUMN filter JSON;
 INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '5')
   ON DUPLICATE KEY UPDATE value = '5';
+`,
+  },
+  {
+    // No column DDL: messages.status is a free-text column with no CHECK
+    // constraint, so the new 'dead-lettered' value needs no ALTER. This
+    // migration only records the canonical vocabulary change.
+    version: 6,
+    name: "dead_lettered_message_status",
+    sql: `
+INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '6')
+  ON DUPLICATE KEY UPDATE value = '6';
 `,
   },
 ];

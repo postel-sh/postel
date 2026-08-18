@@ -92,11 +92,15 @@ export async function dispatchMessage(
   }
 
   let anyRetryable = false;
+  let anySuccess = false;
+  let anyDeadLetter = false;
   for (const endpoint of endpoints) {
     const prior = latestByEndpoint.get(endpoint.endpoint.id);
     if (prior !== undefined && TERMINAL_PER_ENDPOINT.has(prior)) {
       // This endpoint already reached a terminal outcome for this message on an
       // earlier reservation; do not re-deliver while a sibling endpoint retries.
+      if (prior === "success") anySuccess = true;
+      else if (prior === "dead-letter") anyDeadLetter = true;
       continue;
     }
     if (endpoint.endpoint.state === "disabled") {
@@ -137,6 +141,8 @@ export async function dispatchMessage(
     ) {
       anyRetryable = true;
     }
+    if (outcome.status === "success") anySuccess = true;
+    else if (outcome.status === "dead-letter") anyDeadLetter = true;
     // Collapse a run of identical non-delivery outcomes (e.g. an endpoint that
     // stays filtered or circuit-open across a sibling's retries) into one row.
     if (NON_DELIVERY.has(outcome.status) && prior === outcome.status) {
@@ -161,6 +167,12 @@ export async function dispatchMessage(
     });
   }
   if (!anyRetryable) {
-    await ctx.storage.markMessageFinal(msg.id, "dispatched");
+    // A message with no surviving endpoint is dead-lettered only if nothing
+    // ever succeeded — a fanout where one endpoint delivered is still a
+    // dispatched message, even if a sibling permanently failed.
+    await ctx.storage.markMessageFinal(
+      msg.id,
+      anyDeadLetter && !anySuccess ? "dead-lettered" : "dispatched",
+    );
   }
 }

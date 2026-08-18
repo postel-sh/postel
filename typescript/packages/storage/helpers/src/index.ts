@@ -53,7 +53,7 @@ export const MYSQL_CAPABILITIES: StorageCapabilities = {
 // The schema version the current library is built against — kept in lockstep
 // with the latest forward-only migration in specs/db-schema/. A SQL adapter
 // compares this against `_postel_meta.schema_version` for the boot handshake.
-export const POSTEL_SCHEMA_VERSION = 5;
+export const POSTEL_SCHEMA_VERSION = 6;
 
 // --- Column codec ---------------------------------------------------------
 // Three dialect axes diverge at the column boundary: how timestamps and JSON

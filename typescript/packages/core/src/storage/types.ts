@@ -25,7 +25,7 @@ export type SecretAlgorithm = "v1" | "v1a";
 
 // Message-level outbox lifecycle. Per-endpoint delivery outcomes live on
 // attempts (see AttemptStatus); this is the coarse state of the outbox row.
-export type MessageStatus = "pending" | "dispatched" | "expired";
+export type MessageStatus = "pending" | "dispatched" | "dead-lettered" | "expired";
 
 export interface StorageCapabilities {
   readonly notify: boolean;
@@ -266,7 +266,10 @@ export interface Storage<TTx = unknown> {
   ): Promise<boolean>;
   releaseLease(messageId: MessageId, workerId: WorkerId): Promise<void>;
   expireStaleLeases(now: Date): Promise<number>;
-  markMessageFinal(messageId: MessageId, status: "dispatched" | "expired"): Promise<void>;
+  markMessageFinal(
+    messageId: MessageId,
+    status: "dispatched" | "dead-lettered" | "expired",
+  ): Promise<void>;
   // Resolves to true when the row existed and was rescheduled, false when no
   // row matched the id (so callers like replay can report an accurate count).
   rescheduleMessage(messageId: MessageId, opts: RescheduleOpts<TTx>): Promise<boolean>;

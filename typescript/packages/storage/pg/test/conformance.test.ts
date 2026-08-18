@@ -6,7 +6,7 @@ import { pgliteShim } from "./pglite-shim.js";
 
 runStorageTests({
   name: "@postel/pg (pglite)",
-  expectedSchemaVersion: 5,
+  expectedSchemaVersion: 6,
   capabilities: { notify: false, txIsolation: false },
   async create() {
     const clock = makeFakeClock();

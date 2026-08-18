@@ -46,7 +46,7 @@ describe("Helpers package for adapter authors", () => {
   });
 
   it("exposes the schema version the library targets", () => {
-    expect(POSTEL_SCHEMA_VERSION).toBe(5);
+    expect(POSTEL_SCHEMA_VERSION).toBe(6);
   });
 
   it("formats the tenant-scoped idempotency key like the in-memory reference", () => {
@@ -253,7 +253,7 @@ describe("callback registry", () => {
 
 describe("MySQL migrations dialect", () => {
   it("forward-only versions 1..5 ending at the target schema version", () => {
-    expect(MYSQL_MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5]);
+    expect(MYSQL_MIGRATIONS.map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(MYSQL_MIGRATIONS.at(-1)?.version).toBe(POSTEL_SCHEMA_VERSION);
   });
 

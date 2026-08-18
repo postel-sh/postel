@@ -1,9 +1,5 @@
-# message-introspection Specification
+## MODIFIED Requirements
 
-## Purpose
-
-The outbound read/introspection contract — answering "what happened to message X?". Covers reading a single message (metadata + payload), listing its delivery-attempt history (status, response code, latency, error, per endpoint, replay tag), and listing/filtering recent messages by tenant, event type, outbox status, and time window. The read OUTCOME (a message and its attempt history are retrievable, and messages are listable/filterable) is CONTRACT; the TypeScript method surface (`outbound.messages.get` / `.attempts` / `.list`, backed by `Storage.getMessage` / `Storage.listMessages`) is the port mechanism, described under `api-surface-typescript` and `storage-layer`. The HTTP projection of these reads is owned by `observability` (the admin `GET /messages…` routes).
-## Requirements
 ### Requirement: Read a message by id
 
 The library SHALL provide a read that returns a single outbound message by its `MessageId`. The returned message MUST carry the message metadata — event `type`, `tenantId`, `channels`, `version`, `createdAt`, `expiresAt`, outbox `status`, current `attemptNumber`, `scheduledFor` (retry-backoff time), `replayOf` (replay origin), and `idempotencyKey` — together with the original event payload (`data`). When no message matches the id, the read SHALL resolve to an absent result rather than throwing.
@@ -21,26 +17,6 @@ The outbox `status` reported here is the message-level lifecycle (`pending` / `d
 - **WHEN** the host calls `outbound.messages.get(id)` for an id that was never sent
 - **THEN** the read resolves to an absent result (no message)
 - **AND** it does not throw
-
-### Requirement: List a message's delivery attempts
-
-The library SHALL provide a read that returns the full delivery-attempt history for a message, ordered by `attemptNumber`. Each attempt MUST expose its delivery `status`, target `endpointId`, `responseCode`, `latencyMs`, `error`, the attempt timestamps (`scheduledFor` / `startedAt` / `completedAt`), and its `replayOf` tag. A message with no recorded attempts SHALL resolve to an empty list.
-
-#### Scenario: Attempts are returned ordered with status, code, and latency
-
-- **WHEN** a message has been attempted against an endpoint and the host calls `outbound.messages.attempts(id)`
-- **THEN** the result lists the recorded attempts ordered by `attemptNumber`
-- **AND** each attempt carries its `status`, `endpointId`, `responseCode`, and `latencyMs`
-
-#### Scenario: Replay attempts carry the replay tag
-
-- **WHEN** the host lists attempts for a message that was replayed with a fresh webhook id
-- **THEN** the replay attempts have `replayOf` set to the original message id, distinguishing them from original attempts
-
-#### Scenario: Unknown message yields an empty attempt list
-
-- **WHEN** the host calls `outbound.messages.attempts(id)` for a message that has no recorded attempts (or does not exist)
-- **THEN** the result is an empty list
 
 ### Requirement: List and filter messages
 
@@ -78,4 +54,3 @@ The library SHALL provide a read that lists outbound messages, filterable by `te
 - **WHEN** the host repeatedly calls `outbound.messages.list({ limit, cursor })`, starting with no cursor and feeding each page's `nextCursor` into the next call, over a store holding more messages than fit in one page
 - **THEN** every message is returned exactly once across the pages, in newest-first order
 - **AND** the final page's `nextCursor` is `null`
-

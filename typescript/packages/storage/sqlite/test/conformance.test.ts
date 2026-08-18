@@ -8,7 +8,7 @@ import { SqliteStorage } from "../src/index.js";
 // concurrent reserveBatch (txIsolation=false), so those scenarios are skipped.
 runStorageTests({
   name: "@postel/sqlite",
-  expectedSchemaVersion: 5,
+  expectedSchemaVersion: 6,
   capabilities: { notify: false, txIsolation: false },
   async create() {
     const clock = makeFakeClock();

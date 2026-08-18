@@ -210,6 +210,23 @@ export function runStorageTests(factory: StorageTestFactory): void {
         // this multi-round-trip case well past vitest's 5s default under CI load.
       }, 30_000);
 
+      it("Message finalized as dead-lettered on exhaustion: markMessageFinal + listMessages status filter round-trip", async () => {
+        const { storage, clock } = await factory.create();
+        await storage.insertMessage(
+          buildMessage(clock, { id: "msg_dl_1", tenantId: "t_dl", type: "order.created" }),
+        );
+        await storage.insertMessage(
+          buildMessage(clock, { id: "msg_dl_2", tenantId: "t_dl", type: "order.created" }),
+        );
+        await storage.markMessageFinal("msg_dl_1", "dead-lettered");
+
+        const message = await storage.getMessage("msg_dl_1");
+        expect(message?.status).toBe("dead-lettered");
+
+        const listed = await storage.listMessages({ tenantId: "t_dl", status: ["dead-lettered"] });
+        expect(listed.items.map((m) => m.id)).toEqual(["msg_dl_1"]);
+      }, 30_000);
+
       it("Tenant reads return a record and a paginated page: tenants.get / tenants.list", async () => {
         const { storage, clock } = await factory.create();
         await storage.tenants.upsert("t_page_1", null);

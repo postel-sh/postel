@@ -53,7 +53,7 @@ interface MessageRow {
   reservedBy: WorkerId | null;
   reservedAt: Date | null;
   leaseExpiresAt: Date | null;
-  status: "pending" | "dispatched" | "expired";
+  status: "pending" | "dispatched" | "dead-lettered" | "expired";
   attemptNumber: number;
   scheduledFor: Date | null;
   replayOf: MessageId | null;
@@ -78,7 +78,7 @@ const CAPABILITIES: StorageCapabilities = {
 // Canonical source: specs/db-schema/ (latest forward-only migration). The
 // in-memory adapter implements that current shape, so it reports the same
 // version a fully-migrated SQL adapter would.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 // Mirrors the DEFAULT_*_LIMIT constants in @postel/storage-helpers; kept local
 // because @postel/core takes no dependency on the helpers package.
