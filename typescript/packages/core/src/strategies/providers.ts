@@ -10,6 +10,13 @@ const STRIPE_SIGNATURE_HEADER = "Stripe-Signature";
 const GITHUB_SIGNATURE_HEADER = "X-Hub-Signature-256";
 const GITHUB_EVENT_HEADER = "X-GitHub-Event";
 const DEFAULT_STRIPE_TOLERANCE_SECONDS = 300;
+const SHOPIFY_SIGNATURE_HEADER = "X-Shopify-Hmac-Sha256";
+const SHOPIFY_TOPIC_HEADER = "X-Shopify-Topic";
+const TWILIO_SIGNATURE_HEADER = "X-Twilio-Signature";
+const TWILIO_EVENT_TYPE = "twilio.webhook";
+const SLACK_SIGNATURE_HEADER = "X-Slack-Signature";
+const SLACK_TIMESTAMP_HEADER = "X-Slack-Request-Timestamp";
+const DEFAULT_SLACK_TOLERANCE_SECONDS = 300;
 
 function hexToBytes(hex: string): Uint8Array {
   if (hex.length % 2 !== 0 || !/^[0-9a-fA-F]*$/u.test(hex)) {
@@ -22,15 +29,35 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-async function hmacSha256(secret: string, message: Uint8Array): Promise<Uint8Array> {
+async function hmac(
+  secret: string,
+  message: Uint8Array,
+  hash: "SHA-256" | "SHA-1",
+): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret) as BufferSource,
-    { name: "HMAC", hash: "SHA-256" },
+    { name: "HMAC", hash },
     false,
     ["sign"],
   );
   return new Uint8Array(await crypto.subtle.sign("HMAC", key, message as BufferSource));
+}
+
+async function hmacSha256(secret: string, message: Uint8Array): Promise<Uint8Array> {
+  return hmac(secret, message, "SHA-256");
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  return new Uint8Array(Buffer.from(b64, "base64"));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64");
+}
+
+function isValidBase64(value: string): boolean {
+  return /^[A-Za-z0-9+/]+={0,2}$/u.test(value) && bytesToBase64(base64ToBytes(value)) === value;
 }
 
 async function matchesDigest(
@@ -46,6 +73,17 @@ async function matchesDigest(
   }
   const digest = await hmacSha256(secret, message);
   return constantTimeEqual(digest, candidateBytes);
+}
+
+async function matchesDigestBase64(
+  secret: string,
+  message: Uint8Array,
+  candidateBase64: string,
+  hash: "SHA-256" | "SHA-1" = "SHA-256",
+): Promise<boolean> {
+  if (!isValidBase64(candidateBase64)) return false;
+  const digest = await hmac(secret, message, hash);
+  return constantTimeEqual(digest, base64ToBytes(candidateBase64));
 }
 
 function parseEventBody(
@@ -146,6 +184,108 @@ export function GitHub(secret: string): Verifier {
 
       const body = parseEventBody(bodyText, "GitHub event");
       const event: WebhookEvent = { type: eventType, data: body };
+      return { event, matchedSecretIndex: 0 };
+    },
+  };
+}
+
+export function Shopify(secret: string): Verifier {
+  return {
+    verify: async (rawBody, headers: WebhookHeaders): Promise<VerifyResult> => {
+      const candidate = requireHeader(headers, SHOPIFY_SIGNATURE_HEADER);
+      const topic = requireHeader(headers, SHOPIFY_TOPIC_HEADER);
+      if (!isValidBase64(candidate)) {
+        throw new MalformedHeader(`${SHOPIFY_SIGNATURE_HEADER} must be valid base64`);
+      }
+
+      const bodyText = bodyToText(rawBody);
+      const canonical = new TextEncoder().encode(bodyText);
+      if (!(await matchesDigestBase64(secret, canonical, candidate))) {
+        throw new SignatureInvalid(
+          `${SHOPIFY_SIGNATURE_HEADER} did not match the configured secret`,
+        );
+      }
+
+      const body = parseEventBody(bodyText, "Shopify event");
+      const event: WebhookEvent = { type: topic, data: body };
+      return { event, matchedSecretIndex: 0 };
+    },
+  };
+}
+
+function parseFormBody(bodyText: string): Record<string, string> {
+  const params = new URLSearchParams(bodyText);
+  const result: Record<string, string> = {};
+  for (const [key, value] of params) {
+    result[key] = value;
+  }
+  return result;
+}
+
+function twilioCanonicalString(url: string, bodyText: string): string {
+  const params = new URLSearchParams(bodyText);
+  const sortedKeys = [...params.keys()].sort();
+  return sortedKeys.reduce((acc, key) => acc + key + (params.get(key) ?? ""), url);
+}
+
+export function Twilio(authToken: string, url: string): Verifier {
+  return {
+    verify: async (rawBody, headers: WebhookHeaders): Promise<VerifyResult> => {
+      const candidate = requireHeader(headers, TWILIO_SIGNATURE_HEADER);
+
+      const bodyText = bodyToText(rawBody);
+      const canonical = new TextEncoder().encode(twilioCanonicalString(url, bodyText));
+      if (!(await matchesDigestBase64(authToken, canonical, candidate, "SHA-1"))) {
+        throw new SignatureInvalid(
+          `${TWILIO_SIGNATURE_HEADER} did not match the configured authToken/url`,
+        );
+      }
+
+      const event: WebhookEvent = { type: TWILIO_EVENT_TYPE, data: parseFormBody(bodyText) };
+      return { event, matchedSecretIndex: 0 };
+    },
+  };
+}
+
+export function Slack(signingSecret: string, options?: VerifyOptions): Verifier {
+  return {
+    verify: async (rawBody, headers: WebhookHeaders): Promise<VerifyResult> => {
+      const candidate = requireHeader(headers, SLACK_SIGNATURE_HEADER);
+      const timestamp = requireHeader(headers, SLACK_TIMESTAMP_HEADER);
+
+      const prefix = "v0=";
+      if (!candidate.startsWith(prefix)) {
+        throw new MalformedHeader(`${SLACK_SIGNATURE_HEADER} must start with "${prefix}"`);
+      }
+      const candidateHex = candidate.slice(prefix.length);
+
+      const ts = Number(timestamp);
+      if (!Number.isFinite(ts) || ts <= 0 || !Number.isInteger(ts)) {
+        throw new MalformedHeader(`${SLACK_TIMESTAMP_HEADER}: invalid value`);
+      }
+
+      const clock = options?.clock ?? systemClock;
+      const tolerance = options?.toleranceSeconds ?? DEFAULT_SLACK_TOLERANCE_SECONDS;
+      const drift = Math.abs(Math.floor(clock.now().getTime() / 1000) - ts);
+      if (drift > tolerance) {
+        throw new TimestampTooOld(
+          `${SLACK_TIMESTAMP_HEADER} drift ${drift}s exceeds tolerance ${tolerance}s`,
+        );
+      }
+
+      const bodyText = bodyToText(rawBody);
+      const canonical = new TextEncoder().encode(`v0:${timestamp}:${bodyText}`);
+      if (!(await matchesDigest(signingSecret, canonical, candidateHex))) {
+        throw new SignatureInvalid(
+          `${SLACK_SIGNATURE_HEADER} did not match the configured signing secret`,
+        );
+      }
+
+      const body = parseEventBody(bodyText, "Slack event");
+      if (typeof body.type !== "string") {
+        throw new MalformedHeader("Slack event: body missing string `type` field");
+      }
+      const event: WebhookEvent = { type: body.type, data: body };
       return { event, matchedSecretIndex: 0 };
     },
   };
