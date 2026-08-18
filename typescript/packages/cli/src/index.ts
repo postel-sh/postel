@@ -1,1 +1,1 @@
-export const __postelPackage = "@postel/cli" as const;
+export { runMigrate } from "./migrate.js";

@@ -90,9 +90,10 @@ jobs:
       # Runs the @postel/pg testcontainers tier — true FOR UPDATE SKIP LOCKED
       # contention + cross-connection LISTEN/NOTIFY against a real Postgres
       # (spun up via Docker on the runner). The always-on pglite tier already
-      # ran in the job above.
+      # ran in the job above. @postel/cli's own postgres-dialect migrate test
+      # needs the same real connection string, so it rides along here.
       - name: Test @postel/pg against real Postgres
-        run: pnpm --filter @postel/pg test
+        run: pnpm --filter @postel/pg --filter @postel/cli test
         env:
           POSTEL_PG_TESTCONTAINERS: "1"
 
@@ -194,6 +195,7 @@ jobs:
           --filter @postel/drizzle
           --filter @postel/typeorm
           --filter @postel/mikro-orm
+          --filter @postel/cli
           test
         env:
           POSTEL_MYSQL_URL: "mysql://root:postel@127.0.0.1:3306/postel"

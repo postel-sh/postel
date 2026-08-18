@@ -145,10 +145,10 @@ The library SHALL provide SQLite support through multiple adapter packages acros
 
 ### Requirement: Migrations runnable from CLI and programmatic API
 
-Schema migrations SHALL be deliverable per adapter category and runnable both via a CLI (`mise run postel:migrate` or equivalent) and programmatically (`postel.migrate(db)` or its adapter-specific equivalent). Migrations MUST be idempotent — safe to invoke on every boot.
+Schema migrations SHALL be deliverable per adapter category and runnable both via a CLI (`postel migrate` — see the `cli` capability spec — or `mise run postel:migrate` in this repo's own dev loop) and programmatically (`postel.migrate(db)` or its adapter-specific equivalent). Migrations MUST be idempotent — safe to invoke on every boot.
 
-- **Standalone and client adapters** ship raw SQL migration files (sourced from `specs/db-schema/`) and run them through the host's connection.
-- **ORM adapters** ship schema fragments in the host's DSL (e.g., `@postel/drizzle/schema` exports a Drizzle schema; `@postel/prisma` ships a `.prisma` fragment). The host merges the fragment into their own schema and runs migrations through the ORM's native migration tooling.
+- **Standalone and client adapters** ship raw SQL migration files (sourced from `specs/db-schema/`) and run them through the host's connection. `postel migrate` drives this path for the standalone adapters (`@postel/pg`, `@postel/sqlite`, `@postel/mysql`).
+- **ORM adapters** ship schema fragments in the host's DSL (e.g., `@postel/drizzle/schema` exports a Drizzle schema; `@postel/prisma` ships a `.prisma` fragment). The host merges the fragment into their own schema and runs migrations through the ORM's native migration tooling. This is a static export, not a CLI-driven generator step.
 
 #### Scenario: Idempotent standalone boot
 
@@ -157,8 +157,9 @@ Schema migrations SHALL be deliverable per adapter category and runnable both vi
 
 #### Scenario: ORM schema generation
 
-- **WHEN** the host runs the adapter-specific schema generator (e.g., a `postel schema generate drizzle` CLI command)
-- **THEN** the command emits a Drizzle schema fragment the host imports and merges into their own schema definition
+- **WHEN** the host imports `@postel/drizzle/schema`
+- **THEN** the module exports Drizzle table definitions (per dialect) for the canonical schema
+- **AND** the host merges them into their own schema definition and migrates with their ORM's native tooling, with no CLI command involved
 
 ### Requirement: Adapter matrix with three categories
 

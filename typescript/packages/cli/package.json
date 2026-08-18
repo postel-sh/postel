@@ -1,9 +1,16 @@
 {
   "name": "@postel/cli",
-  "private": true,
   "version": "0.0.0",
-  "description": "The postel CLI binary — migrate, sign, verify, replay, simulate.",
+  "description": "The postel CLI binary — postel migrate.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/postel-sh/postel.git",
+    "directory": "typescript/packages/cli"
+  },
+  "homepage": "https://postel.dev",
+  "bugs": "https://github.com/postel-sh/postel/issues",
+  "keywords": ["webhooks", "standard-webhooks", "cli", "migrate", "postel"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -15,11 +22,15 @@
       "require": "./dist/index.cjs"
     }
   },
+  "bin": {
+    "postel": "./dist/cli.js"
+  },
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap --target es2022 --clean",
+    "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "engines": {
@@ -27,5 +38,21 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@postel/mysql": "workspace:*",
+    "@postel/pg": "workspace:*",
+    "@postel/sqlite": "workspace:*",
+    "better-sqlite3": "12.10.0",
+    "mysql2": "3.11.5",
+    "pg": "8.20.0"
+  },
+  "devDependencies": {
+    "@postel/storage-testkit": "workspace:*",
+    "@testcontainers/mysql": "10.13.2",
+    "@testcontainers/postgresql": "10.13.2",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "20.17.10",
+    "@types/pg": "8.20.0"
   }
 }

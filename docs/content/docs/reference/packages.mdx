@@ -22,18 +22,18 @@ Postel is a workspace of focused packages. Pick the ones you need; the rest don'
 | **`@postel/pg`** | [Postgres storage adapter](/docs/storage/pg) | Standalone — `PgStorage({ connectionString })`. Full outbound `Storage` (`FOR UPDATE SKIP LOCKED`, `LISTEN`/`NOTIFY`); also exports `PgDedup` for inbound dedup. |
 | **`@postel/mysql`** | [MySQL storage adapter](/docs/storage/mysql) | Standalone — `MysqlStorage({ connectionString })` on `mysql2` (`FOR UPDATE SKIP LOCKED`, polling). Full outbound `Storage`; also exports `MysqlDedup` for inbound dedup. |
 | **`@postel/kysely`** | [Kysely storage adapter](/docs/storage/kysely) | ORM/query-builder — `KyselyStorage({ db, dialect })` runs Postel's storage through your Kysely (Postgres, MySQL, or SQLite). |
-| **`@postel/drizzle`** | [Drizzle storage adapter](/docs/storage/drizzle) | ORM — `DrizzleStorage({ db, dialect })` runs Postel's storage through your Drizzle instance (Postgres, MySQL, or SQLite). |
+| **`@postel/drizzle`** | [Drizzle storage adapter](/docs/storage/drizzle) | ORM — `DrizzleStorage({ db, dialect })` runs Postel's storage through your Drizzle instance (Postgres, MySQL, or SQLite). Also exports `@postel/drizzle/schema` — dialect-specific Drizzle table definitions for the canonical schema. |
 | **`@postel/prisma`** | [Prisma storage adapter](/docs/storage/prisma) | ORM — `PrismaStorage({ prisma, dialect })` runs Postel's storage through your PrismaClient's raw surface (Postgres, MySQL, or SQLite). |
 | **`@postel/typeorm`** | [TypeORM storage adapter](/docs/storage/typeorm) | ORM — `TypeOrmStorage({ dataSource, dialect })` runs Postel's storage through your TypeORM DataSource (Postgres, MySQL, or SQLite). |
 | **`@postel/mikro-orm`** | [MikroORM storage adapter](/docs/storage/mikro-orm) | ORM — `MikroOrmStorage({ orm, dialect })` runs Postel's storage through your MikroORM EntityManager (Postgres, MySQL, or SQLite). |
 | **`@postel/storage-helpers`** | Zero-DB helpers for [custom adapters](/docs/storage/custom-adapters) | Dialect codecs, capability flags, row encode/decode, migration SQL, callback registry — what every adapter reuses. |
+| **`@postel/cli`** | `postel` CLI | For v1, one verb: `postel migrate --dialect <postgres\|sqlite\|mysql> --url <connection-string>` brings a database to the current schema version through the matching standalone adapter. |
 
 ## Stubs today (name reserved, no runtime yet)
 
 | Package | Will be | Status |
 |---|---|---|
 | `@postel/bun` | Bun.serve adapter | Planned |
-| `@postel/cli` | `postel` CLI (migrate, sign, verify, replay, simulate) | Planned |
 
 Each "stub" package exports only `__postelPackage` today, is marked `private`, and is **not part of the published 1.0 set** — a guard test fails CI if a name-only package is ever made publishable. Don't depend on them in production yet — the framework-agnostic [factory recipe](/docs/inbound/verify) works directly against each runtime's native `Request`.
 

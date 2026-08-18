@@ -15,7 +15,7 @@ The library SHALL be distributed as the following npm packages, grouped by purpo
 - `@postel/pg` — Postel owns the Postgres pool; zero-config drop-in.
 - `@postel/sqlite` — same for SQLite.
 - `@postel/mysql` — Postel owns the MySQL (`mysql2`) pool; zero-config drop-in. Also exports `MysqlDedup` for inbound dedup.
-- `@postel/drizzle` — host hands Postel a Drizzle instance (any dialect Drizzle supports — Postgres, MySQL, SQLite, …).
+- `@postel/drizzle` — host hands Postel a Drizzle instance (any dialect Drizzle supports — Postgres, MySQL, SQLite, …). Also exports a `@postel/drizzle/schema` subpath with dialect-specific Drizzle table definitions for the canonical schema, for hosts who want the tables in their own Drizzle schema file rather than relying on `autoMigrate`.
 - `@postel/prisma` — host hands Postel a `PrismaClient` (Postgres, MySQL, or SQLite dialect).
 - `@postel/kysely` — host hands Postel a `Kysely<DB>` (Postgres, MySQL, or SQLite dialect).
 - `@postel/typeorm` — host hands Postel a TypeORM `DataSource` (Postgres, MySQL, or SQLite dialect).
@@ -31,12 +31,14 @@ The library SHALL be distributed as the following npm packages, grouped by purpo
 - `@postel/express`, `@postel/hono`, `@postel/fastify`, `@postel/nestjs`, `@postel/nextjs` — receiver middleware / guards / route-handler bindings + admin handlers. Each depends on `@postel/http` for the verification gate and error→status policy rather than re-deriving them.
 - `@postel/bun` — **pre-alpha placeholder** (exports only `__postelPackage`, `private`, not in the 1.0 published set); see *Empty placeholder packages are pre-alpha and unpublished*.
 
+**Tooling:**
+- `@postel/cli` — the `postel` CLI binary. For v1 it ships exactly one verb, `migrate` (`postel migrate --dialect <postgres|sqlite|mysql> --url <connection-string>`), which runs the matching standalone adapter's canonical migrations against a target database. See the `cli` capability spec. The other four verbs advertised in earlier drafts (`sign`, `verify`, `replay`, `simulate`) are unspec'd and unimplemented until a future change demands them.
+
 **Auxiliary:**
 - `@postel/admin` — framework-agnostic admin HTTP handler builder.
 - `@postel/effect` — Effect-TS layer over the core API: `PostelLive`/`PostelTag` build the Postel instance as a Scope-managed `Layer`, and `send`/`replay`/`messages.{get,attempts,list}`/`inbound.<source>.verify` are exposed as `Effect`-returning methods with `PostelError`/`ConfigurationError`/`NotImplementedError` as the typed error channel. See the `Effect-TS layer` requirement in `api-surface-typescript`.
-- `@postel/test` — test fixtures + signature generators + mock receivers for adopter unit tests. **Pre-alpha placeholder** today (export only `__postelPackage`, `private`, not in the 1.0 published set).
+- `@postel/test` — test fixtures + signature generators + mock receivers for adopter unit tests. **Pre-alpha placeholder** today (export only `__postelPackage`, `private`, not in the 1.0 published set); see *Empty placeholder packages are pre-alpha and unpublished*.
 - `@postel/compliance-driver` — HTTP control-plane shim the `@postel/compliance` suite drives in `--sender-control` mode. Distinct from `@postel/test` (audience: adopters) and `@postel/cli` (audience: adopters): its stability surface is a CONTRACT artifact tracked by the compliance suite's lockstep version.
-- `@postel/cli` — `postel` CLI binary (migrate, sign, verify, replay, simulate). **Pre-alpha placeholder** today (export only `__postelPackage`, `private`, not in the 1.0 published set); see *Empty placeholder packages are pre-alpha and unpublished*.
 
 The `@postel/compliance` suite is **not part of this list**: per the `compliance` capability spec, the suite's implementation language and distribution channel are open. If a future change implements the runner as a TypeScript npm package, it will be added here at that point; until then, the suite's source lives at top-level `compliance/` and its distribution mechanism is undecided.
 
@@ -210,13 +212,13 @@ Every `### Requirement` declared under `openspec/specs/<capability>/spec.md` SHA
 
 A package whose only export is the `__postelPackage` name marker has no claimable runtime surface. Such a package SHALL be marked `private` in its `package.json` so it is excluded from the published release (`pnpm publish -r` skips `private` packages), and it SHALL NOT be counted in the 1.0 published package set. Its name is reserved on the workspace so the future runtime lands under the intended name, but adopters MUST NOT be able to install an empty package and mistake it for a working one.
 
-The current pre-alpha placeholders are `@postel/test`, `@postel/bun`, and `@postel/cli`. `@postel/nextjs` shipped a real `NextjsWebAdapter` runtime (issue #138) and `@postel/effect` shipped a real Effect-TS layer (issue #145); both dropped out of this set. As each remaining placeholder's runtime lands, it drops the `__postelPackage`-only surface and may become publishable.
+The current pre-alpha placeholders are `@postel/test` and `@postel/bun`. `@postel/nextjs` shipped a real `NextjsWebAdapter` runtime (issue #138), `@postel/effect` shipped a real Effect-TS layer (issue #145), and `@postel/cli` shipped a real `migrate` verb (issue #148); all three dropped out of this set. As each remaining placeholder's runtime lands, it drops the `__postelPackage`-only surface and may become publishable.
 
 **Conformance**: PORT-SPECIFIC — `private` and npm publish semantics are TypeScript / npm specifics. The durable cross-port intent is that an adopter cannot install an empty, name-only artifact from the 1.0 set; other ports honor it through their own registry idioms.
 
 #### Scenario: A name-only package stays private
 
-- **WHEN** a package's `src/index.ts` exports only `__postelPackage` (`@postel/test`, `@postel/bun`, `@postel/cli`)
+- **WHEN** a package's `src/index.ts` exports only `__postelPackage` (`@postel/test`, `@postel/bun`)
 - **THEN** its `package.json` has `"private": true`
 - **AND** it is absent from the published 1.0 package set
 

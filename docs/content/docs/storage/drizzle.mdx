@@ -50,3 +50,13 @@ await db.transaction(async (tx) => {
 ## Migrations
 
 `autoMigrate` (default `true`) runs the [canonical migrations](/docs/storage/schema) through your connection, version-gated and idempotent — or run your own tooling against that schema.
+
+### The `/schema` export
+
+If you'd rather have Postel's tables live in your own Drizzle schema file — so `drizzle-kit generate` / `push` / `studio` see them — import the fragment instead of relying on `autoMigrate`:
+
+```ts title="db/schema.ts"
+export { pgTenants, pgEndpoints, pgMessages, pgAttempts } from "@postel/drizzle/schema";
+```
+
+The export is namespaced by dialect prefix (`pg*`, `mysql*`, `sqlite*`) for all seven canonical tables (`tenants`, `endpoints`, `endpointSecrets`, `messages`, `attempts`, `endpointStateTransitions`, `receivedMessages`). Merge the ones matching your dialect into your schema and run migrations with your own tooling; pass `autoMigrate: false` to `DrizzleStorage` so Postel doesn't also try.

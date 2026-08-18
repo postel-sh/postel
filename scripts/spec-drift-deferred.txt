@@ -315,12 +315,10 @@ Schema is a fixed set of canonical tables :: endpoints carries delivery-config c
 Schema is a fixed set of canonical tables :: endpoints carries the structural filter column
 
 # Genuinely untested — no Postgres-dialect Drizzle test exists (only sqlite
-# and Docker-gated mysql); no CLI schema-generator exists yet (@postel/cli
-# is a pre-alpha placeholder); Drizzle-wraps-host-db and transaction-degrade
+# and Docker-gated mysql); Drizzle-wraps-host-db and transaction-degrade
 # behavior have no test; the helpers package has no dependency-graph check;
 # and the MySQL-through-ORM path is entirely Docker-gated (`it.skip`):
 Postgres support across the adapter matrix :: Drizzle ORM adapter shares the host's Postgres pool
-Migrations runnable from CLI and programmatic API :: ORM schema generation
 Adapter matrix with three categories :: Drizzle host wraps its own db
 Host transaction passthrough :: Adapter without real transaction support degrades gracefully
 Helpers package for adapter authors :: Helpers package has no DB dependency
