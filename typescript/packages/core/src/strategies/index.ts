@@ -1,7 +1,7 @@
 export { Secret, PublicKey, Keyset, Noop } from "./verify.js";
 export type { Verifier } from "./verify.js";
 
-export { Stripe, GitHub } from "./providers.js";
+export { Stripe, GitHub, Shopify, Twilio, Slack } from "./providers.js";
 
 export { InMemoryDedup } from "./dedup.js";
 export type { InMemoryDedupOptions } from "./dedup.js";

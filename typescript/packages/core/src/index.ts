@@ -178,7 +178,10 @@ export {
   PlaintextKms,
   PublicKey,
   Secret,
+  Shopify,
+  Slack,
   Stripe,
+  Twilio,
   Vault,
 } from "./strategies/index.js";
 export type {

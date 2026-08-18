@@ -124,31 +124,39 @@ Each source is independently typed. `postel.inbound.<source>.dedup` only appears
 
 ## Built-in provider verifiers
 
-`Secret`, `PublicKey`, and `Keyset` speak Standard Webhooks. For the two highest-volume non-Standard-Webhooks senders, `@postel/core` ships ready-made verifiers instead of asking you to hand-write one:
+`Secret`, `PublicKey`, and `Keyset` speak Standard Webhooks. For the top non-Standard-Webhooks senders, `@postel/core` ships ready-made verifiers instead of asking you to hand-write one:
 
 | Provider | Factory | Header(s) | Tolerance / replay | Event shape |
 |---|---|---|---|---|
 | Standard Webhooks | `Secret` / `PublicKey` / `Keyset` | `webhook-id`, `webhook-timestamp`, `webhook-signature` | ±5 min default, configurable | `{ type, data, timestamp }` |
 | Stripe | `Stripe(secret, options?)` | `Stripe-Signature` (`t=`, one or more `v1=`) | ±300s default (Stripe's own default), configurable via `{ toleranceSeconds, clock }` | `type`/`data` from the event body |
 | GitHub | `GitHub(secret)` | `X-Hub-Signature-256` (`sha256=`), `X-GitHub-Event` | None — GitHub sends no timestamp, so there is no replay window at this layer | `type` from `X-GitHub-Event`; `data` is the whole payload |
+| Shopify | `Shopify(secret)` | `X-Shopify-Hmac-Sha256` (base64), `X-Shopify-Topic` | None — Shopify sends no timestamp, so there is no replay window at this layer | `type` from `X-Shopify-Topic`; `data` is the whole payload |
+| Twilio | `Twilio(authToken, url)` | `X-Twilio-Signature` (base64 HMAC-SHA1 over `url` + sorted form params) | None — Twilio's scheme has no time component at all | `type` is the fixed literal `"twilio.webhook"` (Twilio's wire format carries no event-type field); `data` is the parsed form parameters |
+| Slack | `Slack(signingSecret, options?)` | `X-Slack-Signature` (`v0=`), `X-Slack-Request-Timestamp` | ±300s default (Slack's own recommendation), configurable via `{ toleranceSeconds, clock }` | `type`/`data` from the event body |
 
 ```ts title="lib/postel.ts"
-import { Postel, Stripe, GitHub } from "@postel/core";
+import { Postel, Stripe, GitHub, Shopify, Twilio, Slack } from "@postel/core";
 import { config } from "./config.js";
 
 export const postel = Postel({
   inbound: {
     stripe: { verify: Stripe(config.stripeWebhookSecret) },
     github: { verify: GitHub(config.githubWebhookSecret) },
+    shopify: { verify: Shopify(config.shopifyWebhookSecret) },
+    twilioSms: {
+      verify: Twilio(config.twilioAuthToken, "https://api.example.com/webhooks/twilio/sms"),
+    },
+    slack: { verify: Slack(config.slackSigningSecret) },
   },
 });
 ```
 
-Both are ordinary `Verifier`s — they compose in arrays/maps, report `matchedVerifierIndex`, and throw the same `SignatureInvalid`/`MalformedHeader`/`TimestampTooOld` errors as the Standard Webhooks verifiers. One important difference: the `secret` you pass to `Stripe`/`GitHub` is used as **literal UTF-8 key material**, exactly as that provider issues it (a Stripe secret keeps its `whsec_` prefix as part of the key) — it is *not* run through the `whsec_`-strip-then-base64-decode convention `Secret`/`PublicKey` use for Standard Webhooks secrets.
+All five are ordinary `Verifier`s — they compose in arrays/maps, report `matchedVerifierIndex`, and throw the same `SignatureInvalid`/`MalformedHeader`/`TimestampTooOld` errors as the Standard Webhooks verifiers. One important difference: the secret you pass to any of them is used as **literal UTF-8 key material**, exactly as that provider issues it (a Stripe secret keeps its `whsec_` prefix as part of the key) — it is *not* run through the `whsec_`-strip-then-base64-decode convention `Secret`/`PublicKey` use for Standard Webhooks secrets. `Twilio`'s `url` must be the exact webhook endpoint URL registered with Twilio (scheme, host, path, and query string) — Twilio signs over that URL, so a reverse proxy that rewrites what your app sees will break verification, the same caveat Twilio's own SDKs carry.
 
 ## Custom verifiers
 
-`Verifier` is an open contract, not a fixed set. For any sender that isn't Standard Webhooks, Stripe, or GitHub, anything implementing the contract works in a `verify` slot — a shared-token check, a call out to a verification service, or another provider's HMAC scheme:
+`Verifier` is an open contract, not a fixed set. For any sender that isn't one of the built-ins above, anything implementing the contract works in a `verify` slot — a shared-token check, a call out to a verification service, or another provider's HMAC scheme:
 
 ```ts title="lib/postel.ts"
 import { Postel, SignatureInvalid, type Verifier } from "@postel/core";
