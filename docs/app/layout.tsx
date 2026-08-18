@@ -1,4 +1,5 @@
 import "./global.css";
+import SearchDialog from "@/components/search-dialog";
 import { RootProvider } from "fumadocs-ui/provider/next";
 import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
@@ -32,7 +33,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       className={`${sans.variable} ${mono.variable}`}
     >
       <body className="flex min-h-screen flex-col font-sans">
-        <RootProvider>{children}</RootProvider>
+        <RootProvider search={{ SearchDialog }}>{children}</RootProvider>
       </body>
     </html>
   );
