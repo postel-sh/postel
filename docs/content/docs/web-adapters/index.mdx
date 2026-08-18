@@ -19,6 +19,8 @@ The error→status policy, byte preservation, and the dedup-ack signal live **on
 
 Prefer to own the routing yourself? The facade is sugar over the **low-level primitives** every package still exports: `verifyWebhook(source, opts?)` (the framework-native gate) and `withWebhook(source, handler, opts?)` (gate + handler folded into one). NestJS is the exception — it stays DI-idiomatic with a `WebhookGuard` rather than a routing facade.
 
+**Next.js is the other exception.** App Router routes files, not an app object, so `NextjsWebAdapter(postel)` takes no `app` and its bindings return Route Handlers keyed by HTTP method instead of registering a path: `nwa.inbound.<source>.post(handler, opts?)` returns `{ POST }`, `nwa.outbound.bindJwks(provider?)` returns `{ GET }`, `nwa.admin.bindAdminRoutes(opts)` returns `{ GET, POST, PUT, PATCH, DELETE }` — each spread directly as the route file's exports. It keeps the low-level `withWebhook(source, handler, opts?)` primitive; there's no `verifyWebhook`/`getVerified` pair since a Fetch `Request` isn't mutated with a stashed result the way a framework's request/context object is. See [Next.js](/docs/web-adapters/nextjs).
+
 ## Adding your own middleware
 
 The facade owns the route, but you keep your framework's native middleware story — no special API needed:
@@ -46,7 +48,7 @@ We deliberately don't bridge the two slots: auto-converting Standard Schema → 
   <Card icon={<PlugIcon />} title="Express" href="/docs/web-adapters/express" description="ExpressWebAdapter — express.raw() + gate; sets req.postel." />
   <Card icon={<PlugIcon />} title="Fastify" href="/docs/web-adapters/fastify" description="fastifyPostel raw-body plugin + FastifyWebAdapter." />
   <Card icon={<PlugIcon />} title="NestJS" href="/docs/web-adapters/nestjs" description="PostelModule + WebhookGuard + @Event()." />
-  <Card icon={<CodeIcon />} title="Next.js" href="/docs/web-adapters/nextjs" description="Route Handlers are Fetch-native — use fetchWebhook directly." />
+  <Card icon={<PlugIcon />} title="Next.js" href="/docs/web-adapters/nextjs" description="NextjsWebAdapter — typed Route Handler bindings over @postel/http." />
   <Card icon={<CodeIcon />} title="Bun" href="/docs/web-adapters/bun" description="Bun.serve is Fetch-native — use fetchWebhook directly." />
 </Cards>
 
@@ -58,8 +60,8 @@ We deliberately don't bridge the two slots: auto-converting Standard Schema → 
 | Express | `@postel/express` | ✅ | `ExpressWebAdapter` facade + `express.raw()` gate |
 | Fastify | `@postel/fastify` | ✅ | `FastifyWebAdapter` facade + raw-body plugin |
 | NestJS | `@postel/nestjs` | ✅ | Module + `WebhookGuard` + decorators |
+| Next.js Route Handlers | `@postel/nextjs` | ✅ | `NextjsWebAdapter` route-handler bindings |
 | Any Fetch runtime (Deno, custom, …) | [`@postel/http`](/docs/reference/http) | ✅ | `fetchWebhook(source)` |
-| Next.js Route Handlers | `@postel/nextjs` | ⏳ stub | Use `@postel/http` meanwhile |
 | Bun.serve | `@postel/bun` | ⏳ stub | Use `@postel/http` meanwhile |
 
 ## Both directions
