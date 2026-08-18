@@ -749,11 +749,6 @@ describe("Per-endpoint and overall delivery deadlines", () => {
   });
 });
 
-// NOTE: "DNS rebinding protection" (connection-time pinning of the validated
-// IP) is deferred — the dispatcher validates all resolved addresses but does not
-// yet pin the fetch connection to a checked IP. It stays in
-// scripts/spec-drift-deferred.txt until the undici-Agent pinning lands.
-
 describe("Endpoint deletion semantics", () => {
   it("Default deletion preserves audit trail: endpoint row removed, attempts kept, final state transition recorded", async () => {
     const server = await startMockServer();
