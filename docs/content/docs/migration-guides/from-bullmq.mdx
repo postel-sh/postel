@@ -1,0 +1,107 @@
+---
+title: From BullMQ or a hand-rolled worker
+description: Job-to-outbox-row mapping for a queue + worker doing manual webhook delivery.
+---
+
+The shape this guide targets: your app calls `queue.add()` (BullMQ, Bee-Queue, a raw Redis list, whatever) somewhere near a business write, a separate `Worker` processor picks the job up, does the HTTP POST by hand, and re-queues on failure with a counter you wrote yourself. If you also hand-rolled the signature (an HMAC over `JSON.stringify(payload)`), that's covered too.
+
+## The core problem this migration fixes
+
+`queue.add()` and your business write are two separate systems with no shared transaction. If the process crashes between the DB commit and the `queue.add()` call — or the reverse — you get a silently dropped webhook or a webhook for a write that got rolled back. Postel's `send()` is an INSERT in your own database, so it can join the same transaction as the write it's about. That's the thing a job queue architecturally cannot do without a two-phase commit.
+
+## Concept mapping
+
+| BullMQ / hand-rolled | Postel |
+|---|---|
+| `queue.add(name, data, opts)` | `postel.outbound.send({ type, data }, { tx })` |
+| `job.name` | `event.type` |
+| `job.data` | `event.data` |
+| `job.id` (BullMQ auto ID or your custom one) | the returned `id` (the `webhook-id` header) |
+| `opts.jobId` (dedup by fixed id) | `idempotencyKey` on `send()` |
+| `opts.attempts` + `opts.backoff` | `retryPolicy: ExponentialBackoff({ maxAttempts, ... })` / `LinearBackoff(...)` |
+| Your `Worker` processor function | The in-process worker pool (`InProcess({ concurrency })`) — you don't write this code anymore |
+| `job.attemptsMade` | `attempts.attempt_number` (via `messages.attempts(id)`) |
+| A job that exhausts `attempts` and sits in the `failed` set | A message in the `dead_letter` view, re-enqueued via `replay()` |
+| Your own `crypto.createHmac(...)` signing code | `HmacV1()` (or `Ed25519V1a()`) signing strategy |
+| A separate "disable this webhook" flag you check before enqueueing | Endpoint `state: "disabled"` + the built-in circuit breaker / auto-disable |
+| Bull Board / a custom admin page for inspecting jobs | [`@postel/admin`](/docs/outbound/admin)'s `GET /messages`, `GET /messages/:id/attempts` |
+
+## Before
+
+```ts
+// Somewhere near a business write:
+await db.orders.insert({ id: "ord_123", status: "paid" });
+await webhookQueue.add("order.created", { orderId: "ord_123" }, {
+  attempts: 5,
+  backoff: { type: "exponential", delay: 1000 },
+});
+
+// A separate file, a separate process:
+new Worker("webhooks", async (job) => {
+  const body = JSON.stringify(job.data);
+  const signature = crypto.createHmac("sha256", SECRET).update(body).digest("base64");
+  const res = await fetch(endpointUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-signature": signature },
+    body,
+  });
+  if (!res.ok) throw new Error(`delivery failed: ${res.status}`); // BullMQ retries on throw
+});
+```
+
+## After
+
+```ts title="lib/postel.ts"
+import { Postel, PgStorage, HmacV1, ExponentialBackoff, InProcess } from "@postel/core";
+
+export const postel = Postel({
+  outbound: {
+    storage:     PgStorage({ connectionString: process.env.DATABASE_URL }),
+    signing:     HmacV1(),
+    retryPolicy: ExponentialBackoff({ maxAttempts: 5, initialDelay: "1s" }),
+    workers:     InProcess({ concurrency: 4 }),
+  },
+});
+
+await postel.start(); // starts delivery; call postel.stop() on shutdown
+```
+
+```ts
+// Same call site, now inside the transaction:
+await db.tx(async (tx) => {
+  await db.orders.insert({ id: "ord_123", status: "paid" }, { tx });
+  await postel.outbound.send({ type: "order.created", data: { orderId: "ord_123" } }, { tx });
+});
+```
+
+The `Worker` file is deleted. There's no processor to write — the in-process worker pool selects unprocessed outbox rows, computes the signature, and does the HTTP delivery. Register the receiving endpoint once, outside the request path:
+
+```ts
+await postel.outbound.endpoints.create({
+  url:   "https://customer.example.com/webhooks",
+  types: ["order.*"],
+});
+```
+
+## Migration steps
+
+1. Add `@postel/core` and a [storage adapter](/docs/storage) matching your database (or wrap your existing Kysely/Drizzle/Prisma/TypeORM/MikroORM instance with the matching `@postel/*` adapter instead of adding a new connection).
+2. Define the `Postel({ outbound })` factory: pick `HmacV1()` or `Ed25519V1a()` for signing, and translate your `opts.attempts` / `opts.backoff` into `ExponentialBackoff`, `LinearBackoff`, or `Custom(...)` (see [Retries & backoff](/docs/outbound/retries)).
+3. Call `postel.start()` once at boot, `postel.stop()` on shutdown.
+4. Create one endpoint per receiver URL with `postel.outbound.endpoints.create()`, moving the `types` filter you previously did inside your worker (`if (job.name.startsWith("order."))`) into the endpoint's `types` glob.
+5. Replace every `queue.add(...)` call site with `postel.outbound.send(...)`, passing `{ tx }` if there's a business write to join.
+6. Delete the `Worker` processor, your HMAC signing code, and your retry-counter logic — all three are now the runtime's job.
+7. If you used `opts.jobId` for dedup-on-enqueue, pass the same value as `idempotencyKey`.
+8. Point any internal dashboard at [`@postel/admin`](/docs/outbound/admin)'s `GET /messages` and `GET /messages/:id/attempts` instead of a Bull Board instance.
+
+## What you give up
+
+- **Redis-backed horizontal fan-out.** BullMQ's queue lives in Redis, so many independent worker processes across many machines pull from the same queue with no coordination beyond Redis itself. Postel's in-process worker pool (`InProcess({ concurrency })`) scales *within* a process; running it on multiple app instances means multiple pools racing for the same DB rows via `FOR UPDATE SKIP LOCKED`, which works but isn't the same fair-queueing model a dedicated broker gives you at very high fan-out. If webhook delivery is a small fraction of your throughput, this rarely matters; if it's the majority of what your queue does today, benchmark first.
+- **A general-purpose job queue.** If you were also running non-webhook jobs (emails, thumbnails, reports) through the same BullMQ queue, keep BullMQ for those — Postel only replaces the webhook-delivery job type, not your task queue.
+- **A customer-facing portal or multi-region delivery.** Neither BullMQ nor your hand-rolled worker had these either, so nothing changes here — but it's worth naming: if you're migrating *toward* wanting them, Postel isn't where you'll find them. See [Is Postel for me?](/docs/get-started/is-postel-for-me).
+
+## Read next
+
+- [Sending & the outbox](/docs/outbound/send) — the full transactional contract.
+- [Retries & backoff](/docs/outbound/retries) — circuit breaker and auto-disable, which your hand-rolled worker probably didn't have.
+- [Storage](/docs/storage) — pick the adapter for your database.

@@ -1,0 +1,97 @@
+---
+title: From a signing-only library
+description: standardwebhooks or svix's verify() to the Postel inbound gate — same headers, more failure modes named.
+---
+
+If you're only *receiving* webhooks today, you're probably using `standardwebhooks` or the `svix` package's `Webhook.verify()` directly in a route handler. Both implement the same Standard Webhooks spec Postel does, so this is the smallest migration in this section: the wire format doesn't change, only how much the library does for you once verification succeeds.
+
+## API mapping
+
+| `standardwebhooks` / `svix` | Postel |
+|---|---|
+| `new Webhook(secret)` | `Secret(secret)` passed as a source's `verify` |
+| `wh.verify(payload, headers)` | `postel.inbound.<source>.verify(rawBytes, headers)` |
+| Returns the parsed payload on success | Returns `{ event, matchedVerifierIndex }` — `event.data` is the parsed payload |
+| Throws a single `WebhookVerificationError` on any failure | Throws a typed subclass per failure: `MalformedHeader`, `TimestampTooOld`, `SignatureInvalid`, `UnknownKeyId` — see [what verify throws](/docs/inbound/verify#what-verify-throws) |
+| `webhook-id` / `webhook-timestamp` / `webhook-signature` (`svix-*` aliases accepted by the `svix` package) | Same three headers, same names — no header renaming needed |
+| One secret, swapped by hand for rotation | `verify: [Secret(current), Secret(previous)]` — an array, tried in order, with `matchedVerifierIndex` telling you which one matched |
+| No JWKS / asymmetric option | `PublicKey(...)` or `Keyset({ jwksUri })` for Ed25519 (`v1a`) verification, including automatic key refresh |
+| No idempotency handling — you write your own dedup, or skip it | `dedup` + `dedupTtl` config — see [Deduplication](/docs/inbound/deduplication) |
+| Hand-wired body plumbing per framework (`express.raw()`, reading a `Request` stream, …) | A [web adapter](/docs/web-adapters) (`HonoWebAdapter`, `ExpressWebAdapter`, `FastifyWebAdapter`, `NestjsWebAdapter`) does the raw-body plumbing and error-to-status mapping for you |
+| No payload schema validation | Optional `schema` (zod/valibot/arktype via [Standard Schema](https://github.com/standard-schema/standard-schema)) types and validates `event.data` |
+
+## Before
+
+```ts
+import { Webhook, WebhookVerificationError } from "standardwebhooks";
+
+const wh = new Webhook(process.env.WEBHOOK_SECRET);
+
+app.post("/webhooks/vendor", express.raw({ type: "application/json" }), (req, res) => {
+  try {
+    const event = wh.verify(req.body, req.headers);
+    // handle event
+    res.sendStatus(200);
+  } catch (err) {
+    if (err instanceof WebhookVerificationError) return res.sendStatus(401);
+    throw err;
+  }
+});
+```
+
+## After
+
+```ts title="lib/postel.ts"
+import { Postel, Secret } from "@postel/core";
+
+export const postel = Postel({
+  inbound: {
+    vendor: { verify: Secret(process.env.WEBHOOK_SECRET) },
+  },
+});
+```
+
+```ts title="app.ts"
+import { ExpressWebAdapter } from "@postel/express";
+import { postel } from "./lib/postel";
+
+ExpressWebAdapter(postel, app).inbound.vendor.post("/webhooks/vendor", (req, res) => {
+  req.postel.event; // verified and (if you add a schema) typed
+  res.sendStatus(200);
+});
+```
+
+Or keep your own route and call `verify` directly — no framework adapter required:
+
+```ts
+app.post("/webhooks/vendor", express.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    const { event } = await postel.inbound.vendor.verify(req.body, req.headers);
+    res.sendStatus(200);
+  } catch (err) {
+    if (err instanceof SignatureInvalid)  return res.sendStatus(401);
+    if (err instanceof TimestampTooOld)   return res.sendStatus(401);
+    if (err instanceof MalformedHeader)   return res.sendStatus(400);
+    throw err;
+  }
+});
+```
+
+## Migration steps
+
+1. Add `@postel/core` (and a framework adapter package, if you want the routing facade instead of hand-wiring).
+2. Replace `new Webhook(secret)` with a `Postel({ inbound: { <source>: { verify: Secret(secret) } } })` factory at module scope.
+3. Replace `wh.verify(payload, headers)` with `postel.inbound.<source>.verify(rawBytes, headers)`, and split your single `catch` block into the specific error subclasses you care about distinguishing (most teams only need to tell `SignatureInvalid`/`TimestampTooOld` apart from a 500-worthy bug).
+4. Keep whatever raw-body handling you already have (`express.raw()`, etc.) — see [Raw bytes](/docs/inbound/raw-bytes) if you're not 100% sure your framework isn't re-serializing the body first. This is the one step worth double-checking even though nothing above forces you to touch it.
+5. If you were rotating secrets by editing an environment variable and redeploying, switch to `verify: [Secret(current), Secret(previous)]` and drop the previous one on your own schedule instead of coordinating with the producer.
+6. Optionally attach a `schema` to get typed, validated `event.data` instead of `unknown`.
+
+## What you give up
+
+Honestly: very little, and mostly in the other direction — this migration adds capability (structured errors, JWKS, multi-secret rotation, dedup, framework adapters) rather than removing it, since `standardwebhooks` and `svix.Webhook` are narrowly scoped to signature verification. The trade is a larger dependency: `@postel/core` is more surface than a single `Webhook` class, even though it has zero runtime dependencies of its own. If verification is genuinely all you need — no rotation, no JWKS, no dedup — staying on the minimal library is a legitimate choice and this migration buys you little. It starts paying off the moment you need any one of those things, or you also want to *send* webhooks and would rather not run two different libraries for the two halves.
+
+## Read next
+
+- [Verify a signed request](/docs/inbound/verify) — the full recipe, including custom verifiers.
+- [Raw bytes](/docs/inbound/raw-bytes) — the most common silent failure after a framework migration.
+- [Web adapters](/docs/web-adapters) — Hono, Express, Fastify, NestJS routing facades.

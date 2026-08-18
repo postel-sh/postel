@@ -1,0 +1,28 @@
+---
+title: Overview
+description: Three starting points, three guides — a hand-rolled or BullMQ worker, Svix self-hosted, or a signing-only verification library.
+---
+
+import { PackageIcon, GlobeIcon, ShieldCheckIcon } from "@/components/icons";
+
+If you're reading this, you already have working webhooks — sending, receiving, or both. These guides aren't "why webhooks"; they're "how do I get from what I have to Postel without a rewrite." Each one takes a specific legacy shape, maps its concepts onto Postel's, and ends with what you'd give up by switching.
+
+## Pick your starting point
+
+<Cards>
+  <Card icon={<PackageIcon />} title="From BullMQ or a hand-rolled worker" href="/docs/migration-guides/from-bullmq" description="A queue + worker doing manual HTTP POSTs, retry counters, and (probably) a home-grown signature." />
+  <Card icon={<GlobeIcon />} title="From Svix self-hosted" href="/docs/migration-guides/from-svix" description="Application / endpoint / message / message-attempt, mapped onto Postel's outbound API." />
+  <Card icon={<ShieldCheckIcon />} title="From a signing-only library" href="/docs/migration-guides/from-signing-libs" description="standardwebhooks or svix verify() to the Postel inbound gate." />
+</Cards>
+
+## What every guide covers
+
+1. A concept mapping table — the legacy term next to Postel's term, so you can find the equivalent instead of re-deriving it.
+2. Copy-paste migration steps, in the order you'd actually do them.
+3. An honest **what you give up** section. Postel is a library embedded in your app, not a service — some things a dedicated webhook platform does (a customer-facing portal, multi-region delivery) are explicitly out of scope. See [Is Postel for me?](/docs/get-started/is-postel-for-me) if you haven't already read it.
+
+## Read next
+
+- [Sending & the outbox](/docs/outbound/send) — the transactional contract these guides migrate you onto.
+- [Verify a signed request](/docs/inbound/verify) — the receiver recipe.
+- [Storage](/docs/storage) — pick where the outbox and audit trail live.
