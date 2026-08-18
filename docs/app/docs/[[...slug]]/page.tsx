@@ -1,3 +1,4 @@
+import { PageActions } from "@/components/page-actions";
 import { getMDXComponents } from "@/mdx-components";
 import { source } from "@/lib/source";
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/page";
@@ -12,11 +13,13 @@ export default async function Page(props: {
   if (!page) notFound();
 
   const MDXContent = page.data.body;
+  const markdownUrl = `/raw/${page.slugs.length === 0 ? "index" : page.slugs.join("/")}.md`;
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
       <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
+      <DocsDescription className="mb-2">{page.data.description}</DocsDescription>
+      <PageActions markdownUrl={markdownUrl} />
       <DocsBody>
         <MDXContent components={getMDXComponents()} />
       </DocsBody>
