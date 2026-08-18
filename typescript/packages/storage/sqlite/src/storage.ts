@@ -650,10 +650,10 @@ export function SqliteStorage(options: SqliteStorageOptions = {}): Storage<Sqlit
         });
         db.prepare(
           `INSERT INTO endpoint_secrets
-             (id, endpoint_id, algorithm, status, priority, encrypted_value, public_key,
+             (id, endpoint_id, algorithm, status, priority, material, encryption, public_key,
               not_after, created_at)
            VALUES
-             (@id, @endpoint_id, @algorithm, @status, @priority, @encrypted_value, @public_key,
+             (@id, @endpoint_id, @algorithm, @status, @priority, @material, @encryption, @public_key,
               @not_after, @created_at)`,
         ).run(row);
         void opts;

@@ -179,6 +179,16 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '6')
   ON CONFLICT (key) DO UPDATE SET value = '6';
 `,
   },
+  {
+    version: 7,
+    name: "endpoint_secret_material_column",
+    sql: `
+ALTER TABLE endpoint_secrets RENAME COLUMN encrypted_value TO material;
+ALTER TABLE endpoint_secrets ADD COLUMN encryption TEXT NOT NULL DEFAULT 'plaintext';
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '7')
+  ON CONFLICT (key) DO UPDATE SET value = '7';
+`,
+  },
 ];
 
 // Postgres dialect (>= 14). jsonb / timestamptz / bytea native. The
@@ -350,6 +360,16 @@ INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '5')
     sql: `
 INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '6')
   ON CONFLICT (key) DO UPDATE SET value = '6';
+`,
+  },
+  {
+    version: 7,
+    name: "endpoint_secret_material_column",
+    sql: `
+ALTER TABLE endpoint_secrets RENAME COLUMN encrypted_value TO material;
+ALTER TABLE endpoint_secrets ADD COLUMN IF NOT EXISTS encryption text NOT NULL DEFAULT 'plaintext';
+INSERT INTO _postel_meta (key, value) VALUES ('schema_version', '7')
+  ON CONFLICT (key) DO UPDATE SET value = '7';
 `,
   },
 ];
@@ -531,6 +551,16 @@ INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '5')
     sql: `
 INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '6')
   ON DUPLICATE KEY UPDATE value = '6';
+`,
+  },
+  {
+    version: 7,
+    name: "endpoint_secret_material_column",
+    sql: `
+ALTER TABLE endpoint_secrets RENAME COLUMN encrypted_value TO material;
+ALTER TABLE endpoint_secrets ADD COLUMN encryption VARCHAR(191) NOT NULL DEFAULT 'plaintext';
+INSERT INTO _postel_meta (\`key\`, value) VALUES ('schema_version', '7')
+  ON DUPLICATE KEY UPDATE value = '7';
 `,
   },
 ];

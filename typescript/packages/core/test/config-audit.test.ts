@@ -70,7 +70,8 @@ async function seedEndpoint(
     algorithm: "v1",
     status: "primary",
     priority: 0,
-    encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+    material: new TextEncoder().encode(SAMPLE_SECRET),
+    encryption: "plaintext",
     notAfter: null,
   });
 }
@@ -234,5 +235,32 @@ describe("Logger pass-through for runtime events [PORT-SPECIFIC]", () => {
     await server.close();
     const attempts = await storage.attempts.latestForMessage(id);
     expect(attempts.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Encryption at rest with KMS adapter", () => {
+  it("Column naming reflects actual encryption state", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage, http: LOOPBACK } });
+    const ep = await postel.outbound.endpoints.create({
+      url: "http://127.0.0.1:65535/h",
+      allowHttp: true,
+    });
+    const [secret] = await storage.secrets.listForEndpoint(ep.id);
+    expect(secret).toBeDefined();
+    expect(secret?.material).toBeInstanceOf(Uint8Array);
+    expect(secret && "encryption" in secret).toBe(true);
+    expect(secret && "encryptedValue" in secret).toBe(false);
+  });
+
+  it("Plaintext storage is discriminated, not hidden", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({ outbound: { storage, kms: PlaintextKms(), http: LOOPBACK } });
+    const ep = await postel.outbound.endpoints.create({
+      url: "http://127.0.0.1:65535/h",
+      allowHttp: true,
+    });
+    const [secret] = await storage.secrets.listForEndpoint(ep.id);
+    expect(secret?.encryption).toBe("plaintext");
   });
 });

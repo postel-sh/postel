@@ -10,7 +10,7 @@ import { type DrizzleDatabase, DrizzleStorage } from "../src/index.js";
 // shares the same SQL and is proven by @postel/pg.
 runStorageTests({
   name: "@postel/drizzle (sqlite dialect)",
-  expectedSchemaVersion: 6,
+  expectedSchemaVersion: 7,
   capabilities: { notify: false, txIsolation: false },
   async create() {
     const clock = makeFakeClock();
@@ -43,7 +43,7 @@ if (process.env.POSTEL_MYSQL_TESTCONTAINERS || process.env.POSTEL_MYSQL_URL) {
 
   runStorageTests({
     name: "@postel/drizzle (mysql dialect, testcontainers)",
-    expectedSchemaVersion: 6,
+    expectedSchemaVersion: 7,
     setupTimeoutMs: 120_000,
     capabilities: { notify: false, txIsolation: true },
     async setup() {

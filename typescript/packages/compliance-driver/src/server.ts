@@ -172,7 +172,8 @@ export async function startDriver(options: DriverServerOptions = {}): Promise<Dr
                 algorithm: fixture.algorithm === "ed25519" ? "v1a" : "v1",
                 status: "primary",
                 priority: 0,
-                encryptedValue: new TextEncoder().encode(fixture.key_material),
+                material: new TextEncoder().encode(fixture.key_material),
+                encryption: "plaintext",
                 notAfter: null,
               });
             }

@@ -25,7 +25,7 @@ if (process.env.POSTEL_MYSQL_TESTCONTAINERS || process.env.POSTEL_MYSQL_URL) {
 
   runStorageTests({
     name: "@postel/mysql (testcontainers)",
-    expectedSchemaVersion: 6,
+    expectedSchemaVersion: 7,
     // MySQL container boot (pull + init + healthcheck) far exceeds vitest's 10s default.
     setupTimeoutMs: 120_000,
     capabilities: { notify: false, txIsolation: true },

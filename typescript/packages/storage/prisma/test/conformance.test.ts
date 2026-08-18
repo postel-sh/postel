@@ -41,7 +41,7 @@ function prismaShim(db: Database.Database): PrismaClient {
 
 runStorageTests({
   name: "@postel/prisma (sqlite shim)",
-  expectedSchemaVersion: 6,
+  expectedSchemaVersion: 7,
   capabilities: { notify: false, txIsolation: false },
   async create() {
     const clock = makeFakeClock();

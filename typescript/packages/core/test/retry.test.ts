@@ -103,7 +103,8 @@ async function seedEndpoint(
     algorithm: "v1",
     status: "primary",
     priority: 0,
-    encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+    material: new TextEncoder().encode(SAMPLE_SECRET),
+    encryption: "plaintext",
     notAfter: null,
   });
   return endpoint.id;
@@ -426,7 +427,8 @@ async function seedEndpointWithId(
     algorithm: "v1",
     status: "primary",
     priority: 0,
-    encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+    material: new TextEncoder().encode(SAMPLE_SECRET),
+    encryption: "plaintext",
     notAfter: null,
   });
   return endpoint.id;
@@ -753,7 +755,8 @@ async function seedTenantEndpoint(
     algorithm: "v1",
     status: "primary",
     priority: 0,
-    encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+    material: new TextEncoder().encode(SAMPLE_SECRET),
+    encryption: "plaintext",
     notAfter: null,
   });
   return endpoint.id;

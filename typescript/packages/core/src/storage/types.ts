@@ -1,5 +1,6 @@
 import type { FilterEnvelope, StructuralFilter } from "../outbound.js";
 import type { CursorOptions, Page } from "../pagination.js";
+import type { KmsStrategy } from "../strategies/kms.js";
 
 export type MessageId = string;
 export type EndpointId = string;
@@ -22,6 +23,10 @@ export type AttemptStatus =
 export type EndpointState = "active" | "disabled" | "circuit-open";
 export type EndpointSecretStatus = "primary" | "verifying" | "expiring";
 export type SecretAlgorithm = "v1" | "v1a";
+// What protection, if any, was applied to a secret's stored material. Matches
+// KmsStrategy["kind"] so a future KMS adapter populates this per row with the
+// strategy it used; every row is "plaintext" until envelope encryption ships.
+export type SecretEncryption = KmsStrategy["kind"];
 
 // Message-level outbox lifecycle. Per-endpoint delivery outcomes live on
 // attempts (see AttemptStatus); this is the coarse state of the outbox row.
@@ -147,7 +152,8 @@ export interface EndpointSecretRecord {
   readonly algorithm: SecretAlgorithm;
   readonly status: EndpointSecretStatus;
   readonly priority: number;
-  readonly encryptedValue: Uint8Array;
+  readonly material: Uint8Array;
+  readonly encryption: SecretEncryption;
   readonly publicKey?: Uint8Array;
   readonly notAfter: Date | null;
   readonly createdAt: Date;

@@ -105,7 +105,8 @@ async function seedEndpoint(
     algorithm: "v1",
     status: "primary",
     priority: 0,
-    encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+    material: new TextEncoder().encode(SAMPLE_SECRET),
+    encryption: "plaintext",
     notAfter: null,
   });
 }
@@ -171,7 +172,8 @@ describe("Per-endpoint custom HTTP headers", () => {
       algorithm: "v1",
       status: "primary",
       priority: 0,
-      encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+      material: new TextEncoder().encode(SAMPLE_SECRET),
+      encryption: "plaintext",
       notAfter: null,
     });
     const postel = Postel({
@@ -366,7 +368,8 @@ describe("SSRF protection on outbound delivery", () => {
       algorithm: "v1",
       status: "primary",
       priority: 0,
-      encryptedValue: new TextEncoder().encode(SAMPLE_SECRET),
+      material: new TextEncoder().encode(SAMPLE_SECRET),
+      encryption: "plaintext",
       notAfter: null,
     });
     const postel = Postel({ outbound: { storage } });
@@ -817,7 +820,8 @@ describe("Per-endpoint signing config", () => {
       algorithm: "v1a",
       status: "primary",
       priority: 0,
-      encryptedValue: new TextEncoder().encode(edPrivateSeed),
+      material: new TextEncoder().encode(edPrivateSeed),
+      encryption: "plaintext",
       notAfter: null,
     });
     const postel = Postel({
