@@ -1,0 +1,44 @@
+---
+title: OpenTelemetry
+description: Trace send, dispatch, attempt, retry, and replay with an optional OpenTelemetry provider.
+---
+
+Postel emits OpenTelemetry spans for the sender path: `send`, `dispatch`, `attempt`, `retry`, and `replay`. `@opentelemetry/api` is an **optional peer dependency** — `@postel/core` has zero hard runtime dependencies, and if the package isn't installed or no tracer provider is registered, instrumented operations run exactly as they do without this page: no spans, no measurable overhead.
+
+## Enabling it
+
+Install the API package alongside whatever SDK wires up your exporter — a typical Node setup pulls in `@opentelemetry/sdk-node` and an exporter for your backend:
+
+```bash
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-http
+```
+
+Register a provider before constructing `Postel({...})` (or anywhere before your first `send()` — spans just no-op until then):
+
+```ts
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+
+const sdk = new NodeSDK({
+  traceExporter: new OTLPTraceExporter(),
+});
+sdk.start();
+```
+
+Nothing else changes on the Postel side — no config slot to flip. The library checks for a registered provider on each instrumented call.
+
+## What's traced
+
+| Span | When | Attributes |
+|---|---|---|
+| `postel.send` | `postel.outbound.send(...)` enqueues a message | `postel.tenant.id`, `postel.event.type`, `postel.message.id` |
+| `postel.dispatch` | A worker reserves a message and fans it out to its endpoints | `postel.message.id`, `postel.tenant.id` |
+| `postel.retry` | The retry/circuit-breaker orchestrator runs for one endpoint | `postel.message.id`, `postel.tenant.id`, `postel.endpoint.id`, `postel.attempt.status` |
+| `postel.attempt` | The actual HTTP delivery attempt to an endpoint | `postel.message.id`, `postel.tenant.id`, `postel.endpoint.id`, `http.request.method`, `http.response.status_code` |
+| `postel.replay` | `postel.outbound.replay(...)` re-enqueues a message | `postel.message.id` and/or `postel.endpoint.id`, when the replay options carry one |
+
+Spans nest the way the runtime does: a `dispatch` span for a fanout to three endpoints has three child `retry` spans, each wrapping its own `attempt` span. If `send()` runs inside an already-active span — a traced HTTP handler, for instance — the `postel.send` span is a child of it and shares its trace id, the same as any other OpenTelemetry-instrumented call.
+
+## What's not covered yet
+
+Prometheus metrics and structured-log/trace correlation are tracked separately and haven't shipped. `observability.logger` (see [Outbound](/docs/outbound)) remains the non-OTel option for a real-time hook into delivery and circuit events.

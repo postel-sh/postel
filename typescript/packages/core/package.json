@@ -50,7 +50,18 @@
   "dependencies": {
     "undici": "^5.29.0"
   },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/context-async-hooks": "^2.0.0",
+    "@opentelemetry/sdk-trace-base": "^2.0.0",
     "@types/node": "20.17.10",
     "zod": "^3.24.0"
   }

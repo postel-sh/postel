@@ -1,4 +1,5 @@
 import type { Clock } from "../../clock.js";
+import { spanAttributes, withSpan } from "../../observability/tracing.js";
 import type { ReservedMessage, Storage, TenantId, WorkerId } from "../../storage/types.js";
 import { type DispatchOne, dispatchMessage } from "../dispatcher/dispatch.js";
 
@@ -144,10 +145,15 @@ export class Worker {
         });
     }, this.opts.renewIntervalMs);
     try {
-      await dispatchMessage(
-        { storage: this.opts.storage, clock: this.opts.clock },
-        msg,
-        this.opts.dispatchOne,
+      await withSpan(
+        "postel.dispatch",
+        spanAttributes({ "postel.message.id": msg.id, "postel.tenant.id": msg.tenantId }),
+        () =>
+          dispatchMessage(
+            { storage: this.opts.storage, clock: this.opts.clock },
+            msg,
+            this.opts.dispatchOne,
+          ),
       );
       await this.opts.storage.releaseLease(msg.id, this.opts.id);
     } catch {
