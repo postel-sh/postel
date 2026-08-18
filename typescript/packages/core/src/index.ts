@@ -167,6 +167,7 @@ export {
   External,
   FixedRate,
   GcpKms,
+  GitHub,
   HmacV1,
   InMemoryDedup,
   InProcess,
@@ -177,6 +178,7 @@ export {
   PlaintextKms,
   PublicKey,
   Secret,
+  Stripe,
   Vault,
 } from "./strategies/index.js";
 export type {
