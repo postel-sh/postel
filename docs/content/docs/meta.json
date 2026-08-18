@@ -7,6 +7,7 @@
     "outbound",
     "web-adapters",
     "storage",
+    "migration-guides",
     "reference"
   ]
 }
