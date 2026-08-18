@@ -3,13 +3,16 @@ import type { Unsubscribe } from "../storage/types.js";
 export interface DeadLetterPayload {
   readonly messageId: string;
   readonly endpointId: string;
+  readonly tenantId: string | null;
   readonly finalError: string;
 }
 
 export interface AttemptPayload {
   readonly messageId: string;
   readonly endpointId: string;
+  readonly tenantId: string | null;
   readonly status: string;
+  readonly latencyMs: number;
 }
 
 export interface CircuitTransitionPayload {

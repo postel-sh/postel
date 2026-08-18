@@ -1,11 +1,15 @@
 ---
-title: OpenTelemetry
-description: Trace send, dispatch, attempt, retry, and replay with an optional OpenTelemetry provider.
+title: Observability
+description: OpenTelemetry spans, Prometheus-named metrics, and trace-correlated logs for the sender path.
 ---
 
-Postel emits OpenTelemetry spans for the sender path: `send`, `dispatch`, `attempt`, `retry`, and `replay`. `@opentelemetry/api` is an **optional peer dependency** — `@postel/core` has zero hard runtime dependencies, and if the package isn't installed or no tracer provider is registered, instrumented operations run exactly as they do without this page: no spans, no measurable overhead.
+Postel ships three observability pillars for the sender path: OpenTelemetry spans, a dependency-free metrics snapshot, and trace-correlated structured logs. All three are read-only — none of them affect delivery behavior.
 
-## Enabling it
+## Tracing
+
+Postel emits OpenTelemetry spans for `send`, `dispatch`, `attempt`, `retry`, and `replay`. `@opentelemetry/api` is an **optional peer dependency** — `@postel/core` has zero hard runtime dependencies, and if the package isn't installed or no tracer provider is registered, instrumented operations run exactly as they do without this page: no spans, no measurable overhead.
+
+### Enabling it
 
 Install the API package alongside whatever SDK wires up your exporter — a typical Node setup pulls in `@opentelemetry/sdk-node` and an exporter for your backend:
 
@@ -27,7 +31,7 @@ sdk.start();
 
 Nothing else changes on the Postel side — no config slot to flip. The library checks for a registered provider on each instrumented call.
 
-## What's traced
+### What's traced
 
 | Span | When | Attributes |
 |---|---|---|
@@ -39,6 +43,84 @@ Nothing else changes on the Postel side — no config slot to flip. The library 
 
 Spans nest the way the runtime does: a `dispatch` span for a fanout to three endpoints has three child `retry` spans, each wrapping its own `attempt` span. If `send()` runs inside an already-active span — a traced HTTP handler, for instance — the `postel.send` span is a child of it and shares its trace id, the same as any other OpenTelemetry-instrumented call.
 
-## What's not covered yet
+## Metrics
 
-Prometheus metrics and structured-log/trace correlation are tracked separately and haven't shipped. `observability.logger` (see [Outbound](/docs/outbound)) remains the non-OTel option for a real-time hook into delivery and circuit events.
+`postel.metrics()` returns a snapshot of the same Prometheus metric names the wire spec commits to — no `prom-client` dependency, no config slot to flip. It's cheap to call on every scrape: the counters and histogram accumulate in memory as deliveries happen, and the gauges are read from storage at snapshot time.
+
+```ts
+const snapshot = await postel.metrics();
+// {
+//   webhook_send_total: [{ value: 2, labels: { tenant_id: "t_1", event_type: "order.created" } }],
+//   webhook_attempt_duration_seconds: [{ count: 5, sum: 1.2, labels: { endpoint_id: "ep_1" } }],
+//   webhook_attempt_success_ratio: [{ value: 0.8, labels: { endpoint_id: "ep_1" } }],
+//   webhook_dead_letter_total: [{ value: 1, labels: { endpoint_id: "ep_1" } }],
+//   webhook_outbox_depth: [{ value: 42, labels: { tenant_id: "t_1" } }],
+//   webhook_endpoint_circuit_state: [{ value: 0, labels: { endpoint_id: "ep_1" } }],
+// }
+```
+
+| Metric | Kind | Labels | Meaning |
+|---|---|---|---|
+| `webhook_send_total` | counter | `tenant_id`, `event_type` | Messages enqueued via `send()` |
+| `webhook_attempt_duration_seconds` | histogram (`count`/`sum`) | `endpoint_id` | Delivery-attempt latency |
+| `webhook_attempt_success_ratio` | gauge (0–1) | `endpoint_id` | Successful attempts ÷ total attempts |
+| `webhook_dead_letter_total` | counter | `endpoint_id` | Messages that exhausted retries |
+| `webhook_outbox_depth` | gauge | `tenant_id` | Pending messages, per tenant |
+| `webhook_endpoint_circuit_state` | gauge (`1`=open, `0`=closed) | `endpoint_id`, `tenant_id` | Current circuit-breaker state, read live from the endpoint's persisted state |
+
+A receiver-only instance (no `outbound` slot) has nothing to count — every array in the snapshot is empty rather than the call rejecting.
+
+To feed a real Prometheus scrape, map the snapshot onto `prom-client` (or any client) yourself:
+
+```ts
+import { Counter, Gauge, Histogram } from "prom-client";
+
+const sendTotal = new Counter({ name: "webhook_send_total", labelNames: ["tenant_id", "event_type"], help: "" });
+const attemptDuration = new Histogram({ name: "webhook_attempt_duration_seconds", labelNames: ["endpoint_id"], help: "" });
+const outboxDepth = new Gauge({ name: "webhook_outbox_depth", labelNames: ["tenant_id"], help: "" });
+
+setInterval(async () => {
+  const snapshot = await postel.metrics();
+  sendTotal.reset();
+  for (const s of snapshot.webhook_send_total) sendTotal.inc(s.labels, s.value);
+  outboxDepth.reset();
+  for (const s of snapshot.webhook_outbox_depth) outboxDepth.set(s.labels, s.value);
+  // ...same pattern for the other metrics
+}, 15_000);
+```
+
+## Structured logs with trace correlation
+
+`observability.logger` (the pass-through described in [Outbound](/docs/outbound)) attaches a `trace_id` field to every forwarded entry whenever an OpenTelemetry trace is active — the same trace id as the `postel.dispatch` / `postel.retry` / `postel.attempt` spans covering that delivery. With no tracer provider registered, entries carry no `trace_id` field at all; your logger's own JSON serialization decides how the entry reaches your log backend.
+
+```ts
+const postel = Postel({
+  observability: {
+    logger: (entry) => myJsonLogger[entry.level](entry), // entry.trace_id, when present, lines up with your trace backend
+  },
+  outbound: { storage },
+});
+```
+
+## Recipe: dead-letter alerting
+
+Combine the `dead-letter` event (or `webhook_dead_letter_total`) with `observability.logger` to page on-call the moment a message exhausts retries, without polling:
+
+```ts
+const postel = Postel({
+  observability: {
+    logger: (entry) => {
+      if (entry.event === "dead-letter") {
+        alerting.page({
+          title: `Webhook dead-lettered: endpoint ${entry.data.endpointId}`,
+          traceId: entry.trace_id,
+          finalError: entry.data.finalError,
+        });
+      }
+    },
+  },
+  outbound: { storage },
+});
+```
+
+For a dashboard rather than a page-per-event, scrape `webhook_dead_letter_total` on an interval and alert on its rate of increase (e.g. a PromQL `increase(webhook_dead_letter_total[5m]) > 0`) — the counter only goes up, so any increase over a window is a real dead-letter, not noise from a gauge resetting.

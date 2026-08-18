@@ -558,3 +558,28 @@ describe("Admin HTTP handlers", () => {
     expect(((await badCursor.json()) as { errorCode: string }).errorCode).toBe("INVALID_QUERY");
   });
 });
+
+describe("Health via admin router", () => {
+  it("Health via admin router: the response carries the same shape as postel.health(), 200 when ok", async () => {
+    const { router } = build(ALLOW);
+    const res = await router(req("GET", "/admin/health"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; outboxDepth: number; workerCount: number };
+    expect(body).toEqual({ ok: true, outboxDepth: 0, workerCount: 0 });
+  });
+
+  it("Health via admin router: 503 when postel.health() reports unhealthy", async () => {
+    const storage = InMemoryStorage();
+    const postel = Postel({
+      outbound: { storage, ...SSRF },
+      observability: { health: { maxOutboxDepth: 0 } },
+    });
+    await postel.outbound.send({ type: "evt.x" });
+    const router = adminRouter(postel, ALLOW);
+    const res = await router(req("GET", "/admin/health"));
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { ok: boolean; reason: string };
+    expect(body.ok).toBe(false);
+    expect(body.reason).toMatch(/maxOutboxDepth/);
+  });
+});
