@@ -1,6 +1,6 @@
 import type { Clock } from "../../clock.js";
 import type { CircuitBreakerDefaults } from "../../outbound.js";
-import type { EndpointId, Storage, TenantId } from "../../storage/types.js";
+import type { EndpointId, EndpointState, Storage, TenantId } from "../../storage/types.js";
 import { durationToMs } from "../internal/duration.js";
 
 interface CircuitState {
@@ -25,11 +25,36 @@ export class CircuitBreakerRegistry {
     return JSON.stringify([tenantId, endpointId]);
   }
 
-  private getState(tenantId: TenantId | null, endpointId: EndpointId): CircuitState {
+  // A process may see an endpoint for the first time mid-lifetime — either
+  // its own fresh boot, or another process opened/closed the circuit. The
+  // persisted `endpoint.state` (already read fresh on every reservation) is
+  // the cross-process authority; local memory only caches it. When we're
+  // reconciling into `circuit-open`, the cooldown clock is reconstructed from
+  // the existing `endpoint_state_transitions` audit log rather than a new
+  // counters table.
+  private async reconcile(
+    endpointId: EndpointId,
+    persistedState: EndpointState,
+  ): Promise<CircuitState> {
+    if (persistedState !== "circuit-open") {
+      return { failures: 0, state: "closed", openedAt: null };
+    }
+    const transitions = await this.storage.endpoints.listStateTransitions(endpointId);
+    const openedAt =
+      [...transitions].reverse().find((t) => t.toState === "circuit-open")?.occurredAt ??
+      this.clock.now();
+    return { failures: 0, state: "open", openedAt };
+  }
+
+  private async getState(
+    tenantId: TenantId | null,
+    endpointId: EndpointId,
+    persistedState: EndpointState,
+  ): Promise<CircuitState> {
     const key = this.key(tenantId, endpointId);
     const prev = this.states.get(key);
     if (prev) return prev;
-    const fresh: CircuitState = { failures: 0, state: "closed", openedAt: null };
+    const fresh = await this.reconcile(endpointId, persistedState);
     this.states.set(key, fresh);
     return fresh;
   }
@@ -37,9 +62,10 @@ export class CircuitBreakerRegistry {
   async isOpen(
     tenantId: TenantId | null,
     endpointId: EndpointId,
+    persistedState: EndpointState,
     perEndpoint?: CircuitBreakerDefaults,
   ): Promise<boolean> {
-    const state = this.getState(tenantId, endpointId);
+    const state = await this.getState(tenantId, endpointId, persistedState);
     if (state.state !== "open") return false;
     const cooldownInput = perEndpoint?.cooldown ?? this.defaults.cooldown ?? "30s";
     const cooldownMs = durationToMs(cooldownInput);
@@ -57,9 +83,10 @@ export class CircuitBreakerRegistry {
     tenantId: TenantId | null,
     endpointId: EndpointId,
     success: boolean,
+    persistedState: EndpointState,
     perEndpoint?: CircuitBreakerDefaults,
   ): Promise<{ opened: boolean; closed: boolean }> {
-    const state = this.getState(tenantId, endpointId);
+    const state = await this.getState(tenantId, endpointId, persistedState);
     if (success) {
       const wasOpen = state.state === "open";
       state.failures = 0;

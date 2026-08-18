@@ -353,11 +353,67 @@ describe("Per-endpoint circuit breaker", () => {
       threshold: 1,
       cooldown: "5s",
     });
-    await registry.recordOutcome(null, endpointId, false);
-    expect(await registry.isOpen(null, endpointId)).toBe(true);
+    await registry.recordOutcome(null, endpointId, false, "active");
+    expect(await registry.isOpen(null, endpointId, "active")).toBe(true);
     // A distinct (empty-string) tenant id must not inherit the null tenant's
     // open breaker — the previous `${tenantId ?? ""}` key collapsed them.
-    expect(await registry.isOpen("", endpointId)).toBe(false);
+    expect(await registry.isOpen("", endpointId, "active")).toBe(false);
+  });
+});
+
+describe("Circuit breaker state persists across restarts and processes [PORT-SPECIFIC]", () => {
+  it("Circuit-open endpoint recovers after worker restart", async () => {
+    const clock = FakeClock();
+    const storage = InMemoryStorage({ clock });
+    const endpointId = await seedEndpoint(storage, "https://example.test/hook", {
+      circuitBreaker: { threshold: 1, cooldown: "5s" },
+    });
+    const beforeRestart = new CircuitBreakerRegistry(storage, clock, {
+      threshold: 1,
+      cooldown: "5s",
+    });
+    await beforeRestart.recordOutcome(null, endpointId, false, "active");
+    expect((await storage.endpoints.get(endpointId))?.state).toBe("circuit-open");
+
+    // Simulate a process restart: a fresh registry with no in-memory history
+    // of the endpoint, backed by the same storage.
+    const afterRestart = new CircuitBreakerRegistry(storage, clock, {
+      threshold: 1,
+      cooldown: "5s",
+    });
+    clock.advance(5_001);
+    const persistedState = (await storage.endpoints.get(endpointId))?.state;
+    if (!persistedState) throw new Error("endpoint missing");
+    const open = await afterRestart.isOpen(null, endpointId, persistedState);
+
+    expect(open).toBe(false);
+    expect((await storage.endpoints.get(endpointId))?.state).toBe("active");
+    const transitions = await storage.endpoints.listStateTransitions(endpointId);
+    expect(transitions.some((t) => t.reason === "circuit-close")).toBe(true);
+  });
+
+  it("Circuit-open state visible to a second process immediately", async () => {
+    const clock = FakeClock();
+    const storage = InMemoryStorage({ clock });
+    const endpointId = await seedEndpoint(storage, "https://example.test/hook", {
+      circuitBreaker: { threshold: 1, cooldown: "5s" },
+    });
+    const processA = new CircuitBreakerRegistry(storage, clock, {
+      threshold: 1,
+      cooldown: "5s",
+    });
+    await processA.recordOutcome(null, endpointId, false, "active");
+
+    // A second process's own failure count never reaches its (much higher)
+    // threshold, yet it must still observe the breaker as open because the
+    // endpoint's persisted state — not local memory — is authoritative.
+    const processB = new CircuitBreakerRegistry(storage, clock, {
+      threshold: 100,
+      cooldown: "5s",
+    });
+    const persistedState = (await storage.endpoints.get(endpointId))?.state;
+    if (!persistedState) throw new Error("endpoint missing");
+    expect(await processB.isOpen(null, endpointId, persistedState)).toBe(true);
   });
 });
 

@@ -574,9 +574,9 @@ describe("Per-tenant circuit breaker isolation", () => {
       threshold: 1,
       cooldown: "5s",
     });
-    await registry.recordOutcome("t_a", ep.id, false);
-    expect(await registry.isOpen("t_a", ep.id)).toBe(true);
-    expect(await registry.isOpen("t_b", ep.id)).toBe(false);
+    await registry.recordOutcome("t_a", ep.id, false, "active");
+    expect(await registry.isOpen("t_a", ep.id, "active")).toBe(true);
+    expect(await registry.isOpen("t_b", ep.id, "active")).toBe(false);
   });
 });
 
